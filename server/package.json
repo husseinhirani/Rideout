@@ -8,9 +8,10 @@
     "call": "tsx src/call.ts",
     "server": "tsx src/server.ts",
     "seed": "tsx src/seed.ts",
-    "test": "tsx tests/logic.ts",
+    "test": "tsx tests/logic.ts && tsx tests/tools.ts",
     "test:call": "tsx tests/call-number.ts",
     "inspect": "tsx src/inspect.ts",
+    "setup-agent": "tsx src/setup-tools.ts",
     "check": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p spacetimedb/tsconfig.json",
     "postinstall": "mkdir -p spacetimedb/node_modules/.bin && ln -sfn ../../../node_modules/.bin/tsc spacetimedb/node_modules/.bin/tsc"
   },

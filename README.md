@@ -28,6 +28,7 @@ Copy `.env.sample` to `.env` in the repo root and set:
 - `CARTESIA_API_KEY`
 - `CARTESIA_AGENT_ID`
 - `CARTESIA_FROM_NUMBER_ID` (the Cartesia phone-number id, `ap_...`, not the destination)
+- `NGROK_URL` (https origin for the webhook tunnel, for example `https://rideout.ngrok.app`)
 
 From `server/`, this places one real hosted-agent check-in call and prints `agent_call_id`. It does not open a support case.
 
@@ -69,7 +70,42 @@ curl -s -X POST http://127.0.0.1:8787/incidents \
   -d '{"type":"wildfire","lat":37.8708,"lng":-122.272,"radius_m":1000}'
 ```
 
-Cartesia can only reach a public HTTPS URL. Point a tunnel at `127.0.0.1:8787` before the agent can call `/check-ins` or `/find-helper`.
+### Webhook tunnel
+
+Cartesia can only reach a public HTTPS URL. The API stays on `http://127.0.0.1:8787`. ngrok is the HTTPS front. Each developer reserves their own domain. One `CARTESIA_AGENT_ID` has one tool URL, so whoever last ran `npm run setup-agent` is the machine that receives `POST /check-ins` and `POST /find-helper`.
+
+```bash
+brew install ngrok
+ngrok config add-authtoken <token>   # https://dashboard.ngrok.com/get-started/your-authtoken
+```
+
+Do not commit the authtoken. In the ngrok dashboard, reserve a domain, then set `NGROK_URL` in the repo-root `.env` to that https origin, with no path (`https://your-name.ngrok-free.dev`).
+
+From `server/`, in two terminals:
+
+```bash
+npm run server
+./dev-tunnel
+```
+
+`./dev-tunnel` runs `ngrok http 8787 --url "$NGROK_URL"`. Leave it running. Ctrl-C takes the URL down. The request log is `http://127.0.0.1:4040`.
+
+Then point the existing agent at your domain. This reads `server/tools/*.json`. `record_check_in` posts to `{NGROK_URL}/check-ins`. `record_find_helper` posts to `{NGROK_URL}/find-helper`. A second run updates the same tool ids and prints `agent tools unchanged`. Run it again after a tool JSON change or when the domain changes.
+
+```bash
+cd server
+npm run setup-agent
+```
+
+A request through the public URL should return the local API, not an ngrok HTML page:
+
+```bash
+curl -sS -m 15 -X POST "$NGROK_URL/check-ins" \
+  -H 'content-type: application/json' \
+  -d '{}'
+```
+
+That body is missing `incident_id`, so the API returns 400 `{"error":"incident_id must be a number"}`.
 
 Writes are the reducers `insertProfile`, `setContacts`, `createIncident`, `recordCheckIn`, `recordAttempt`, and `setCallId`. `spacetime call rideout <reducer> --server local` invokes one. Redial is not implemented.
 

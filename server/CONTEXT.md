@@ -20,7 +20,8 @@ The repo root is the browser demo. It does not import `server/`. `server/` is th
 | `server/spacetimedb` | The database module. `src/models.ts` is tables only. `src/apis/` is reducers, one file per area (profiles, incidents, support cases). `src/index.ts` re-exports them | HTTP, Cartesia, scripts that only a developer runs |
 | `server/tests` | Checks that a behavior works. A manual check is still a test | Product behavior the running server needs |
 | `server/mock` | Shared fixtures the team can load. No one's real phone number | Code |
-| `server/` root | `package.json`, docs (`AGENTS.md`, `CONTEXT.md`, `DESIGN.md`), and short dev commands such as wiping the local database | Feature logic |
+| `server/tools` | Cartesia webhook tool JSON, one file per tool. `api_schema.url` is a path such as `/check-ins`. `npm run setup-agent` prefixes `NGROK_URL` | Phone numbers, secrets, the agent prompt |
+| `server/` root | `package.json`, docs (`AGENTS.md`, `CONTEXT.md`, `DESIGN.md`), and short dev commands such as wiping the local database or opening the ngrok tunnel | Feature logic |
 
 A reducer records a fact. The process in `server/src` is what may call Cartesia and then call that reducer. If a change only stores or validates a row, it belongs in `spacetimedb`. If it places a call, reads a result, or serves HTTP, it belongs in `src`.
 
@@ -64,7 +65,7 @@ These apply to every change, by humans and agents.
 7. **Safety rules live in code not just not in prompts.** Anything that must never happen (for example routing a helper toward danger) is enforced deterministically.
 8. **Use the shared vocabulary.** Terms are defined in `design.md`. Use them exactly.
 9. **Keep docs current.** If your change affects behavior, terms, decisions, or server capabilities, update `design.md` or `api.md` in the same change.
-10. **Server code is TypeScript.** The SpacetimeDB module is `server/spacetimedb`. The Cartesia client and the HTTP server are `server/src`. `npm run seed` loads `server/mock/profiles.json` into an empty local database. `npm run server` serves `POST /incidents`, `POST /check-ins`, and `POST /find-helper`. `spacetimedb/package.json` is there so the SpacetimeDB CLI can detect a TypeScript module. `npm install` stays in `server/`. Node resolves `spacetimedb` from `server/node_modules`, and the install links `tsc` into the module because `spacetime publish` looks for it there.
+10. **Server code is TypeScript.** The SpacetimeDB module is `server/spacetimedb`. The Cartesia client and the HTTP server are `server/src`. `npm run seed` loads `server/mock/profiles.json` into an empty local database. `npm run server` serves `POST /incidents`, `POST /check-ins`, and `POST /find-helper`. `./dev-tunnel` exposes that port through ngrok. `npm run setup-agent` upserts the webhook tools in `server/tools` onto the existing Cartesia agent. `spacetimedb/package.json` is there so the SpacetimeDB CLI can detect a TypeScript module. `npm install` stays in `server/`. Node resolves `spacetimedb` from `server/node_modules`, and the install links `tsc` into the module because `spacetime publish` looks for it there.
 
 ## Out of scope for now
 

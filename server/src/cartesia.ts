@@ -90,7 +90,7 @@ export function placeBatch(
 }
 
 export function getCall(callId: string): Promise<CallRecord> {
-  return requestJson("GET", "/agents/calls/" + encodeURIComponent(callId)).then((payload) => ({
+  return cartesiaJson("GET", "/agents/calls/" + encodeURIComponent(callId)).then((payload) => ({
     status: typeof payload.status === "string" ? payload.status : "",
     endReason: typeof payload.end_reason === "string" ? payload.end_reason : null,
     summary: typeof payload.summary === "string" ? payload.summary : null,
@@ -98,10 +98,14 @@ export function getCall(callId: string): Promise<CallRecord> {
 }
 
 function postJson(path: string, body: unknown): Promise<JsonObject> {
-  return requestJson("POST", path, body)
+  return cartesiaJson("POST", path, body)
 }
 
-async function requestJson(method: "GET" | "POST", path: string, body?: unknown): Promise<JsonObject> {
+export async function cartesiaJson(
+  method: "GET" | "POST" | "PATCH",
+  path: string,
+  body?: unknown,
+): Promise<JsonObject> {
   let response: Response
   try {
     response = await fetch(CARTESIA_BASE_URL + path, {
@@ -125,7 +129,7 @@ async function requestJson(method: "GET" | "POST", path: string, body?: unknown)
   return payload
 }
 
-type JsonObject = Record<string, unknown>
+export type JsonObject = Record<string, unknown>
 
 async function readJson(response: Response): Promise<JsonObject> {
   const raw = await response.text()
