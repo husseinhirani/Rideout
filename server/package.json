@@ -3,7 +3,9 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "workspaces": ["spacetimedb"],
+  "workspaces": [
+    "spacetimedb"
+  ],
   "scripts": {
     "call": "tsx src/call.ts",
     "server": "tsx src/server.ts",
@@ -13,9 +15,12 @@
     "inspect": "tsx src/inspect.ts",
     "setup-agent": "tsx src/setup-tools.ts",
     "check": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p spacetimedb/tsconfig.json",
-    "postinstall": "mkdir -p spacetimedb/node_modules/.bin && ln -sfn ../../../node_modules/.bin/tsc spacetimedb/node_modules/.bin/tsc"
+    "postinstall": "mkdir -p spacetimedb/node_modules/.bin && ln -sfn ../../../node_modules/.bin/tsc spacetimedb/node_modules/.bin/tsc",
+    "agent:show": "tsx src/agent-show.ts",
+    "server:sim": "SIMULATE=1 tsx src/server.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^1.3.0",
     "spacetimedb": "^2.13.0"
   },
   "devDependencies": {

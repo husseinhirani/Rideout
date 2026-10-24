@@ -4,18 +4,24 @@ import spacetimedb, { CHECKING_IN, OPEN, SAFE, VICTIM, ACTIVE } from "../models"
 const EARTH_RADIUS_M = 6_371_000
 
 export const createIncident = spacetimedb.reducer(
-  { type: t.string(), lat: t.f64(), lng: t.f64(), radius_m: t.f64() },
-  (ctx, { type, lat, lng, radius_m }) => {
-    if (radius_m <= 0) throw new Error("radius_m must be greater than 0")
+  { type: t.string(), description: t.string(), lat: t.f64(), lng: t.f64(), radius_m: t.f64() },
+  (ctx, { type, description, lat, lng, radius_m }) => {
+    // radius 0 is a single-person incident, such as one missing child.
+    if (radius_m < 0) throw new Error("radius_m must not be negative")
     const created = ctx.db.incident.insert({
       id: 0n,
       type,
+      description,
       area: { lat, lng, radius_m },
+      brief: "",
       status: ACTIVE,
       created_at: ctx.timestamp,
       ended_at: undefined,
     })
     for (const person of ctx.db.profile.iter()) {
+      // A profile with no phone is someone we never call, such as a missing
+      // child. Sweeping them in would leave them checking_in forever.
+      if (person.phone.trim().length === 0) continue
       if (distanceM(lat, lng, person.lat, person.lng) <= radius_m) {
         ctx.db.incidentPerson.insert({
           id: 0n,
@@ -47,8 +53,8 @@ export const recordCheckIn = spacetimedb.reducer(
       id: 0n,
       incident_id,
       victim_profile_id: profile_id,
-      helper_profile_id: undefined,
-      call_id: undefined,
+      goal: "Find someone who can get this person out, and keep them informed.",
+      brief: "",
       status: OPEN,
     })
   },
@@ -63,3 +69,12 @@ function distanceM(lat1: number, lng1: number, lat2: number, lng2: number): numb
     Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2
   return 2 * EARTH_RADIUS_M * Math.asin(Math.min(1, Math.sqrt(a)))
 }
+
+export const setIncidentBrief = spacetimedb.reducer(
+  { incident_id: t.u64(), brief: t.string() },
+  (ctx, { incident_id, brief }) => {
+    const current = ctx.db.incident.id.find(incident_id)
+    if (!current) throw new Error("Incident not found")
+    ctx.db.incident.id.update({ ...current, brief })
+  },
+)

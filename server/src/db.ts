@@ -10,7 +10,9 @@ export type ProfileRow = {
 export type IncidentRow = {
   id: number
   type: string
+  description: string
   area: { lat: number; lng: number; radius_m: number }
+  brief: string
   status: string
   created_at: string
   ended_at: string | null
@@ -27,8 +29,8 @@ export type SupportCaseRow = {
   id: number
   incident_id: number
   victim_profile_id: number
-  helper_profile_id: number | null
-  call_id: string | null
+  goal: string
+  brief: string
   status: string
 }
 
@@ -36,7 +38,24 @@ export type AttemptRow = {
   id: number
   support_case_id: number
   profile_id: number
+  ask: string
+  call_id: string | null
   outcome: string | null
+  answer: string
+  concern: string
+  created_at: string
+}
+
+export type NoteRow = {
+  id: number
+  support_case_id: number
+  attempt_id: number | null
+  source: string
+  text: string
+  lat: number | null
+  lng: number | null
+  radius_m: number | null
+  at: string
 }
 
 export async function callReducer(name: string, args: unknown[]): Promise<void> {
@@ -65,7 +84,9 @@ export async function incidents(): Promise<IncidentRow[]> {
   return (await query("SELECT * FROM incident")).map((row) => ({
     id: asId(row.id),
     type: asString(row.type),
+    description: asString(row.description),
     area: asArea(row.area),
+    brief: asString(row.brief),
     status: asString(row.status),
     created_at: asTimestamp(row.created_at),
     ended_at: asOptionalTimestamp(row.ended_at),
@@ -86,8 +107,8 @@ export async function supportCases(): Promise<SupportCaseRow[]> {
     id: asId(row.id),
     incident_id: asId(row.incident_id),
     victim_profile_id: asId(row.victim_profile_id),
-    helper_profile_id: row.helper_profile_id == null ? null : asId(row.helper_profile_id),
-    call_id: row.call_id == null ? null : asString(row.call_id),
+    goal: asString(row.goal),
+    brief: asString(row.brief),
     status: asString(row.status),
   }))
 }
@@ -97,7 +118,26 @@ export async function attempts(): Promise<AttemptRow[]> {
     id: asId(row.id),
     support_case_id: asId(row.support_case_id),
     profile_id: asId(row.profile_id),
-    outcome: row.outcome == null ? null : asString(row.outcome),
+    ask: asString(row.ask),
+    call_id: optionalString(row.call_id),
+    outcome: optionalString(row.outcome),
+    answer: asString(row.answer),
+    concern: asString(row.concern),
+    created_at: asTimestamp(row.created_at),
+  }))
+}
+
+export async function notes(): Promise<NoteRow[]> {
+  return (await query("SELECT * FROM note")).map((row) => ({
+    id: asId(row.id),
+    support_case_id: asId(row.support_case_id),
+    attempt_id: optionalId(row.attempt_id),
+    source: asString(row.source),
+    text: asString(row.text),
+    lat: optionalNumber(row.lat),
+    lng: optionalNumber(row.lng),
+    radius_m: optionalNumber(row.radius_m),
+    at: asTimestamp(row.at),
   }))
 }
 
@@ -179,6 +219,32 @@ function decodeValue(value: unknown): unknown {
   return value
 }
 
+// An option arrives either already decoded, as the {some}/{none} object form,
+// or raw as a tagged array [tag, value] where tag 1 is none. Only a field the
+// schema declares optional may be read this way: a plain two-number array is a
+// list, not a sum.
+function asOption(value: unknown): unknown {
+  if (Array.isArray(value) && value.length === 2 && typeof value[0] === "number") {
+    return value[0] === 1 ? null : value[1]
+  }
+  return value
+}
+
+function optionalString(value: unknown): string | null {
+  const inner = asOption(value)
+  return inner == null ? null : asString(inner)
+}
+
+function optionalNumber(value: unknown): number | null {
+  const inner = asOption(value)
+  return inner == null ? null : asNumber(inner)
+}
+
+function optionalId(value: unknown): number | null {
+  const inner = asOption(value)
+  return inner == null ? null : asId(inner)
+}
+
 function asId(value: unknown): number {
   if (typeof value === "bigint") {
     const id = Number(value)
@@ -218,12 +284,8 @@ function asTimestamp(value: unknown): string {
 }
 
 function asOptionalTimestamp(value: unknown): string | null {
-  if (value == null) return null
-  if (Array.isArray(value) && value.length === 2 && typeof value[0] === "number") {
-    if (value[0] === 1) return null
-    return asTimestamp(value[1])
-  }
-  return asTimestamp(value)
+  const inner = asOption(value)
+  return inner == null ? null : asTimestamp(inner)
 }
 
 function timestampMicros(value: unknown): number {

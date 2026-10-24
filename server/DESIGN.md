@@ -10,33 +10,37 @@ Use these terms exactly in code, comments, UI copy, and docs.
 
 | Term | Definition |
 |---|---|
-| **Profile** | A stored record of a person or entity: name, phone, location, needs, contacts. A contact is family or an assigned helper. |
-| **Incident** | An evacuation for an area: `type`, `area {lat, lng, radius_m}`, `status` `active` or `closed`, `created_at`, `ended_at`. |
-| **Victim** | A profile on an incident whose check-in says they cannot get out. Stored as that person's incident status `victim`. |
-| **Helper** | The profile on a support case who has accepted. Not an incident-person status. A `safe` person stays `safe` when they accept. |
-| **Support case** | One victim's need for help during an incident. Fields: `incident_id`, `victim_profile_id`, `helper_profile_id` (empty until accept), `call_id` (the live Cartesia `agent_call_id`, empty when no call is up), `status` `open`, `contacting`, or `accepted`. At most one helper at a time. |
-| **Authority** | A human operator. Confirms escalation. Does not approve each support case opened from an explicit help request. |
+| **Profile** | A stored record of a person or entity: name, phone, location, needs, `contact_profile_ids`. Contacts are family or neighbors, and they are the first call list for that person. A missing person is a thin profile with an empty phone, so she is never dialed and never swept into `incident_person`. |
+| **Incident** | Whatever the dispatcher says is happening. Fields: `description` (the dispatcher's sentence, verbatim), `type`, `area {lat, lng, radius_m}`, `brief`, `status` `active` or `closed`, `created_at`, `ended_at`. An area incident has a radius. A single-person incident has radius 0. |
+| **Victim** | A person who needs help. One victim is one support case. On an area incident a victim comes from a check-in that says they cannot get out, stored as that person's incident status `victim`. On a single-person incident the dispatcher's sentence names the victim. |
+| **Helper** | A person the dispatcher sends to a victim. The agent never picks one and never dispatches one. Not stored on the support case. |
+| **Support case** | One victim's case during an incident. Fields: `incident_id`, `victim_profile_id`, `goal` (what we are trying to find out), `brief`, `status` `open`, `needs_dispatcher`, or `closed`. |
+| **Attempt** | One outbound call to one person on a case: `profile_id`, `ask`, `call_id`, `answer`, `concern`, `created_at`, `outcome` `null` (ringing), `answered`, or `no_answer`. A case can have many attempts ringing at once. |
+| **Note** | One fact on a case: `support_case_id`, `attempt_id` (optional), `source` `call`, `dispatcher`, or `concern`, `text`, optional `lat`, `lng`, `radius_m`, `at`. Notes carrying coordinates are what the authority map renders. Notes with source `concern` are the safety flags. |
+| **Brief** | What the dispatcher reads. A JSON string `{"summary": "...", "suggestions": [...]}` stored on `support_case.brief` and `incident.brief`. Regenerated after every answer. |
+| **Ask / context** | `ask` is the question put to one person on one call. `context` is the only thing that person may be told. Both are written by `plan()` and built server-side. `context` never contains a phone number or a street address. |
+| **Dispatcher** | The human operator, also called the authority. Describes the incident in plain language, reads the brief, decides what happens. Only dispatcher input re-plans a case. Does not approve each support case opened from an explicit help request. |
 | **Disaster** | The real-world event (example is simulated wildfire) affecting an area. |
 | **Alert** | A notification raised by the alert feed that a disaster may be threatening an area. It is for the authority to review. |
 | **Help signal** | An explicit check-in answer that the person cannot get out. That answer sets the incident person to `victim` and opens a support case. |
-| **Candidate** | A profile being considered to be a helper in a support case. |
+| **Candidate** | A profile the server has filtered as callable for a case. `plan()` picks from the candidate list and writes the wording. |
 | **Availability** | A helper is *willing* and has the *minimum capability* to support the victim *without risk to themselves*. |
 | **Escalation** | For now assume authority is the highest level of order and escalates mean delagating task / input to them for action. |
 | **Portal** | The communication layer (voice, SMS, images) between the system and people. |
-| **Coordinator** | The AI agent. It supports the victim and helper, relays information, and suggests escalation. It does not make final decisions. |
-| **Case log** | Out of this slice. Attempt rows are state, not a log. |
+| **Coordinator** | The AI agent: Claude, running in `server/src`, outside the call. It decides who to call and what to ask, turns answers into notes, and writes the brief. It gathers and synthesizes. It never dispatches help and makes no final decisions. |
+| **Case log** | `note` rows. Attempt rows are call state, not a log. |
 
 ## 2. Architecture
 
 ```
-   Victims ----+                                   +---- Authorities
-               |                                   |  (open case, guide
-   Helpers ----+--> Comms portal <--> Coordinator <-+   helpers, confirm
-                       |  ^  ^            |            escalation)
-                       |  |  +-- authority guides helpers --+
-                       v  v                v
+   Victims ----+                                   +---- Dispatcher
+               |                                   |  (describes incident,
+   Contacts ---+--> Comms portal <--> Coordinator <-+   reads brief, decides
+                       |  ^                |            what happens)
+                       |  +-- dispatcher input re-plans --+
+                       v                   v
         +----------------- Server system (source of truth) -----------------+
-        | Alert feed | Help signal | Profiles | Scoring | Cases (state+logs) |
+        | Alert feed | Help signal | Profiles | Candidates | Cases, attempts, notes |
         +--------------------------------------------------------------------+
               ^
         Live source (NASA hotspots, county alerts)
@@ -45,48 +49,92 @@ Use these terms exactly in code, comments, UI copy, and docs.
 Responsibilities:
 
 - **Comms portal**: sends and receives calls (SMS and images later), speech in and out. Just translation and connection.
-- **Coordinator (agent)**: Agentic part that interprets replies, chooses the next step in a case, writes the wording for outreach, suggests escalation.
-- **Authorities**: review alerts, guide helpers, confirm escalations. An explicit help request opens the support case without them.
+- **Coordinator (agent)**: reads the dispatcher's sentence, picks who to call, writes what to ask, turns answers into notes, writes the brief. It gathers information. It never dispatches help.
+- **Dispatcher**: describes the incident, reads the brief, decides what happens. Their input is the only thing that re-plans a case. An explicit help request opens the support case without them.
 - **Server system**:
-  - *Alert feed*: ingests the live source and raises an alert to authorities. No agent involvement.
+  - *Alert feed*: ingests the live source and raises an alert to the dispatcher. No agent involvement.
   - *Help signal*: an explicit check-in of `victim`, which opens a support case.
   - *Profiles*: relational storage of users and entities, with location lookup.
-  - *Scoring*: deterministic ranking of candidates, includes safety filters.
-  - *Cases*: incident and support-case state, including the open attempt.
+  - *Candidates*: deterministic filtering of who may be called, in code, before the agent sees the list.
+  - *Cases*: incident and support-case state, attempts, and notes.
 
 ## 3. Workflow
 
-1. **Incident.** `POST /incidents` calls `createIncident`. That opens an incident as `active` and marks every profile in the radius `checking_in`. The handler then places one check-in call per dialable profile and returns. Profiles are written with `insertProfile`. `npm run seed` loads `mock/profiles.json`.
-2. **Check-in.** Cartesia calls that list. The agent POSTs the answer to `POST /check-ins`. `safe` only updates the person. `victim` updates the person and opens a support case, then the server places the first helper call. No answer stays `checking_in`.
-3. **Pick one helper.** The server calls the victim's contacts who are `safe` first, then other `safe` people on the incident. One open attempt per support case. The live `call_id` is stored on the case.
-4. **Contact.** The agent POSTs `accepted` or `declined` to `POST /find-helper`. A decline closes that attempt and the server places the next call. Accept sets `helper_profile_id` and `accepted`.
-5. **Dropped call.** The support case stays as it is. The server reads the ended call, places a new call to the same person with that context, and stores the new `call_id`.
-6. **Escalation.** If no helper remains, the case returns to `open`. The coordinator suggests escalation. The authority confirms.
+The agent system is an information network. It calls people to gather information, synthesizes it, and presents it to the dispatcher. Claude decides who to call and what to ask, Cartesia does the talking, the dispatcher decides what happens.
 
-Incident-person status: `checking_in`, `safe`, `victim`. Support-case status: `open`, `contacting`, `accepted`.
+1. **Incident.** `POST /incidents { text }`. `interpretIncident` turns the dispatcher's sentence into `{type, lat, lng, radius_m, victims[]}` and `createIncident` stores it, with the sentence verbatim in `description`. The structured body `{type, lat, lng, radius_m}` is still accepted as a bypass, so seeding and tests keep working. An area incident marks every dialable profile in the radius `checking_in` and places one check-in call each. Profiles are written with `insertProfile`. `npm run seed` loads `mock/profiles.json`.
+2. **Check-in.** Cartesia calls that list. The agent POSTs the answer to `POST /check-ins`. `safe` only updates the person. `victim` updates the person and opens a support case. No answer stays `checking_in`.
+3. **Plan.** Per case, the server builds the candidate list in code, then `plan()` picks who to call and writes the `ask` and `context` for each pick. The server inserts one attempt per pick and dials them all in parallel.
+4. **Answer.** Each call posts to `POST /calls/report`. `interpretAnswer` turns what the person said into notes, a concern, and whether they were reached. `brief()` regenerates. Nothing blocks on the calls still ringing, so there is no round state to get stuck in. A per-call 90s `setTimeout` deadline writes `no_answer` if a call never reports. A late report still lands, because `recordAnswer` never overwrites an `answered` outcome.
+5. **Dispatcher input.** `POST /cases/:id/input` writes the note, runs `plan()`, inserts the new attempt rows, and responds before dialing, so the dispatcher never waits on in-flight calls. Dispatcher input is the only thing that re-plans. Everything else only adds facts. Someone calling in to say "check the creek" becomes a suggestion in the brief, and only the dispatcher turns it into calls. The rule is enforced by which route is hit, not by a prompt.
+6. **Decide.** The dispatcher reads the brief and decides what happens. `POST /cases/:id/close` accepts. The agent never dispatches help.
+
+One structure, two sizes. The only difference between the two demos is how many cases an incident has.
+
+| Dispatcher types | Incident | Cases |
+|---|---|---|
+| "wildfire in Altadena, about 2km around Lake and Altadena Dr" | area, radius 2000 | one per person whose check-in says they cannot get out |
+| "7-year-old Ava Reyes missing near Loma Alta Park since 3pm" | point, radius 0 | one, on Ava |
+
+A missing child is a thin profile: name, empty `phone`, last known lat/lng, and `contact_profile_ids` set to the family, which is the call list. No schema break.
+
+Incident-person status: `checking_in`, `safe`, `victim`. Support-case status: `open`, `needs_dispatcher`, `closed`. Attempt outcome: `null` (ringing), `answered`, `no_answer`.
 
 ## 4. Tech stack
 
 | Layer | Choice |
 |---|---|
 | Server | TypeScript. Cartesia client in `server/src`. SpacetimeDB module in `server/spacetimedb` |
-| Agent / language understanding | Claude, hosted inside the Cartesia agent for the phone call |
+| Coordinator (planning, synthesis) | Claude, model `claude-opus-5` through the Anthropic SDK. It runs in `server/src`, outside the call |
+| In-call language model | Cartesia's hosted model on the agent. The live agent runs `gpt-5.5`. Claude is not in the call |
 | Voice (speech in/out) | Cartesia Managed Agents |
-| Telephony (calls, SMS) | Cartesia outbound calls. Check-in and helper answers come back on `POST /check-ins` and `POST /find-helper` |
+| Telephony (calls, SMS) | Cartesia outbound calls. Check-in answers come back on `POST /check-ins`, case answers on `POST /calls/report` |
 | Backend / database | SpacetimeDB 2.0, TypeScript module |
 | Disaster detection source | NASA FIRMS hotspot data and/or official alerts (proposed)|
 | Maps / routing for ETA and safety | To be chosen |
-| Authority dashboard | Simple web UI: alerts, cases, live map, guidance |
+| Authority dashboard | Simple web UI: alerts, cases, live map, guidance. The test UI is `src/ui.html`, served at `GET /` |
 
 Notes:
 
 - Backend choice should support a regular schema for profiles, location lookup, and real-time updates for the live case view.
 - Sponsor tools must do real work in the product, not be decorative.
-- Phone calls use the existing Cartesia hosted agent (`CARTESIA_AGENT_ID`). The support case stores the live `agent_call_id` in `call_id`. An explicit help request opens the support case. The authority confirms escalation.
-- A developer verifies a hosted-agent phone call from `server/` with `npm run call -- +E164`. The script posts one call to `POST /agents/calls` for `CARTESIA_AGENT_ID`, from `CARTESIA_FROM_NUMBER_ID`, with `dynamic_variables.phase` set to `checkin`. It prints `agent_call_id`. It does not open a support case.
-- The HTTP server is `npm run server` in `server/`. It listens on `127.0.0.1:8787`. `POST /incidents` writes the incident and places check-in calls. `POST /check-ins` and `POST /find-helper` are what the Cartesia agent calls with the answer. Each dial sets `incident_id` and `profile_id` on the call. A phone that starts with `+1555555` is not dialed.
-- Cartesia webhook tools need a public HTTPS URL. `./dev-tunnel` runs ngrok in front of port 8787. `NGROK_URL` is that https origin. `npm run setup-agent` reads `server/tools/*.json` and upserts those tools onto `CARTESIA_AGENT_ID`. `record_check_in` posts to `/check-ins`. `record_find_helper` posts to `/find-helper`. Ids sent on the dial are dynamic variables and are not in the tool's required list, because Cartesia rejects a required dynamic variable. The model supplies `result` or `outcome`. A matching tool name is updated. A missing name is created. The agent prompt and voice are left as they are. `POST /v1/agents/tools` on every run would duplicate the tools.
-- SpacetimeDB writes are reducers: `insertProfile`, `setContacts`, `createIncident`, `recordCheckIn`, `recordAttempt`, `setCallId`. `setCallId` stores the live `agent_call_id` and leaves the victim, helper, status, and attempt unchanged. Redial is not implemented. A no-answer on a helper dial that fails to start is stored as `no_answer`. A check-in that nobody answers stays `checking_in`.
+- Phone calls use the existing Cartesia hosted agent (`CARTESIA_AGENT_ID`). The attempt stores the live `agent_call_id` in `call_id`. An explicit help request opens the support case. The dispatcher decides what happens.
+- A developer verifies a hosted-agent phone call from `server/` with `npm run call -- +E164`. The script posts one call to `POST /agents/calls` for `CARTESIA_AGENT_ID`, from `CARTESIA_FROM_NUMBER_ID`, with the check-in dynamic variables, meaning an empty `attempt_id`. It prints `agent_call_id`. It does not open a support case.
+- The HTTP server is `npm run server` in `server/`. It listens on `127.0.0.1:8787`. A phone that starts with `+1555555` is not dialed. `ANTHROPIC_API_KEY` goes in the repo-root `.env` next to the `CARTESIA_*` vars and `NGROK_URL`. `SIMULATE=1` makes `placeCall` log and return a fake call id instead of dialing, so the whole loop runs in seconds without spending call minutes. The test UI then shows a "what did they say?" box per ringing attempt.
+- Cartesia webhook tools need a public HTTPS URL. `./dev-tunnel` runs ngrok in front of port 8787. `NGROK_URL` is that https origin. `npm run setup-agent` reads `server/tools/*.json` and upserts those tools onto `CARTESIA_AGENT_ID`. `record_check_in` posts to `/check-ins`. `report_call` posts to `/calls/report`. `record_find_helper` is deleted. Ids sent on the dial are dynamic variables and are not in the tool's required list, because Cartesia rejects a required dynamic variable. A matching tool name is updated. A missing name is created. The agent prompt and voice are left as they are. `POST /v1/agents/tools` on every run would duplicate the tools. `npm run agent:show` prints the live agent config.
+- SpacetimeDB writes are reducers: `insertProfile`, `setContacts`, `createIncident`, `recordCheckIn`, `setIncidentBrief`, and in `apis/support-cases.ts` `openCase`, `addAttempt`, `setAttemptCall`, `recordAnswer`, `addNote`, `setBrief`, `setCaseStatus`. `createIncident` accepts `radius_m = 0` and skips profiles with an empty phone in the radius sweep. `recordAnswer` never overwrites an `answered` outcome, so a late report still lands after the deadline already wrote `no_answer`. Redial is not implemented. A check-in that nobody answers stays `checking_in`.
+
+Routes:
+
+| Route | Note |
+|---|---|
+| `GET /` | The test UI, `src/ui.html` |
+| `GET /state` | Every row the UI needs in one poll: profiles, incidents, incident people, cases, attempts, notes |
+| `POST /incidents` | Takes `{text}`. Structured `{type, lat, lng, radius_m}` still accepted |
+| `POST /check-ins` | Unchanged shape. `victim` opens a case and starts the loop |
+| `POST /calls/report` | The `report_call` webhook, outbound and inbound |
+| `POST /cases` | Dispatcher opens a case directly |
+| `POST /cases/:id/input` | Dispatcher free text. Re-plans, responds before dialing |
+| `POST /cases/:id/close` | Accept |
+
+## 5. Agent
+
+Four Claude calls, sequenced by server code in `src/agent.ts`. Nothing else talks to Claude.
+
+| Call | In | Out |
+|---|---|---|
+| `interpretIncident` | The dispatcher's sentence plus known profiles (id, name, lat/lng) | `{type, lat, lng, radius_m, victims[]}` |
+| `plan` | Case facts, a pre-filtered candidate list, an optional dispatcher instruction | `[{profile_id, ask, context}]` plus a reason |
+| `interpretAnswer` | What the person said on the phone | Notes (text, optional lat/lng/radius), a concern, whether they were reached |
+| `brief` | Every fact on a case, or across an incident | A summary plus suggested next steps |
+
+`brief()` serves both altitudes, the incident header and the case detail. Its output is stored as a JSON string in `support_case.brief` and `incident.brief`, shaped `{"summary": "...", "suggestions": [...]}`.
+
+The candidate filter is code, not prompt. Before `plan()` runs, the server builds the list: the victim's `contact_profile_ids` first, then other people on the incident, minus the victim, minus anyone whose own incident status is `victim` because they need help themselves, minus non-dialable phones, minus anyone already attempted on this case. Claude picks from that list and writes the wording. An out-of-range pick falls back to the list in order, so the loop still works when the Claude API is down. Every Claude call has a fallback.
+
+Two Cartesia webhook tools, not one. `record_check_in` stays for the triage sweep on an area incident, because triage needs a safe/victim classification. `report_call` is new and is what every case call uses: it posts the raw answer and any concern to `POST /calls/report`. `record_find_helper` is deleted, because picking a helper is the dispatcher's job.
+
+Dynamic variables on every dial: `attempt_id`, `person_name`, `ask`, `context`. `ask` and `context` come from `plan()`. `context` is the only thing the person may be told, is built server-side, and never carries a phone number or an address. A check-in dial sends an empty `attempt_id`, and the agent instructions use that to choose between the two tools.
 
 ## 6. Decisions
 
@@ -94,8 +142,9 @@ Notes:
 |---|---|---|
 | 1 | Primary interface is phone calls | Target users are elderly or disabled and often not app users, and in emergency this is quickest interface |
 | 2 | An explicit check-in help request opens a support case without authority approval. Escalation still waits for the authority | Approving every case does not scale to a large incident. Escalation stays a human decision |
-| 3 | One Cartesia Managed Agent already exists. Its id is stored in `CARTESIA_AGENT_ID` and reused for every call. The server does not create an agent | Cartesia assigns the agent id once. Each dial is a new `agent_call_id` stored on the support case |
+| 3 | One Cartesia Managed Agent already exists. Its id is stored in `CARTESIA_AGENT_ID` and reused for every call. The server does not create an agent | Cartesia assigns the agent id once. Each dial is a new `agent_call_id` stored on the attempt |
 | 4 | Server and SpacetimeDB module are TypeScript | SpacetimeDB 2.0 modules can be TypeScript. The Cartesia client and the module both live under `server/`. The module directory has its own `package.json` because `spacetime publish` detects TypeScript only from that file. Dependencies are installed with `npm install` in `server/` |
-| 6 | A support case stores one live `call_id`. A dropped call is a new Cartesia call. The case status, victim, helper, and attempt stay | Cartesia variable values apply to the current call only. The same `agent_call_id` is not resumed |
+| 6 | Each attempt stores its own `call_id`. A case can have many attempts ringing at once, and nothing blocks on a call in flight | Cartesia variable values apply to the current call only. Parallel dialing is the point, and one open attempt per case was the thing stopping it |
 | 5 | Outbound phone calls use the existing Cartesia hosted agent via `POST /agents/calls`. The server supplies the destination number. `npm run call -- +E164` is the developer check for one check-in call | Cartesia dials and speaks. The script does not open a support case or choose a helper |
 | 7 | The local API stays HTTP. ngrok is the public HTTPS URL. `npm run setup-agent` upserts `server/tools/*.json` onto the existing agent and does not create a tool when that name already exists | Cartesia cannot call localhost. `POST /v1/agents/tools` creates a new tool every time. The agent prompt and voice stay as they are |
+| 8 | The agent gathers information and the dispatcher decides what happens. The agent never dispatches help | A hackathon demo cannot responsibly auto-dispatch a person toward a disaster, and a human dispatcher is the real-world authority |

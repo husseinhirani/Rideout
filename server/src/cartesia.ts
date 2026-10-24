@@ -1,7 +1,7 @@
 const CARTESIA_VERSION = "2026-08-14"
 const CARTESIA_BASE_URL = "https://api.cartesia.ai"
 const HTTP_TIMEOUT_MS = 30_000
-const PHASE_CHECKIN = "checkin"
+const CHECKIN_ASK = "Are you safe right now, and can you get out on your own?"
 
 const E164 = /^\+[1-9]\d{1,14}$/
 
@@ -36,6 +36,13 @@ export function placeCall(to: string, variables: Record<string, DynamicValue>): 
   if (E164.test(to) === false) {
     return Promise.reject(new Error("phone number must be E.164, for example +14155550123"))
   }
+  // SIMULATE=1 runs the whole loop without spending call minutes. The answer is
+  // posted back to /calls/report by hand from the test UI.
+  if (process.env.SIMULATE === "1") {
+    const simulated = "sim_" + Math.random().toString(36).slice(2, 12)
+    console.log("simulate dial " + to + " " + JSON.stringify(variables))
+    return Promise.resolve(simulated)
+  }
   return postJson("/agents/calls", {
     from_number_id: requireEnv("CARTESIA_FROM_NUMBER_ID"),
     agent_id: requireEnv("CARTESIA_AGENT_ID"),
@@ -56,11 +63,7 @@ export function placeCheckInCall(
   to: string,
   variables: Record<string, DynamicValue> = {},
 ): Promise<string> {
-  return placeCall(to, { ...variables, phase: PHASE_CHECKIN })
-}
-
-export function placeHelperCall(to: string, variables: Record<string, DynamicValue>): Promise<string> {
-  return placeCall(to, { ...variables, phase: "helper" })
+  return placeCall(to, { ask: CHECKIN_ASK, context: "", person_name: "", ...variables })
 }
 
 export function placeBatch(

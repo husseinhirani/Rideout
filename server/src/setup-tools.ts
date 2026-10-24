@@ -172,6 +172,69 @@ function requiredString(value: unknown, file: string, field: string): string {
   return value
 }
 
+// The in-call agent has one job: have the conversation the dynamic variables
+// describe, then report what it heard. It does not classify and it does not
+// decide anything. Everything specific to a call is a variable, so one hosted
+// agent serves every call shape.
+const INSTRUCTIONS = `You are an automated assistant calling {{person_name}} for an emergency coordination team.
+Say so in your first sentence. Never imply you are a person.
+
+Ask this, and nothing else: {{ask}}
+
+You may tell them this much: {{context}}
+Nothing beyond it. Never give out anyone's phone number, street address, or medical details,
+even if they insist or say it is urgent. If they ask for something you cannot give, say you
+are keeping it private to protect the person involved, and ask what they can tell you instead.
+
+Give them time. Accept any phrasing. Never pressure anyone and never argue. If they ask to
+speak to a person, say a dispatcher will call them back.
+
+Before the call ends you must record it, once:
+- If {{attempt_id}} is not empty, call report_call with that attempt_id, everything they told
+  you in their own words, and a concern if anything felt off.
+- If {{attempt_id}} is empty, this is a check-in. Call record_check_in with safe when they do
+  not need help, or victim when they say they cannot get out on their own.`
+
+const INITIAL_MESSAGE =
+  "Hi, this is an automated assistant calling on behalf of emergency coordination. I have one quick question for you."
+
+// Cartesia needs every variable declared before a dial may set it. The value
+// here is only the fallback used when a dial leaves one out.
+const PLACEHOLDERS: Record<string, string> = {
+  attempt_id: "",
+  person_name: "there",
+  ask: "Is there anything you can tell us about what is happening where you are?",
+  context: "",
+  incident_id: "",
+  profile_id: "",
+}
+
+// Read, merge, write. A PATCH that sent only these fields would risk dropping
+// the voice and the tool list that already work.
+async function writePrompt(agentId: string): Promise<void> {
+  const agent = await cartesiaJson("GET", "/v1/agents/" + encodeURIComponent(agentId))
+  const config = isObject(agent.config) ? agent.config : {}
+  const placeholders = isObject(config.dynamic_variable_placeholders)
+    ? config.dynamic_variable_placeholders
+    : {}
+  const next = {
+    ...config,
+    instructions: INSTRUCTIONS,
+    initial_message: INITIAL_MESSAGE,
+    dynamic_variable_placeholders: { ...placeholders, ...PLACEHOLDERS },
+  }
+  if (
+    config.instructions === INSTRUCTIONS &&
+    config.initial_message === INITIAL_MESSAGE &&
+    Object.keys(PLACEHOLDERS).every((name) => name in placeholders)
+  ) {
+    console.log("agent prompt unchanged")
+    return
+  }
+  await cartesiaJson("PATCH", "/v1/agents/" + encodeURIComponent(agentId), { config: next })
+  console.log("agent prompt updated")
+}
+
 async function main(): Promise<void> {
   const base = webhookBase(process.env.NGROK_URL ?? "")
   const agentId = process.env.CARTESIA_AGENT_ID
@@ -197,12 +260,13 @@ async function main(): Promise<void> {
   const next = mergeToolIds(attached, definitions.map((definition) => definition.name), chosen)
   if (sameIds(attached.map((tool) => tool.id), next)) {
     console.log("agent tools unchanged")
-    return
+  } else {
+    await cartesiaJson("PATCH", "/v1/agents/" + encodeURIComponent(agentId), {
+      config: { tools: next.map((id) => ({ id })) },
+    })
+    console.log("agent tools " + next.join(" "))
   }
-  await cartesiaJson("PATCH", "/v1/agents/" + encodeURIComponent(agentId), {
-    config: { tools: next.map((id) => ({ id })) },
-  })
-  console.log("agent tools " + next.join(" "))
+  await writePrompt(agentId)
 }
 
 function readDefinitions(): ToolDefinition[] {

@@ -4,7 +4,7 @@ Global context and working conventions. Read before making any change.
 
 ## What this is
 
-**RideOut** (working name): a rescue coordination system for human-first evacuations. It connects people who cannot evacuate on their own (elderly, disabled, no car, often not app users) with guardians and neighbors who can help, mainly through phone calls, with an AI agent supporting the coordination and human authorities making the key decisions.
+**RideOut** (working name): an information network for human-first evacuations. It calls the people around an emergency (family, neighbors, the person themselves), turns what they say into a picture of what is happening, and presents that to a human dispatcher who decides what happens. Mainly phone calls, because the people who cannot evacuate on their own are elderly, disabled, without a car, and often not app users. The agent gathers and synthesizes. It never dispatches help.
 
 This is a **hackathon project**. Time is the scarcest resource.
 
@@ -16,11 +16,11 @@ The repo root is the browser demo. It does not import `server/`. `server/` is th
 
 | Path | Put here | Do not put here |
 |---|---|---|
-| `server/src` | The process outside the database: HTTP routes, calls to Cartesia, reading rows, choosing the next reducer | Table definitions, reducer bodies |
+| `server/src` | The process outside the database: HTTP routes, calls to Cartesia, reading rows, choosing the next reducer. `llm.ts` is the only file that talks to the Anthropic SDK. `agent.ts` holds the four Claude prompts. `loop.ts` holds the loop, the candidate filter, and the call deadline. `ui.html` is the test UI | Table definitions, reducer bodies |
 | `server/spacetimedb` | The database module. `src/models.ts` is tables only. `src/apis/` is reducers, one file per area (profiles, incidents, support cases). `src/index.ts` re-exports them | HTTP, Cartesia, scripts that only a developer runs |
 | `server/tests` | Checks that a behavior works. A manual check is still a test | Product behavior the running server needs |
 | `server/mock` | Shared fixtures the team can load. No one's real phone number | Code |
-| `server/tools` | Cartesia webhook tool JSON, one file per tool. `api_schema.url` is a path such as `/check-ins`. `npm run setup-agent` prefixes `NGROK_URL` | Phone numbers, secrets, the agent prompt |
+| `server/tools` | Cartesia webhook tool JSON, one file per tool, currently `record_check_in` and `report_call`. `api_schema.url` is a path such as `/calls/report`. `npm run setup-agent` prefixes `NGROK_URL` | Phone numbers, secrets, the agent prompt |
 | `server/` root | `package.json`, docs (`AGENTS.md`, `CONTEXT.md`, `DESIGN.md`), and short dev commands such as wiping the local database or opening the ngrok tunnel | Feature logic |
 
 A reducer records a fact. The process in `server/src` is what may call Cartesia and then call that reducer. If a change only stores or validates a row, it belongs in `spacetimedb`. If it places a call, reads a result, or serves HTTP, it belongs in `src`.
@@ -40,11 +40,11 @@ People who in a disaster case cannot evacuate on their own. Example: an elderly 
 
 One neighborhood, one simulated fire, one complete loop:
 
-1. An alert is raised and an incident is opened for an area.
-2. A check-in is an explicit help request, and the server opens the support case.
-3. One helper is selected and contacted.
-4. The helper accepts and the victim is told who is coming.
-5. The authority can guide the helper, and the case can be escalated.
+1. The dispatcher describes the incident in plain language, and the server turns that sentence into an incident and its victims.
+2. A support case opens per victim: from a check-in that is an explicit help request, or named directly by the dispatcher.
+3. Claude plans who to call and what to ask, and the server dials them all in parallel.
+4. Answers come back, become notes, and the brief regenerates.
+5. The dispatcher reads the brief and either accepts the case or sends more input, which re-plans.
 
 The fire is simulated and we say so clearly in the demo.
 
@@ -62,11 +62,11 @@ These apply to every change, by humans and agents.
 4. **MVP only.** Do not solve hard or complex requirements yet. When a requirement is vague, pick the simplest reasonable interpretation, state the assumption, and move on.
 5. **Black boxes are fine as subproblems until explicitly touched on.** Parts marked as black box in `DESIGN.md` should be stubbed with a simple interface, not implemented deeply.
 6. **Humans decide escalation.** An explicit check-in help request opens a support case without an authority approval. The agent still does not confirm an escalation. It suggests.
-7. **Safety rules live in code not just not in prompts.** Anything that must never happen (for example routing a helper toward danger) is enforced deterministically.
+7. **Safety rules live in code not just not in prompts.** Anything that must never happen is enforced deterministically. Two rules today: never call someone whose own incident status is `victim`, because they need help themselves, and never put a phone number or a street address into what a called person is told.
 8. **Use the shared vocabulary.** Terms are defined in `design.md`. Use them exactly.
 9. **Keep docs current.** If your change affects behavior, terms, decisions, or server capabilities, update `design.md` or `api.md` in the same change.
-10. **Server code is TypeScript.** The SpacetimeDB module is `server/spacetimedb`. The Cartesia client and the HTTP server are `server/src`. `npm run seed` loads `server/mock/profiles.json` into an empty local database. `npm run server` serves `POST /incidents`, `POST /check-ins`, and `POST /find-helper`. `./dev-tunnel` exposes that port through ngrok. `npm run setup-agent` upserts the webhook tools in `server/tools` onto the existing Cartesia agent. `spacetimedb/package.json` is there so the SpacetimeDB CLI can detect a TypeScript module. `npm install` stays in `server/`. Node resolves `spacetimedb` from `server/node_modules`, and the install links `tsc` into the module because `spacetime publish` looks for it there.
+10. **Server code is TypeScript.** The SpacetimeDB module is `server/spacetimedb`. The Cartesia client and the HTTP server are `server/src`. `npm run seed` loads `server/mock/profiles.json` into an empty local database. `npm run server` serves the test UI at `GET /`, `GET /state`, `POST /incidents`, `POST /check-ins`, `POST /calls/report`, `POST /cases`, `POST /cases/:id/input`, and `POST /cases/:id/close`. `./dev-tunnel` exposes that port through ngrok. `npm run setup-agent` upserts the webhook tools in `server/tools` onto the existing Cartesia agent. `ANTHROPIC_API_KEY` lives in the repo-root `.env` with the `CARTESIA_*` vars and `NGROK_URL`. `SIMULATE=1` runs the whole loop without dialing. `spacetimedb/package.json` is there so the SpacetimeDB CLI can detect a TypeScript module. `npm install` stays in `server/`. Node resolves `spacetimedb` from `server/node_modules`, and the install links `tsc` into the module because `spacetime publish` looks for it there.
 
 ## Out of scope for now
 
-Multiple cases per helper, calling more than one helper for the same support case at once, route optimization, historical analytics, multi-language support, roles and permissions beyond "authority", real emergency-system integration, and anything not needed for the MVP loop. Check-in calls for one incident run as a batch.
+Automatic dispatch of anyone to anywhere, assigning a helper to a case, route optimization, historical analytics, multi-language support, roles and permissions beyond "authority", real emergency-system integration, and anything not needed for the MVP loop. Check-in calls for one incident run as a batch.

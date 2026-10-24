@@ -37,9 +37,9 @@ assert.equal(sameIds(["old"], ["keep", "old"]), false)
 
 const dir = resolve(import.meta.dirname, "../tools")
 const files = readdirSync(dir).filter((name) => name.endsWith(".json")).sort()
-assert.deepEqual(files, ["record_check_in.json", "record_find_helper.json"])
+assert.deepEqual(files, ["record_check_in.json", "report_call.json"])
 const definitions = files.map((file) => parseToolFile(JSON.parse(readFileSync(resolve(dir, file), "utf8")) as unknown, file))
-assert.deepEqual(definitions.map((definition) => definition.api_schema.url), ["/check-ins", "/find-helper"])
+assert.deepEqual(definitions.map((definition) => definition.api_schema.url), ["/check-ins", "/calls/report"])
 for (const definition of definitions) {
   const required = new Set(definition.api_schema.request_body_schema.required)
   for (const [name, schema] of Object.entries(definition.api_schema.request_body_schema.properties)) {

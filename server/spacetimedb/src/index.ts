@@ -1,4 +1,12 @@
 export { default } from "./models"
 export { insertProfile, setContacts } from "./apis/profiles"
-export { createIncident, recordCheckIn } from "./apis/incidents"
-export { recordAttempt, setCallId } from "./apis/support-cases"
+export { createIncident, recordCheckIn, setIncidentBrief } from "./apis/incidents"
+export {
+  addAttempt,
+  addNote,
+  openCase,
+  recordAnswer,
+  setAttemptCall,
+  setBrief,
+  setCaseStatus,
+} from "./apis/support-cases"

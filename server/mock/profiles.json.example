@@ -1,0 +1,25 @@
+{
+  "profiles": [
+    {
+      "name": "Alex",
+      "phone": "+15555550101",
+      "lat": 34.1897,
+      "lng": -118.1412,
+      "contacts": ["Blair", "Casey"]
+    },
+    {
+      "name": "Blair",
+      "phone": "+15555550102",
+      "lat": 34.1921,
+      "lng": -118.1388,
+      "contacts": []
+    },
+    {
+      "name": "Casey",
+      "phone": "+15555550103",
+      "lat": 34.1874,
+      "lng": -118.1456,
+      "contacts": []
+    }
+  ]
+}

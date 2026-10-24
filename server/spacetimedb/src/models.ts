@@ -4,11 +4,18 @@ export const CHECKING_IN = "checking_in"
 export const SAFE = "safe"
 export const VICTIM = "victim"
 export const ACTIVE = "active"
+
 export const OPEN = "open"
-export const CONTACTING = "contacting"
-export const ACCEPTED = "accepted"
-export const DECLINED = "declined"
+export const NEEDS_DISPATCHER = "needs_dispatcher"
+export const CLOSED = "closed"
+
+export const ANSWERED = "answered"
 export const NO_ANSWER = "no_answer"
+export const SUPERSEDED = "superseded"
+
+export const CALL = "call"
+export const DISPATCHER = "dispatcher"
+export const CONCERN = "concern"
 
 const Area = t.object("Area", {
   lat: t.f64(),
@@ -33,7 +40,9 @@ const incident = table(
   {
     id: t.u64().primaryKey().autoInc(),
     type: t.string(),
+    description: t.string(),
     area: Area,
+    brief: t.string(),
     status: t.string(),
     created_at: t.timestamp(),
     ended_at: t.option(t.timestamp()),
@@ -56,8 +65,8 @@ const supportCase = table(
     id: t.u64().primaryKey().autoInc(),
     incident_id: t.u64().index("btree"),
     victim_profile_id: t.u64().index("btree"),
-    helper_profile_id: t.option(t.u64()),
-    call_id: t.option(t.string()),
+    goal: t.string(),
+    brief: t.string(),
     status: t.string(),
   },
 )
@@ -68,9 +77,29 @@ const attempt = table(
     id: t.u64().primaryKey().autoInc(),
     support_case_id: t.u64().index("btree"),
     profile_id: t.u64(),
+    ask: t.string(),
+    call_id: t.option(t.string()),
     outcome: t.option(t.string()),
+    answer: t.string(),
+    concern: t.string(),
+    created_at: t.timestamp(),
   },
 )
 
-const spacetimedb = schema({ profile, incident, incidentPerson, supportCase, attempt })
+const note = table(
+  { name: "note", public: true },
+  {
+    id: t.u64().primaryKey().autoInc(),
+    support_case_id: t.u64().index("btree"),
+    attempt_id: t.option(t.u64()),
+    source: t.string(),
+    text: t.string(),
+    lat: t.option(t.f64()),
+    lng: t.option(t.f64()),
+    radius_m: t.option(t.f64()),
+    at: t.timestamp(),
+  },
+)
+
+const spacetimedb = schema({ profile, incident, incidentPerson, supportCase, attempt, note })
 export default spacetimedb
