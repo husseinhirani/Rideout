@@ -56,10 +56,10 @@ Responsibilities:
 
 ## 3. Workflow
 
-1. **Incident.** `create_incident` opens an incident as `active` and marks every profile in the radius `checking_in`. Profiles are written with `insert_profile`.
-2. **Check-in.** Cartesia calls that list as a batch. `safe` only updates the person. `victim` updates the person and opens a support case. Those results run in parallel. No answer stays `checking_in`.
-3. **Pick one helper.** The support case calls the victim's contacts who are `safe` first, then other `safe` people on the incident. One open attempt per support case. The live `call_id` is stored on the case.
-4. **Contact.** A decline or no answer closes that attempt and opens the next. Accept sets `helper_profile_id` and `accepted`.
+1. **Incident.** `POST /incidents` calls `createIncident`. That opens an incident as `active` and marks every profile in the radius `checking_in`. The handler then places one check-in call per dialable profile and returns. Profiles are written with `insertProfile`. `npm run seed` loads `mock/profiles.json`.
+2. **Check-in.** Cartesia calls that list. The agent POSTs the answer to `POST /check-ins`. `safe` only updates the person. `victim` updates the person and opens a support case, then the server places the first helper call. No answer stays `checking_in`.
+3. **Pick one helper.** The server calls the victim's contacts who are `safe` first, then other `safe` people on the incident. One open attempt per support case. The live `call_id` is stored on the case.
+4. **Contact.** The agent POSTs `accepted` or `declined` to `POST /find-helper`. A decline closes that attempt and the server places the next call. Accept sets `helper_profile_id` and `accepted`.
 5. **Dropped call.** The support case stays as it is. The server reads the ended call, places a new call to the same person with that context, and stores the new `call_id`.
 6. **Escalation.** If no helper remains, the case returns to `open`. The coordinator suggests escalation. The authority confirms.
 
@@ -72,7 +72,7 @@ Incident-person status: `checking_in`, `safe`, `victim`. Support-case status: `o
 | Server | TypeScript. Cartesia client in `server/src`. SpacetimeDB module in `server/spacetimedb` |
 | Agent / language understanding | Claude, hosted inside the Cartesia agent for the phone call |
 | Voice (speech in/out) | Cartesia Managed Agents |
-| Telephony (calls, SMS) | Cartesia outbound calls. A from-number id is not set up yet |
+| Telephony (calls, SMS) | Cartesia outbound calls. Check-in and helper answers come back on `POST /check-ins` and `POST /find-helper` |
 | Backend / database | SpacetimeDB 2.0, TypeScript module |
 | Disaster detection source | NASA FIRMS hotspot data and/or official alerts (proposed)|
 | Maps / routing for ETA and safety | To be chosen |
@@ -84,7 +84,8 @@ Notes:
 - Sponsor tools must do real work in the product, not be decorative.
 - Phone calls use the existing Cartesia hosted agent (`CARTESIA_AGENT_ID`). The support case stores the live `agent_call_id` in `call_id`. An explicit help request opens the support case. The authority confirms escalation.
 - A developer verifies a hosted-agent phone call from `server/` with `npm run call -- +E164`. The script posts one call to `POST /agents/calls` for `CARTESIA_AGENT_ID`, from `CARTESIA_FROM_NUMBER_ID`, with `dynamic_variables.phase` set to `checkin`. It prints `agent_call_id`. It does not open a support case.
-- SpacetimeDB writes are reducers: `insert_profile`, `create_incident`, `record_check_in`, `record_attempt`, `set_call_id`. `set_call_id` stores the live `agent_call_id` and leaves the victim, helper, status, and attempt unchanged. Redial is not implemented.
+- The HTTP server is `npm run server` in `server/`. It listens on `127.0.0.1:8787`. `POST /incidents` writes the incident and places check-in calls. `POST /check-ins` and `POST /find-helper` are what the Cartesia agent calls with the answer. Each dial sets `incident_id` and `profile_id` on the call. A phone that starts with `+1555555` is not dialed.
+- SpacetimeDB writes are reducers: `insertProfile`, `setContacts`, `createIncident`, `recordCheckIn`, `recordAttempt`, `setCallId`. `setCallId` stores the live `agent_call_id` and leaves the victim, helper, status, and attempt unchanged. Redial is not implemented. A no-answer on a helper dial that fails to start is stored as `no_answer`. A check-in that nobody answers stays `checking_in`.
 
 ## 6. Decisions
 
@@ -93,6 +94,6 @@ Notes:
 | 1 | Primary interface is phone calls | Target users are elderly or disabled and often not app users, and in emergency this is quickest interface |
 | 2 | An explicit check-in help request opens a support case without authority approval. Escalation still waits for the authority | Approving every case does not scale to a large incident. Escalation stays a human decision |
 | 3 | One Cartesia Managed Agent already exists. Its id is stored in `CARTESIA_AGENT_ID` and reused for every call. The server does not create an agent | Cartesia assigns the agent id once. Each dial is a new `agent_call_id` stored on the support case |
-| 4 | Server and SpacetimeDB module are TypeScript | SpacetimeDB 2.0 modules can be TypeScript. The Cartesia client and the module both live under `server/` |
+| 4 | Server and SpacetimeDB module are TypeScript | SpacetimeDB 2.0 modules can be TypeScript. The Cartesia client and the module both live under `server/`. The module directory has its own `package.json` because `spacetime publish` detects TypeScript only from that file. Dependencies are installed with `npm install` in `server/` |
 | 6 | A support case stores one live `call_id`. A dropped call is a new Cartesia call. The case status, victim, helper, and attempt stay | Cartesia variable values apply to the current call only. The same `agent_call_id` is not resumed |
 | 5 | Outbound phone calls use the existing Cartesia hosted agent via `POST /agents/calls`. The server supplies the destination number. `npm run call -- +E164` is the developer check for one check-in call | Cartesia dials and speaks. The script does not open a support case or choose a helper |

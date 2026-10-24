@@ -47,14 +47,31 @@ curl -sSf https://install.spacetimedb.com | sh
 spacetime start
 ```
 
-In another terminal, from `server/`, publish the module:
+In another terminal, from `server/`, publish the module. `spacetimedb/package.json` is what tells the CLI this module is TypeScript. `npm install` in `server/` installs the dependency and links `tsc` into the module, because `spacetime publish` looks for `tsc` there.
 
 ```bash
 cd server
-spacetime publish rideout --module-path spacetimedb
+spacetime publish rideout --server local --module-path spacetimedb
 ```
 
-Writes are the reducers `insert_profile`, `create_incident`, `record_check_in`, `record_attempt`, and `set_call_id`. `spacetime call rideout <reducer>` invokes one. Redial is not implemented.
+`setContacts` is part of the module. Republish after pulling it.
+
+```bash
+cd server
+npm run server
+```
+
+`POST /incidents` creates the incident and places one check-in call per dialable profile in the radius. It returns when the calls are placed. The agent later POSTs the answer to `/check-ins`. `victim` opens the support case and places the first helper call. The agent POSTs `accepted` or `declined` to `/find-helper`.
+
+```bash
+curl -s -X POST http://127.0.0.1:8787/incidents \
+  -H 'content-type: application/json' \
+  -d '{"type":"wildfire","lat":37.8708,"lng":-122.272,"radius_m":1000}'
+```
+
+Cartesia can only reach a public HTTPS URL. Point a tunnel at `127.0.0.1:8787` before the agent can call `/check-ins` or `/find-helper`.
+
+Writes are the reducers `insertProfile`, `setContacts`, `createIncident`, `recordCheckIn`, `recordAttempt`, and `setCallId`. `spacetime call rideout <reducer> --server local` invokes one. Redial is not implemented.
 
 ## Screens
 

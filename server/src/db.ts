@@ -9,7 +9,11 @@ export type ProfileRow = {
 
 export type IncidentRow = {
   id: number
+  type: string
+  area: { lat: number; lng: number; radius_m: number }
   status: string
+  created_at: string
+  ended_at: string | null
 }
 
 export type IncidentPersonRow = {
@@ -60,7 +64,11 @@ export async function profiles(): Promise<ProfileRow[]> {
 export async function incidents(): Promise<IncidentRow[]> {
   return (await query("SELECT * FROM incident")).map((row) => ({
     id: asId(row.id),
+    type: asString(row.type),
+    area: asArea(row.area),
     status: asString(row.status),
+    created_at: asTimestamp(row.created_at),
+    ended_at: asOptionalTimestamp(row.ended_at),
   }))
 }
 
@@ -192,6 +200,38 @@ function asIdList(value: unknown): number[] {
 function asString(value: unknown): string {
   if (typeof value === "string") return value
   throw new Error("SpacetimeDB returned a value that is not a string")
+}
+
+function asArea(value: unknown): { lat: number; lng: number; radius_m: number } {
+  if (Array.isArray(value) && value.length === 3) {
+    return { lat: asNumber(value[0]), lng: asNumber(value[1]), radius_m: asNumber(value[2]) }
+  }
+  if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+    const area = value as Record<string, unknown>
+    return { lat: asNumber(area.lat), lng: asNumber(area.lng), radius_m: asNumber(area.radius_m) }
+  }
+  throw new Error("SpacetimeDB returned an area that is not lat, lng, radius_m")
+}
+
+function asTimestamp(value: unknown): string {
+  return new Date(timestampMicros(value) / 1000).toISOString()
+}
+
+function asOptionalTimestamp(value: unknown): string | null {
+  if (value == null) return null
+  if (Array.isArray(value) && value.length === 2 && typeof value[0] === "number") {
+    if (value[0] === 1) return null
+    return asTimestamp(value[1])
+  }
+  return asTimestamp(value)
+}
+
+function timestampMicros(value: unknown): number {
+  if (Array.isArray(value)) return asNumber(value[0])
+  if (typeof value === "object" && value !== null && "__timestamp_micros_since_unix_epoch__" in value) {
+    return asNumber((value as Record<string, unknown>).__timestamp_micros_since_unix_epoch__)
+  }
+  return asNumber(value)
 }
 
 function asNumber(value: unknown): number {
