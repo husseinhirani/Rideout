@@ -1,69 +1,248 @@
 # Running the server
 
-Design and vocabulary are in `DESIGN.md`. Conventions are in `CONTEXT.md`. This file is
-only how to start it.
+Design and vocabulary are in `DESIGN.md`. Conventions are in `CONTEXT.md`. This file is only
+how to start it and how to run a real phone call end to end.
 
-## Prerequisites
+---
 
-`npm install` in `server/`. The repo-root `.env` needs `CARTESIA_API_KEY`,
-`CARTESIA_AGENT_ID`, `CARTESIA_FROM_NUMBER_ID`, `NGROK_URL`, and `ANTHROPIC_API_KEY`.
-`.env.sample` lists them.
+## 1. One-time setup
 
-## Four terminals
+```sh
+cd server
+npm install
+```
 
-| # | Command | Leave running |
-|---|---|---|
-| 0 | `spacetime start` | yes |
-| 1 | `./dev-tunnel` | yes |
-| 2 | `./dev-clean-db && npm run seed && npm run setup-agent` | no, it exits |
-| 3 | `npm run server` | yes |
+**Environment.** The repo-root `.env` (not `server/.env`) needs all five:
 
-Terminal 0 is the database engine. Nothing else works without it, and it is easy to forget
-because it dies quietly when its terminal closes. Check it with:
+| Variable | What it is |
+|---|---|
+| `CARTESIA_API_KEY` | Cartesia API key |
+| `CARTESIA_AGENT_ID` | The shared hosted agent. Every call reuses it |
+| `CARTESIA_FROM_NUMBER_ID` | The number Cartesia dials *from* |
+| `NGROK_URL` | Your reserved ngrok https origin, e.g. `https://xxx.ngrok-free.dev` |
+| `ANTHROPIC_API_KEY` | Claude, for the coordinator |
+
+`.env.sample` lists them. `./dev-tunnel` also reads `.env` from either `server/` or the repo
+root.
+
+**Profiles.** `mock/profiles.json` is gitignored because it holds real phone numbers. Create
+your own from the template:
+
+```sh
+cp mock/profiles.json.example mock/profiles.json
+```
+
+The template ships `+1555555…` placeholders. **A placeholder number is never dialed in real
+mode**, so if you leave them in, the server plans calls and then silently dials nobody. For a
+real test you need at least one genuine number. Two ways:
+
+```sh
+# A. Edit mock/profiles.json and put real numbers in. Needed for the multi-phone demo.
+
+# B. Keep the template untouched and inject one real number at seed time:
+SEED_PHONE=+14155550123 npm run seed                    # overrides the FIRST profile
+SEED_PHONE=+14155550123 SEED_PROFILE=Blair npm run seed # overrides Blair instead
+```
+
+`SEED_PHONE` overrides exactly one profile, so option B is for single-phone tests. Everyone
+else stays a placeholder.
+
+---
+
+## 2. Start it — four terminals
+
+Run all four from `server/`. Order matters: 0 before 2, and 1 before 2.
+
+### Terminal 0 — the database engine
+
+```sh
+spacetime start
+```
+
+Leave running. **This is the one everyone forgets.** It dies quietly when its terminal closes,
+and every other step fails with `Connection refused (os error 61)`. Verify before moving on:
 
 ```sh
 curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:3000/v1/ping   # want 200
 ```
 
-Terminal 1 gives Cartesia a public HTTPS URL for the webhook tools. It reuses `NGROK_URL`,
-so that value does not change between runs.
-
-Terminal 2 wipes and republishes the module, loads `mock/profiles.json`, then upserts the
-webhook tools and the agent prompt onto `CARTESIA_AGENT_ID`. `setup-agent` is idempotent and
-should print `unchanged` on a second run.
-
-Then open `http://127.0.0.1:8787` and describe an incident in plain English.
-
-## Simulate instead of dialing
+### Terminal 1 — the public tunnel
 
 ```sh
-npm run server:sim    # SIMULATE=1
+./dev-tunnel
 ```
 
-The whole loop runs without spending call minutes. `placeCall` logs and returns a fake call
-id (`src/cartesia.ts`), and the test UI shows a "what did they say?" box on every ringing
-call so answers can be typed by hand. Use this for everything except verifying real audio.
+Leave running. Cartesia cannot reach `localhost`, so its webhook tools need a public HTTPS URL.
+This reuses `NGROK_URL` as a reserved domain, so the URL does not change between runs.
 
-`SIMULATE=1` also keeps `+1555555` placeholder numbers in the call list, which are otherwise
-excluded so a real dial never reaches a fake number.
+If `NGROK_URL` is unset, ngrok assigns a random URL instead — put that URL in `.env` and re-run
+`npm run setup-agent`, or the tools will point at a dead address.
 
-## Other commands
+### Terminal 2 — load the database and configure the agent
+
+```sh
+./dev-clean-db && npm run seed && npm run setup-agent
+```
+
+This exits when done; it is not a server. In order it:
+
+1. wipes and republishes the SpacetimeDB module (`--delete-data`),
+2. loads `mock/profiles.json`,
+3. upserts the webhook tools from `tools/*.json` and writes the agent prompt onto
+   `CARTESIA_AGENT_ID`.
+
+`seed` prints each profile and whether it is dialable:
+
+```
+1 Alex  +15555550101 placeholder, not dialed
+2 Blair +15555550102 placeholder, not dialed
+```
+
+**If every line says `placeholder, not dialed`, stop.** No real call can happen. Go back to §1.
+
+`setup-agent` is idempotent — a second run should print `unchanged`.
+
+> ⚠️ `CARTESIA_AGENT_ID` is **shared with your teammates**. `setup-agent` overwrites its prompt
+> and initial message. Coordinate before running it during someone else's demo.
+
+### Terminal 3 — the server
+
+```sh
+npm run server
+```
+
+Leave running. Prints `listening on http://127.0.0.1:8787`.
+
+Use `npm run server` for real calls. Do **not** use `npm run server:sim` — that is simulate mode
+and never dials a phone.
+
+---
+
+## 3. Real integration test, step by step
+
+Everything above must be running, with at least one real phone number seeded.
+
+### Step 1 — confirm the agent is configured
+
+```sh
+npm run agent:show
+```
+
+In the JSON, check three things:
+
+- `instructions` mentions `{{person_name}}` and `{{ask}}` — not Cartesia's stock greeting.
+- `tools` contains exactly `record_check_in` and `report_call`.
+- Each tool's URL starts with your current `NGROK_URL`.
+
+If the URL is stale, re-run `npm run setup-agent`.
+
+### Step 2 — warm-up: one call, no case
+
+```sh
+npm run test:call -- +14155550123
+```
+
+Your phone should ring within a few seconds and an automated voice should ask whether you are
+safe and can get out on your own. This proves Cartesia, the agent prompt, and the from-number
+all work, before any coordinator logic is involved.
+
+> ⚠️ **This script is currently stale.** It still expects `POST /incidents` to return a `calls`
+> array, which the coordinator rewrite removed. The phone does still ring — the dial now happens
+> in background triage — but the script always exits with
+> `POST /incidents did not call …`. Treat a ringing phone as the pass signal and ignore the
+> error, or skip to Step 3.
+
+### Step 3 — open an incident
+
+Open `http://127.0.0.1:8787` and type a plain sentence into the entry box:
+
+```
+Alex is missing, last seen near Loma Alta Park around 3pm today
+```
+
+Expected, in order:
+
+1. The response returns in roughly 3–6 seconds — that is Claude's `interpretIncident`.
+2. An INCIDENT section appears with a type like `missing person`.
+3. One case appears.
+4. Terminal 3 logs one line per dial, and the phones you seeded start ringing.
+
+If no call rows appear, the candidate list came back empty. Almost always this is placeholder
+numbers — see §1.
+
+### Step 4 — answer the phone
+
+The agent states it is automated, then asks the one question Claude wrote for *that* person.
+Different people get different questions from the same incident.
+
+Answer naturally. Mention a place ("I saw them near the creek behind the school") — the
+coordinator geocodes places into map coordinates, and that is the thing worth seeing work.
+
+### Step 5 — watch the answer land
+
+Before hanging up, the agent calls `report_call`, which posts to `POST /calls/report`. Within
+about 20 seconds of the call ending:
+
+- the call row flips from `ringing` to `answered`,
+- notes appear under the case, with coordinates if you named a place,
+- the brief rewrites itself to account for what you said.
+
+Calls still ringing are unaffected. Nothing blocks on anything.
+
+### Step 6 — steer it
+
+Type into the dispatcher box on the case, e.g. *"also ask the neighbours on Marengo"*.
+
+New call rows should appear **immediately**, without waiting for in-flight calls. Dispatcher
+input is the only thing that re-plans; everything else just adds facts.
+
+### Step 7 — close
+
+Press **Accept**. The case status goes to `closed` and no further calls are planned for it.
+
+---
+
+## 4. Simulate instead of dialing
+
+```sh
+npm run server:sim      # SIMULATE=1
+```
+
+Use this for everything except verifying real audio. The entire loop runs in seconds with no
+call minutes spent: `placeCall` logs and returns a fake id (`src/cartesia.ts`), and the UI shows
+a "what did they say?" box on every ringing call so you type the answer by hand.
+
+Simulate mode also keeps `+1555555` placeholders in the call list, since nothing is dialed. That
+is why the template fixture works out of the box here but produces zero calls in real mode.
+
+---
+
+## 5. Command reference
 
 | Command | Does |
 |---|---|
-| `npm run check` | typechecks `src` and the SpacetimeDB module |
-| `npm test` | candidate filter, SQL decoding, tool JSON. No DB, no network |
-| `npm run inspect` | dumps every table as JSON |
-| `npm run agent:show` | prints the live Cartesia agent config |
-| `npm run test:call -- +E164` | one check-in call, no case opened |
+| `npm run server` | The server, real calls |
+| `npm run server:sim` | The server, no calls |
+| `npm run check` | Typechecks `src` and the SpacetimeDB module |
+| `npm test` | Candidate filter, SQL decoding, tool JSON. No DB, no network |
+| `npm run seed` | Loads `mock/profiles.json`. Honours `SEED_PHONE` / `SEED_PROFILE` |
+| `npm run inspect` | Dumps every table as JSON |
+| `npm run agent:show` | Prints the live Cartesia agent config |
+| `npm run test:call -- +E164` | One check-in call, opens no case. Stale: see Step 2 |
+| `./dev-clean-db` | Wipes and republishes the database module |
+| `./dev-tunnel` | ngrok in front of port 8787 |
 
-## When a live call misbehaves
+---
+
+## 6. Troubleshooting
 
 | Symptom | Cause |
 |---|---|
-| The agent gives the stock Cartesia greeting | `setup-agent` did not run against this agent |
-| The call ends and nothing appears in the UI | `report_call` never fired, or the tunnel is down |
-| The agent says a tool failed | `/calls/report` passed the 45s tool timeout. It runs a Claude call first, normally about 20s |
-
-`setup-agent` leaves tools it does not own attached to the agent, so a tool that is retired
-has to be detached by hand once.
+| `Connection refused` on port 3000 | `spacetime start` is not running (Terminal 0) |
+| `seed` says `ENOENT mock/profiles.json` | You skipped `cp mock/profiles.json.example mock/profiles.json` |
+| Incident opens but no calls appear | Every seeded number is a `+1555555` placeholder, so the call list is empty |
+| Port 8787 already in use | An old `npm run server` is still alive: `pkill -f "tsx src/server.ts"` |
+| The agent gives Cartesia's stock greeting | `setup-agent` never ran against this agent id |
+| Call ends, nothing appears in the UI | `report_call` did not fire, or the tunnel is down. Check Terminal 1 and `agent:show` URLs |
+| The agent says a tool failed | `/calls/report` passed its 45s timeout. It runs a Claude call first, normally ~20s |
+| A retired tool keeps firing | `setup-agent` leaves tools it does not own attached. Detach it on the agent by hand, once |
