@@ -1,0 +1,241 @@
+@import 'tailwindcss';
+@import 'leaflet/dist/leaflet.css';
+
+@theme {
+  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --color-ink-950: #07080a;
+  --color-ink-900: #0b0d10;
+  --color-ink-850: #0f1216;
+  --color-ink-800: #13171c;
+  --color-ink-700: #1b2027;
+  --color-ink-600: #262c35;
+  --color-ink-500: #3a424e;
+  --color-ink-400: #5d6775;
+  --color-ink-300: #8b94a3;
+  --color-ink-200: #b9c0cb;
+  --color-ink-100: #e6e9ee;
+
+  --color-fire: #ff5a1f;
+  --color-ember: #ffb020;
+
+  --color-st-registered: #6b7280;
+  --color-st-calling: #38bdf8;
+  --color-st-needs: #ef4444;
+  --color-st-matching: #f59e0b;
+  --color-st-assigned: #3b82f6;
+  --color-st-safe: #22c55e;
+  --color-st-escalated: #c084fc;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background: var(--color-ink-900);
+  color: var(--color-ink-100);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Scrollbars that don't shout */
+.scroll-thin {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-ink-600) transparent;
+}
+
+/* ---------- Leaflet ---------- */
+.leaflet-container {
+  background: #0a0c0f;
+  font-family: var(--font-sans);
+}
+.leaflet-control-attribution {
+  background: rgba(11, 13, 16, 0.7) !important;
+  color: var(--color-ink-400) !important;
+  font-size: 10px;
+}
+.leaflet-control-attribution a {
+  color: var(--color-ink-300) !important;
+}
+.leaflet-bar a {
+  background: var(--color-ink-800) !important;
+  color: var(--color-ink-100) !important;
+  border-color: var(--color-ink-600) !important;
+}
+.leaflet-tooltip.ro-tip {
+  background: var(--color-ink-800);
+  color: var(--color-ink-100);
+  border: 1px solid var(--color-ink-600);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  font-size: 12px;
+  padding: 6px 8px;
+}
+.leaflet-tooltip.ro-tip::before {
+  display: none;
+}
+.leaflet-tooltip.ro-label {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  color: var(--color-ink-200);
+  font-size: 11px;
+  font-weight: 600;
+  text-shadow: 0 1px 3px #000, 0 0 8px #000;
+  padding: 0;
+}
+.leaflet-tooltip.ro-label::before {
+  display: none;
+}
+
+/* Markers */
+.ro-pin {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+}
+.ro-pin .dot {
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: var(--c);
+  border: 2.5px solid #0b0d10;
+  box-shadow: 0 0 0 1.5px var(--c), 0 2px 8px rgba(0, 0, 0, 0.6);
+  display: grid;
+  place-items: center;
+  color: #0b0d10;
+  font: 800 9px/1 var(--font-sans);
+}
+.ro-pin.selected .dot {
+  box-shadow: 0 0 0 1.5px var(--c), 0 0 0 5px rgba(255, 255, 255, 0.25), 0 2px 8px rgba(0, 0, 0, 0.6);
+  transform: scale(1.2);
+}
+.ro-pin .pulse {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: var(--c);
+  opacity: 0.6;
+  animation: ro-pulse 1.6s ease-out infinite;
+}
+@keyframes ro-pulse {
+  0% {
+    transform: scale(1);
+    opacity: 0.55;
+  }
+  100% {
+    transform: scale(3.4);
+    opacity: 0;
+  }
+}
+.ro-car {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+}
+.ro-car .body {
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  background: var(--c);
+  border: 2px solid #0b0d10;
+  box-shadow: 0 0 0 1.5px var(--c), 0 2px 8px rgba(0, 0, 0, 0.6);
+  display: grid;
+  place-items: center;
+  color: #0b0d10;
+}
+.ro-fire {
+  border-radius: 999px;
+  background: radial-gradient(circle, #fff3b0 0%, #ffb020 30%, #ff5a1f 60%, rgba(255, 90, 31, 0) 72%);
+  animation: ro-flicker 1.4s ease-in-out infinite alternate;
+}
+@keyframes ro-flicker {
+  from {
+    opacity: 0.75;
+    transform: scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1.08);
+  }
+}
+.ro-route-active {
+  stroke-dasharray: 10 8;
+  animation: ro-dash 1s linear infinite;
+}
+@keyframes ro-dash {
+  to {
+    stroke-dashoffset: -18;
+  }
+}
+
+/* Phone ringing */
+@keyframes ro-ring {
+  0%,
+  100% {
+    transform: rotate(0);
+  }
+  10%,
+  30% {
+    transform: rotate(-14deg);
+  }
+  20%,
+  40% {
+    transform: rotate(14deg);
+  }
+  50% {
+    transform: rotate(0);
+  }
+}
+.ro-ring {
+  animation: ro-ring 1.2s ease-in-out infinite;
+}
+@keyframes ro-halo {
+  0% {
+    box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.55);
+  }
+  100% {
+    box-shadow: 0 0 0 22px rgba(34, 197, 94, 0);
+  }
+}
+.ro-halo {
+  animation: ro-halo 1.3s ease-out infinite;
+}
+@keyframes ro-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.ro-in {
+  animation: ro-in 0.35s ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ro-pin .pulse,
+  .ro-fire,
+  .ro-route-active,
+  .ro-ring,
+  .ro-halo,
+  .ro-in {
+    animation: none;
+  }
+}
