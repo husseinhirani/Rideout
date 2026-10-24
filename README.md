@@ -11,6 +11,51 @@ npm install
 npm run dev          # http://localhost:5173
 ```
 
+## Server
+
+The server is TypeScript under `server/`. Cartesia calls are `server/src`. The SpacetimeDB module is `server/spacetimedb`. The frontend above still runs without either.
+
+```bash
+cd server
+npm install
+npm run check
+```
+
+### Cartesia check-in call
+
+Copy `.env.sample` to `.env` in the repo root and set:
+
+- `CARTESIA_API_KEY`
+- `CARTESIA_AGENT_ID`
+- `CARTESIA_FROM_NUMBER_ID` (the Cartesia phone-number id, `ap_...`, not the destination)
+
+From `server/`, this places one real hosted-agent check-in call and prints `agent_call_id`. It does not open a support case.
+
+```bash
+cd server
+npm run call -- +14155550123
+```
+
+The number has to be E.164. `CARTESIA_FROM_NUMBER_ID` is still required before this can dial.
+
+### SpacetimeDB
+
+Install the CLI and start a local node. `spacetime start` keeps running.
+
+```bash
+curl -sSf https://install.spacetimedb.com | sh
+spacetime start
+```
+
+In another terminal, from `server/`, publish the module:
+
+```bash
+cd server
+spacetime publish rideout --module-path spacetimedb
+```
+
+Writes are the reducers `insert_profile`, `create_incident`, `record_check_in`, `record_attempt`, and `set_call_id`. `spacetime call rideout <reducer>` invokes one. Redial is not implemented.
+
 ## Screens
 
 | Route | What it is |
@@ -44,7 +89,7 @@ The rest of the neighborhood runs on a script:
 
 ## Where the real backend plugs in
 
-The browser engine is a stand-in. Everything is designed so you can swap it out piece by piece:
+The browser engine is a stand-in. The SpacetimeDB module and Cartesia client are in `server/` (see Server above). The UI is not wired to them yet. Everything is designed so you can swap it out piece by piece:
 
 - **`src/store/sim.ts`**: every state change as a named function (`answerCall`, `residentSays`, `respondToOffer`,
   `acknowledgeEscalation`, `registerResident`, `registerHelper`, `tick`, …). These are the backend mutations. Port them to
