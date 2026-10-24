@@ -52,8 +52,15 @@ export function placeCall(to: string, variables: Record<string, DynamicValue>): 
   })
 }
 
-export function placeCheckInCall(to: string): Promise<string> {
-  return placeCall(to, { phase: PHASE_CHECKIN })
+export function placeCheckInCall(
+  to: string,
+  variables: Record<string, DynamicValue> = {},
+): Promise<string> {
+  return placeCall(to, { ...variables, phase: PHASE_CHECKIN })
+}
+
+export function placeHelperCall(to: string, variables: Record<string, DynamicValue>): Promise<string> {
+  return placeCall(to, { ...variables, phase: "helper" })
 }
 
 export function placeBatch(
