@@ -23,17 +23,17 @@ People who in a disaster case cannot evacuate on their own. Example: an elderly 
 
 One neighborhood, one simulated fire, one complete loop:
 
-1. An alert is raised and an authority opens a case.
-2. A victim is flagged as needing help.
+1. An alert is raised and an incident is opened for an area.
+2. A check-in is an explicit help request, and the server opens the support case.
 3. One helper is selected and contacted.
 4. The helper accepts and the victim is told who is coming.
 5. The authority can guide the helper, and the case can be escalated.
 
-Everything is logged. The fire is simulated and we say so clearly in the demo.
+The fire is simulated and we say so clearly in the demo.
 
 ## Hackathon targets
 
-Primary: Meta ("Bringing People Closer Together with AI"), Anthropic (Claude), Microsoft ("Built for the Real World"). Likely also relevant: Cartesia (voice) and one real-time backend sponsor (Convex or SpacetimeDB; not yet decided). Check track rules before submitting. Sponsor tech must be used meaningfully, not bolted on.
+Primary: Meta ("Bringing People Closer Together with AI"), Anthropic (Claude), Microsoft ("Built for the Real World"). Likely also relevant: Cartesia (voice) and SpacetimeDB. Check track rules before submitting. Sponsor tech must be used meaningfully, not bolted on.
 
 ## Conventions
 
@@ -44,11 +44,12 @@ These apply to every change, by humans and agents.
 3. **Do not over-engineer.** No premature abstractions, extra layers, generic frameworks, config systems, or "future-proofing". If it is not needed for the MVP loop, do not build it.
 4. **MVP only.** Do not solve hard or complex requirements yet. When a requirement is vague, pick the simplest reasonable interpretation, state the assumption, and move on.
 5. **Black boxes are fine as subproblems until explicitly touched on.** Parts marked as black box in `DESIGN.md` should be stubbed with a simple interface, not implemented deeply.
-6. **Humans decide, AI supports.** The agent never opens a case or confirms an escalation on its own. It suggests.
+6. **Humans decide escalation.** An explicit check-in help request opens a support case without an authority approval. The agent still does not confirm an escalation. It suggests.
 7. **Safety rules live in code not just not in prompts.** Anything that must never happen (for example routing a helper toward danger) is enforced deterministically.
 8. **Use the shared vocabulary.** Terms are defined in `design.md`. Use them exactly.
 9. **Keep docs current.** If your change affects behavior, terms, decisions, or server capabilities, update `design.md` or `api.md` in the same change.
+10. **Server code is TypeScript.** The SpacetimeDB module is `server/spacetimedb`. The Cartesia client is `server/src`.
 
 ## Out of scope for now
 
-Multiple cases per helper, parallel outreach, route optimization, historical analytics, multi-language support, roles and permissions beyond "authority", real emergency-system integration, and anything not needed for the MVP loop.
+Multiple cases per helper, calling more than one helper for the same support case at once, route optimization, historical analytics, multi-language support, roles and permissions beyond "authority", real emergency-system integration, and anything not needed for the MVP loop. Check-in calls for one incident run as a batch.
