@@ -3,9 +3,16 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "workspaces": ["spacetimedb"],
   "scripts": {
     "call": "tsx src/call.ts",
-    "check": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p spacetimedb/tsconfig.json"
+    "server": "tsx src/server.ts",
+    "seed": "tsx src/seed.ts",
+    "test": "tsx tests/logic.ts",
+    "test:call": "tsx tests/call-number.ts",
+    "inspect": "tsx src/inspect.ts",
+    "check": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p spacetimedb/tsconfig.json",
+    "postinstall": "mkdir -p spacetimedb/node_modules/.bin && ln -sfn ../../../node_modules/.bin/tsc spacetimedb/node_modules/.bin/tsc"
   },
   "dependencies": {
     "spacetimedb": "^2.13.0"
