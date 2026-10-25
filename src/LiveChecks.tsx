@@ -107,7 +107,7 @@ export function LiveChecks({
   const status = pending.length + mockPending ? "Live" : row ? (row.status === "closed" ? "Case closed" : `Case #${row.id}`) : "Standing by";
   const coordination = row ? coordinationOf(state, row.id, now) : null;
   const latest = inbound[0];
-  const followUpItems = followUps(state);
+  const followUpItems = row ? followUps(state).filter(item => item.call.attempt.support_case_id === row.id) : [];
 
   const rail: RailItem<Focus>[] = [
     { id: "followups", label: "Follow-up inbox", value: followUpItems.length, icon: "alert", detail: followUpItems.length ? "People who still need your attention" : "Nothing awaiting review" },
