@@ -73,7 +73,7 @@ export const createInformationCase = spacetimedb.reducer({ command_id: t.string(
   save(ctx, command_id, "create_information", input, { incident_id: Number(incident_id), support_case_id: Number(case_id), input_revision: 1, status: "open" }, actor)
 })
 export const configureInformationCase = spacetimedb.reducer({ case_id: t.u64(), command_id: t.string(), payload_json: t.string(), actor: t.string() }, (ctx, { case_id, command_id, payload_json, actor }) => {
-  const input = parse(payload_json), payload = { case_id: Number(case_id), ...input }; if (replay(ctx, command_id, "configure_information", payload)) return
+  const input = parse(payload_json), payload = { ...input, case_id: Number(case_id) }; if (replay(ctx, command_id, "configure_information", payload)) return
   const c = getCase(ctx, case_id); if (c.status === "closed" || c.input_revision !== BigInt(revision(input.expected_input_revision))) fail("Stale revision or closed case; refresh")
   preferences(ctx, input.preferences, case_id)
   const updated = { ...c, objective: input.objective === undefined ? c.objective : text(input.objective, "objective"), scope_json: input.scope === undefined ? c.scope_json : canonicalJson(contactScope(input.scope)), policy_json: input.policy === undefined ? c.policy_json : canonicalJson(informationPolicy(input.policy, JSON.parse(c.policy_json))), input_revision: c.input_revision + 1n }
@@ -81,7 +81,7 @@ export const configureInformationCase = spacetimedb.reducer({ case_id: t.u64(), 
   save(ctx, command_id, "configure_information", payload, { support_case_id: Number(case_id), input_revision: Number(updated.input_revision), status: updated.status }, actor)
 })
 export const requestInformationCall = spacetimedb.reducer({ case_id: t.u64(), command_id: t.string(), payload_json: t.string(), actor: t.string() }, (ctx, { case_id, command_id, payload_json, actor }) => {
-  const input = parse(payload_json), payload = { case_id: Number(case_id), ...input }; if (replay(ctx, command_id, "information_call", payload)) return
+  const input = parse(payload_json), payload = { ...input, case_id: Number(case_id) }; if (replay(ctx, command_id, "information_call", payload)) return
   const c = getCase(ctx, case_id), policy = JSON.parse(c.policy_json) as InformationPolicy
   if (c.status !== "open" || policy.paused || c.input_revision !== BigInt(revision(input.expected_input_revision))) fail("Stale revision or unavailable case; refresh")
   const history = [...ctx.db.attemptProgress.support_case_id.filter(case_id)]
@@ -106,7 +106,12 @@ export const requestInformationCall = spacetimedb.reducer({ case_id: t.u64(), co
 export const claimInformationAttempt = spacetimedb.reducer({ attempt_id: t.u64(), claim_token: t.string() }, (ctx, { attempt_id, claim_token }) => {
   text(claim_token, "claim_token", 200); const { attempt, progress } = authorized(ctx, attempt_id), policy = JSON.parse(getCase(ctx, attempt.support_case_id).policy_json) as InformationPolicy
   if (progress.transport !== "queued") fail("Attempt is not queued")
-  if ([...ctx.db.attemptProgress.iter()].filter(p => ["dispatching", "active", "unknown"].includes(p.transport)).length >= policy.max_concurrent_calls) fail("Concurrent call limit reached")
+  const occupied = [...ctx.db.attempt.iter()].filter(a => {
+    if (ctx.db.informationAttempt.attempt_id.find(a.id)?.provider_terminal_status) return false
+    const p = ctx.db.attemptProgress.attempt_id.find(a.id)
+    return p ? ["dispatching", "active", "unknown"].includes(p.transport) : true
+  }).length
+  if (occupied >= policy.max_concurrent_calls) fail("Concurrent call limit reached")
   ctx.db.attemptProgress.attempt_id.update({ ...progress, transport: "dispatching", claim_token, claimed_at_ms: now(ctx) })
 })
 export const validateInformationClaim = spacetimedb.reducer({ attempt_id: t.u64(), claim_token: t.string() }, (ctx, { attempt_id, claim_token }) => { const { progress } = authorized(ctx, attempt_id); if (progress.transport !== "dispatching" || !claim_token || progress.claim_token !== claim_token) fail("Claim token mismatch") })
@@ -123,7 +128,7 @@ export const recordInformationDispatch = spacetimedb.reducer({ attempt_id: t.u64
   ctx.db.attempt.id.update({ ...attempt, call_id: providerId }); ctx.db.attemptProgress.attempt_id.update({ ...progress, transport: metadata.provider_terminal_status ? "ended" : !providerId || error ? "unknown" : "active", dispatch_error: error.slice(0, 2000) }); ctx.db.informationAttempt.attempt_id.update({ ...metadata, binding_status: binding })
 })
 export const receiveInformationReport = spacetimedb.reducer({ attempt_id: t.u64(), provider_call_id: t.string(), direction: t.string(), answer: t.string(), concern: t.string() }, (ctx, { attempt_id, provider_call_id, direction, answer, concern }) => {
-  const { attempt, progress, metadata } = getAttempt(ctx, attempt_id); text(provider_call_id, "provider_call_id", 300); text(answer, "answer", 30_000)
+  const { attempt, progress, metadata } = getAttempt(ctx, attempt_id); text(provider_call_id, "provider_call_id", 300); if (/\s|[{}]/.test(provider_call_id)) fail("Invalid provider call ID"); text(answer, "answer", 30_000)
   if (direction !== "outbound") fail("Report direction must be outbound"); if (concern.length > 10_000) fail("Concern is too long")
   if (attempt.call_id && attempt.call_id !== provider_call_id) fail("Report provider call ID mismatch")
   if (progress.report_received) { if (attempt.answer === answer && progress.raw_concern === concern && metadata.report_provider_call_id === provider_call_id && metadata.report_direction === direction) return; fail("Different final report already exists") }
