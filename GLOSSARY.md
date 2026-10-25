@@ -21,3 +21,6 @@ The missing-child story belongs to earlier demo fixtures. Child, parent, victim 
 - **Task:** one authorized question or milestone check delivered to a voice agent, with pending, delivered, completed, cancelled or blocked status.
 - **Arrangement:** a proposed pairing between someone who needs assistance and a suitable willing helper. Human approval, helper acceptance, recipient confirmation, pickup and arrival are separate states.
 - **Scenario location:** a supplied incident location and access category. In the drill it is fictional, and is not a claim about actual whereabouts or road safety.
+
+- **Starting position:** explicitly simulated, unconfirmed drill placement sampled from mapped geometry. It is not current whereabouts until the participant confirms it for the scenario.
+- **Geographic comparison:** maximum eligible coverage followed by minimum total straight-line separation, subject to current needs, consent, access and vehicle capacity. It is not road routing or a safety determination.

@@ -92,3 +92,23 @@ real planning-model proposals and coordinator chat with synthetic calls; duplica
 retries; eligibility, stale-plan and callback races; separate approval/acceptance/pickup/
 arrival gates. Hosted phone conversations with the new tool require the deployment and
 first live run above. No new automated test files were added at the user's request.
+
+## Location-based two-pair run
+
+The four saved real participants use four distinct starting positions sampled from the
+bundled mapped building footprints. These are explicitly simulated positions, not their
+actual addresses. Tom first asks each participant to confirm or correct the starting point.
+Confirming it supplies the exact coordinate-backed location to the matching calculation;
+simply displaying the initial marker does not authorize a match.
+
+For two nearby pairs, Tony and Shehryar can each report a ride needed for one person, no
+wheelchair or pets. Vien and Hussein can each report independent evacuation, willingness
+to help and one passenger seat (answer the wheelchair/pet capability questions too).
+The configured starting points put Tony about 42 m from Vien, and Shehryar about 24 m from
+Hussein. Cross-pair separations are about 247–275 m. These are straight-line distances,
+not driving distances or arrival estimates.
+
+Wait for both proposals, then approve them. The coordinator waits for outstanding
+relevant information so an early report does not reserve the only suitable helper before
+comparing the group. The map shows the same reported positions used in this comparison.
+A location correction changes the matching inputs; swapping names alone does not.

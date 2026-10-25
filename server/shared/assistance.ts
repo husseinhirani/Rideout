@@ -1,3 +1,6 @@
+import { person, matchReasons, requiresInformationReview } from './assistance-eligibility';
+export { person, matchReasons, requiresInformationReview } from './assistance-eligibility';
+import { spatialMatching } from './spatial';
 /** Shared incident coordination contract. People and locations are data, never role rules. */
 export type Facts = {
   location_id: string | null; needs_transport: boolean | null; party_size: number | null;
@@ -5,9 +8,9 @@ export type Facts = {
   seats: number | null; wheelchair_space: boolean | null; pets_allowed: boolean | null;
 };
 export const emptyFacts = (): Facts => ({ location_id: null, needs_transport: null, party_size: null, wheelchair: null, pets: null, can_help: null, seats: null, wheelchair_space: null, pets_allowed: null });
-export type Location = { id: string; label: string; lat: number; lng: number; access: 'community' | 'specialist' | 'unknown' };
+export type Location = { id: string; label: string; lat: number; lng: number; access: 'community' | 'specialist' | 'unknown'; zone_id?: string; source?: string };
 export type Scenario = { title: string; drill: boolean; context: string; locations: Location[]; community_routes: [string, string][]; destination: string; follow_up_ms: number; max_tasks_per_person: number };
-export type Participant = { profile_id: number; name: string; mode: 'real' | 'simulated'; facts: Facts; sources: Partial<Record<keyof Facts, string>>; consent: boolean; contact_blocked?: string | null; simulation?: Facts; unreachable: boolean };
+export type Participant = { profile_id: number; name: string; mode: 'real' | 'simulated'; start_location_id?: string; facts: Facts; sources: Partial<Record<keyof Facts, string>>; consent: boolean; contact_blocked?: string | null; simulation?: Facts; unreachable: boolean };
 export type TaskKind = 'assess' | 'needs' | 'location' | 'capability' | 'helper_accept' | 'recipient_confirm' | 'pickup' | 'arrival';
 export type Task = { id: string; profile_id: number; kind: TaskKind; arrangement_id: string | null; reason: string; status: 'pending' | 'delivered' | 'completed' | 'cancelled' | 'blocked'; attempt_id: number | null; created_at: number; delivered_at: number | null; call_count: number; completed_revision?: number; due_at: number; result: string; };
 export type Arrangement = { id: string; recipient_id: number; helper_id: number; evidence_ids: string[]; reason: string; status: 'proposed' | 'approved' | 'accepted' | 'confirmed' | 'picked_up' | 'completed' | 'cancelled'; helper_accepted: boolean; recipient_confirmed: boolean; pickup_confirmations: number[]; arrival_confirmations: number[]; reconsiderable?: boolean; created_at: number; updated_at: number; };
@@ -36,10 +39,6 @@ export function addMessage(s: AssistanceState, text: string, now: number, kind: 
   s.messages.push({ id, from, text, at: now, kind });
 }
 export function touch(s: AssistanceState) { s.revision++; s.failure_count = 0; s.retry_at = 0; s.error = ''; }
-export function person(s: AssistanceState, id: number): Participant {
-  if (!Number.isSafeInteger(id) || id < 1) throw new Error('Invalid participant ID');
-  const p = s.people.find(p => p.profile_id === id); if (!p) throw new Error('Person is outside this incident'); return p;
-}
 const reserved = (a: Arrangement) => ['proposed','approved','accepted','confirmed','picked_up'].includes(a.status);
 const taskKinds: TaskKind[] = ['assess','needs','location','capability','helper_accept','recipient_confirm','pickup','arrival'];
 const activeTask = (t: Task) => t.status === 'pending' || t.status === 'delivered';
@@ -64,38 +63,6 @@ function requiredMatchSources(s: AssistanceState, recipientId: number, helperId:
   }
   return [...new Set(refs)];
 }
-/** Eligibility is deterministic; a model can only propose a pair that passes this gate. */
-export function matchReasons(s: AssistanceState, recipientId: number, helperId: number, excludeId?: string): string[] {
-  const r = person(s, recipientId), h = person(s, helperId), reasons: string[] = [];
-  const continuation = excludeId ? s.arrangements.find(a => a.id === excludeId && a.recipient_id === recipientId && a.helper_id === helperId) : undefined;
-  // After a reported pickup, empty seats / an ongoing transport need need not remain true.
-  // Access, consent and the actual milestone confirmations still gate continuation.
-  const pickupStarted = !!continuation && (continuation.status === 'picked_up' || continuation.pickup_confirmations.length > 0);
-  if (s.arrangements.some(a => a.recipient_id === recipientId && a.helper_id === helperId && a.status === 'cancelled' && a.reconsiderable !== true)) reasons.push('This pairing was withdrawn; choose another option or request human review');
-  if (!continuation && s.arrangements.some(a => a.recipient_id === recipientId && a.status === 'completed')) reasons.push('The recipient already has a completed arrangement in this incident');
-  if (recipientId === helperId) reasons.push('A person cannot be their own helper');
-  if (!r.consent || !h.consent) reasons.push('Contact consent is withdrawn');
-  for (const p of [r,h]) if (p.contact_blocked) reasons.push(p.name + ': ' + p.contact_blocked);
-  if (r.unreachable || h.unreachable) reasons.push('A participant has not been reached');
-  if (!pickupStarted) {
-    if (r.facts.needs_transport !== true) reasons.push('Transport need is unconfirmed');
-    if (h.facts.needs_transport !== false || h.facts.can_help !== true) reasons.push('Helper independence or willingness is unconfirmed');
-    if (!r.facts.party_size || h.facts.seats === null) reasons.push('Passenger count or capacity is unknown');
-    if ((r.facts.party_size ?? Infinity) > (h.facts.seats ?? 0)) reasons.push('Not enough seats');
-    if (r.facts.wheelchair === null || r.facts.pets === null) reasons.push('Recipient vehicle requirements are unknown');
-    if (r.facts.wheelchair && h.facts.wheelchair_space !== true) reasons.push('Wheelchair capacity is unconfirmed');
-    if (r.facts.pets && h.facts.pets_allowed !== true) reasons.push('Pet transport is unconfirmed');
-  }
-  const other = s.arrangements.filter(a => a.id !== excludeId && reserved(a));
-  if (other.some(a => a.recipient_id === recipientId || a.helper_id === recipientId)) reasons.push('Recipient already has a proposed or active arrangement');
-  // One simultaneous pickup per helper for this first coordination slice.
-  if (other.some(a => a.helper_id === helperId || a.recipient_id === helperId)) reasons.push('Helper already has a reserved pickup');
-  const from = s.scenario.locations.find(l => l.id === h.facts.location_id), to = s.scenario.locations.find(l => l.id === r.facts.location_id);
-  if (!from || !to) reasons.push('Current scenario locations are unconfirmed');
-  else if (from.access !== 'community' || to.access !== 'community') reasons.push('Location requires specialist review or has unknown access');
-  else if (!s.scenario.community_routes.some(([a,b]) => (a === from.id && b === to.id) || (a === to.id && b === from.id))) reasons.push('No approved community route in the supplied incident data');
-  return [...new Set(reasons)];
-}
 function milestone(s: AssistanceState, task: Task): Arrangement {
   const a = s.arrangements.find(a => a.id === task.arrangement_id);
   if (!a || !reserved(a) || !activeTask(task)) throw new Error('Arrangement is not authorized for this task');
@@ -113,7 +80,7 @@ export function addTask(s: AssistanceState, profileId: number, kind: TaskKind, n
   const p = person(s, profileId);
   if (!taskKinds.includes(kind) || !Number.isFinite(now) || !Number.isFinite(due)) throw new Error('Invalid task');
   boundedText(reason,'task reason',2000);
-  if (!p.consent || p.contact_blocked) { s.review = p.name + ' cannot be contacted; human review is required.'; return null; }
+  if (!p.consent || p.contact_blocked || requiresInformationReview(s,p.profile_id)) { s.review = p.name + ' cannot be contacted; human review is required.'; return null; }
   if (s.tasks.some(t => t.profile_id === profileId && t.kind === kind && t.arrangement_id === arrangementId && activeTask(t))) return null;
   if (s.tasks.filter(t => t.profile_id === profileId).length >= s.scenario.max_tasks_per_person) {
     s.review = p.name + ' has reached the task limit. Human review is required.'; return null;
@@ -124,11 +91,13 @@ export function addTask(s: AssistanceState, profileId: number, kind: TaskKind, n
   s.tasks.push(task); return task;
 }
 export function taskInstruction(s: AssistanceState, task: Task): string {
-  if (!activeTask(task) || !person(s,task.profile_id).consent || person(s,task.profile_id).contact_blocked) throw new Error('Task is no longer available');
+  if (!activeTask(task) || !person(s,task.profile_id).consent || person(s,task.profile_id).contact_blocked || requiresInformationReview(s,task.profile_id)) throw new Error('Task is no longer available');
   const places = s.scenario.locations.map(l => l.label + ' (' + l.id + ')').join(', ');
   const prefix = s.scenario.drill ? 'This is a fictional drill; do not instruct actual travel. ' : '';
-  if (task.kind === 'assess') return prefix + 'Ask whether this person could evacuate independently. Clarify relevant transport needs. If independent, ask whether they would be willing and able to help others. Report discoveries as they arise.';
-  if (task.kind === 'location') return prefix + 'Ask which scenario location they are at: ' + places + '. Accept unknown or a different location; do not guess or use directory coordinates.';
+  const suggested=s.scenario.locations.find(l=>l.id===person(s,task.profile_id).start_location_id);
+  const locationCheck=suggested && !person(s,task.profile_id).sources.location_id ? 'First ask whether their fictional starting point, '+suggested.label+', is correct. Only after an explicit yes report location_id='+suggested.id+'. A different point or unknown answer must be recorded accurately; never treat the starting point as confirmed. ' : '';
+  if (task.kind === 'assess') return prefix + locationCheck + 'Ask whether this person could evacuate independently. Clarify relevant transport needs. If independent, ask whether they would be willing and able to help others. Report discoveries as they arise.';
+  if (task.kind === 'location') return prefix + locationCheck + 'Ask which scenario location they are at: ' + places + '. Accept unknown or a different location; do not guess or use directory coordinates.';
   if (task.kind === 'needs') return prefix + 'Clarify whether transport is needed, passenger count, and wheelchair or pet requirements. Ask one relevant unanswered question at a time.';
   if (task.kind === 'capability') return prefix + 'Confirm whether they can leave independently and would be willing to help someone nearby. If willing, ask available passenger seats, wheelchair space and whether pets can travel. No arrangement is confirmed yet.';
   const a = milestone(s,task), r = person(s,a.recipient_id), h = person(s,a.helper_id);
@@ -191,6 +160,9 @@ function applyFindingToDraft(s: AssistanceState, profileId: number, attemptId: n
   const previousFacts = { ...p.facts };
   s.findings.push({id:updateId,profile_id:profileId,attempt_id:attemptId,text:update.text,changes:facts,at:now});
   Object.assign(p.facts,facts); for (const key of Object.keys(facts) as (keyof Facts)[]) p.sources[key] = updateId;
+  if (update.do_not_call || update.confirmation==='declined' || Object.keys(facts).some(key=>!Object.is(previousFacts[key as keyof Facts],p.facts[key as keyof Facts]))) {
+    for(const proposal of s.arrangements.filter(a=>a.status==='proposed')) cancelArrangement(s,proposal,'New participant information requires a fresh comparison',now,true);
+  }
   if (update.text.trim() || Object.keys(facts).length) p.unreachable = false;
   if (update.do_not_call) p.consent = false;
   if (stale && (update.result || update.confirmation)) {
@@ -281,7 +253,7 @@ function applyPlanToDraft(s: AssistanceState, plan: AssistancePlan, now: number)
     if (seenQuestions.has(key)) throw new Error('Duplicate question in plan');
     seenQuestions.add(key);
     const p = person(s,q.profile_id);
-    if (p.unreachable || !p.consent || p.contact_blocked) continue;
+    if (p.unreachable || !p.consent || p.contact_blocked || requiresInformationReview(s,p.profile_id)) continue;
     // Unknown/refused answers require review. A later correction can reopen an
     // answered question only when its relevant facts have become incomplete.
     if (s.tasks.some(t => t.profile_id === q.profile_id && t.kind === q.kind && (
@@ -290,7 +262,10 @@ function applyPlanToDraft(s: AssistanceState, plan: AssistancePlan, now: number)
     ))) continue;
     addTask(s,q.profile_id,q.kind,now,q.reason);
   }
+  const matching=spatialMatching(s);
+  if(plan.proposals.length && matching.waiting)throw new Error('Wait for pending information tasks before proposing geographic matches');
   for (const proposal of plan.proposals) {
+    if(!matching.recommended.some(pair=>pair.recipient_id===proposal.recipient_id&&pair.helper_id===proposal.helper_id))throw new Error('Proposal must use the current maximum-coverage, minimum-distance comparison');
     if (!validId(proposal.recipient_id) || !validId(proposal.helper_id)) throw new Error('Invalid arrangement participant');
     const reasons = matchReasons(s,proposal.recipient_id,proposal.helper_id);
     if (reasons.length) throw new Error('Ineligible arrangement: ' + reasons.join('; '));

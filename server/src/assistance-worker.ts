@@ -1,7 +1,7 @@
 import { callReducer } from './db'
 import { assistanceStates, assistanceState, callSnapshot, nextVoiceTask } from './assistance'
 import { planAssistance } from './assistance-agent'
-import { type AssistanceState, type Task, type VoiceUpdate } from '../shared/assistance'
+import { requiresInformationReview, type AssistanceState, type Task, type VoiceUpdate } from '../shared/assistance'
 
 export function startAssistanceWorker():()=>void {
   let stopped=false,scanning=false
@@ -20,6 +20,7 @@ export function startAssistanceWorker():()=>void {
     if(s.paused||task.status!=='pending'||task.attempt_id!==null||task.due_at>Date.now())return
     const person=s.people.find(p=>p.profile_id===task.profile_id)!
     if(!person.consent||person.unreachable)return
+    if(requiresInformationReview(s,person.profile_id)){await callReducer('blockAssistanceTask',[s.case_id,task.id,'Human review is required after an unresolved information task']);return}
     const current=snapshot.information.cases.find(c=>c.id===s.case_id)
     if(!current||current.status!=='open'||current.policy.paused)return
     const pending=snapshot.attempts.some(a=>a.profile_id===task.profile_id && ['queued','dispatching','active','unknown'].includes(snapshot.progress.find(p=>p.attempt_id===a.id)?.transport??'unknown'))

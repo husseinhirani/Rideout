@@ -9,9 +9,10 @@ async function drillParticipants() {
   const directory = await profiles()
   if (latest) {
     const { profile_ids } = JSON.parse(asString(latest.result_json)) as { profile_ids: number[] }
-    return profile_ids.map(id => {
+    const configured=JSON.parse(asString(latest.payload_json)) as {participants?:{name:string,phone:string,location_id?:string}[]}
+    return profile_ids.map((id,index) => {
       const person = directory.find(p => p.id === id)
-      return { name: person?.name ?? "Missing participant", phone: person?.phone ?? "" }
+      return { name: person?.name ?? "Missing participant", phone: person?.phone ?? "", ...(configured.participants?.[index]?.location_id ? {location_id:configured.participants[index].location_id} : {}) }
     })
   }
   const configuredPhone = process.env.WILDFIRE_DEMO_PHONE?.trim()

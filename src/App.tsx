@@ -13,6 +13,8 @@ import { LiveStats } from "./LiveStats";
 import { MapStats } from "./MapStats";
 import { MissingChildForm } from "./MissingChildForm";
 import { NeighborhoodMap } from "./NeighborhoodMap";
+import { IncidentMap } from "./IncidentMap";
+import { participantLocation } from "../server/shared/spatial";
 import { OperatorPanel } from "./OperatorPanel";
 import { RegisterForm } from "./RegisterForm";
 import { downloadLog } from "./exportLog";
@@ -98,12 +100,17 @@ export function App() {
   const savedChat = savedConversation(state, liveCase?.id ?? null);
   const conversation = [...savedChat, ...liveChat.filter(message => !savedChat.some(saved => saved.from === message.from && saved.text === message.text))].sort((a,b) => a.at - b.at);
   useEffect(() => { setLiveChat([]); }, [liveCase?.id]);
-  const liveHouses = useMemo(() => (state ? housesFrom(state, residents, spots, GEO) : []), [state, residents, spots]);
+  const liveHouses = useMemo(() => assistance ? assistance.people.flatMap(person => {
+    const { location, confirmed } = participantLocation(assistance, person);
+    return location ? [{ id: person.profile_id, name: person.name, lat: location.lat, lng: location.lng,
+      status: (person.unreachable ? "unknown" : person.facts.needs_transport ? "needs_ride" : "waiting") as HouseStatus,
+      note: (confirmed ? "Participant-reported incident location: " : "Unconfirmed simulation starting point: ") + location.label }] : [];
+  }) : state ? housesFrom(state, residents, spots, GEO) : [], [state, assistance, residents, spots]);
   const liveCalls = useMemo(() => (state && liveCase ? callsFor(state, liveCase.id) : []), [state, liveCase?.id]);
   const liveSightings = useMemo(() => (state ? sightingsFrom(state, liveCase?.id ?? null) : []), [state, liveCase?.id]);
   const liveGraph = useMemo(() => graphCalls(liveCalls, liveHouses), [liveCalls, liveHouses]);
   const selectedProfile = state?.profiles.find(p => p.id === liveSelected);
-  const livePerson = liveHouses.find((house) => house.id === liveSelected) ?? (selectedProfile ? { ...selectedProfile, status: "waiting" as const, note: "Stored directory profile; current whereabouts unverified." } : null);
+  const livePerson = liveHouses.find((house) => house.id === liveSelected) ?? (!assistance && selectedProfile ? { ...selectedProfile, status: "waiting" as const, note: "Stored directory profile; current whereabouts unverified." } : null);
   const concern = live ? liveCalls.find((call) => call.attempt.concern && call.transport !== "ended" && call.transport !== "cancelled") : undefined;
 
   // Start idle on a fresh page unless a real call still needs attention. New
@@ -264,8 +271,8 @@ export function App() {
     });
 
   return (
-    <main className={`${tab === "checks" ? "stage checks-on" : "stage"}${scene === "nodes" ? " nodes-on" : ""}${simple ? " simple-on" : ""}`}>
-      <NeighborhoodMap
+    <main className={`${tab === "checks" ? "stage checks-on" : "stage"}${scene === "nodes" ? " nodes-on" : ""}${simple ? " simple-on" : ""}${live && assistance ? " incident-map-on" : ""}`}>
+      {live && assistance ? (tab === "map" ? <div className="incident-map-scene"><IncidentMap session={assistance} selectedId={liveSelected} onSelect={setLiveSelected} /></div> : null) : <NeighborhoodMap
         liveData={live}
         place={ride.place}
         houses={live ? liveHouses : ride.houses}
@@ -274,8 +281,8 @@ export function App() {
         simple={simple}
         showFire={live ? false : ride.incident.kind === "wildfire"}
         sightings={live ? liveSightings : ride.incident.sightings}
-      />
-      {scene === "nodes" ? (
+      />}
+      {scene === "nodes" && !(live && assistance) ? (
         live ? (
           <BlockGraph houses={state!.profiles.map(p => ({ id: p.id, name: p.name, lat: p.lat, lng: p.lng, status: "waiting", note: "Stored directory profile; current whereabouts unverified." }))} liveEdges={directoryEdges(state!, liveCase?.id ?? null)} calls={liveGraph} selectedId={liveSelected} onSelect={setLiveSelected} />
         ) : (
@@ -426,7 +433,7 @@ export function App() {
         <>
           {tab === "map" ? (
             <>
-              <LiveStats state={state} caseId={liveCase?.id ?? 0} />
+              {!assistance && <LiveStats state={state} caseId={liveCase?.id ?? 0} />}
               <aside className="right">
                 <CaseCard
                   state={state}
@@ -441,7 +448,7 @@ export function App() {
                   <article className="glass person">
                     <p className="kicker">{LIVE_STATUS[livePerson.status]}</p>
                     <h3>{livePerson.name}</h3>
-                    <p>{`Stored coordinates: ${livePerson.lat}, ${livePerson.lng}`}</p>
+                    <p>{`${assistance ? "Incident coordinates" : "Stored coordinates"}: ${livePerson.lat}, ${livePerson.lng}`}</p>
                     <p>{livePerson.note}</p>
                   </article>
                 ) : null}

@@ -276,6 +276,10 @@ If attempt_id is supplied and non-empty, or {{system__call_direction}} is outbou
   numeric values may be null when unknown or corrected. Omit fields that did not change.
   Never infer location from directory coordinates or map a different place to a supplied ID.
   Ask one question at a time, naturally; don't repeat facts already in known_facts.
+  A suggested_location is an unconfirmed fictional starting point. Ask whether it is correct.
+  Only an explicit confirmation authorizes reporting its location_id. If corrected to another
+  supplied point, use that point; if unknown, report null. Never turn the roster position into
+  a confirmed fact silently, and never claim it is the person's real-world location.
 - Each new update uses a positive increasing sequence number starting at 1 for this call.
   Use next_sequence from the latest tool response when supplied. An exact retry MUST keep the same sequence and unchanged content. Include a short faithful
   account in text. Do not report a hypothesis as something the person said.

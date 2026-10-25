@@ -63,7 +63,8 @@ export const commitAssistancePlan = spacetimedb.reducer({ case_id:t.u64(), expec
   // Keep newly revoked permissions durable even when this model result is stale.
   if(reconcileContacts(ctx,args.case_id,s)){touch(s);write(ctx,args.case_id,s);return}
   if (s.revision !== Number(args.expected_revision) || s.planned_revision === s.revision) throw new SenderError('Stale coordinator plan')
-  applyPlan(s,JSON.parse(args.plan_json),now(ctx)); write(ctx,args.case_id,s)
+  try{applyPlan(s,JSON.parse(args.plan_json),now(ctx))}catch(error){throw new SenderError(error instanceof Error?error.message:'Invalid coordinator plan')}
+  write(ctx,args.case_id,s)
 })
 export const failAssistancePlan = spacetimedb.reducer({ case_id:t.u64(), expected_revision:t.u64(), message:t.string() }, (ctx,args) => {
   const {state:s} = read(ctx,args.case_id)
@@ -115,7 +116,7 @@ export const deliverAssistanceTask = spacetimedb.reducer({ attempt_id:t.u64(), p
   if (existing) return
   const task = s.tasks.find(t => t.profile_id === Number(a.profile_id) && t.status === 'pending' && t.due_at <= now(ctx) && (t.attempt_id === null || t.attempt_id === Number(a.id)))
   if (!task) return
-  taskInstruction(s,task) // Reject stale arrangement milestones before delivery.
+  try{taskInstruction(s,task)}catch(error){throw new SenderError(error instanceof Error?error.message:'Task is no longer available')} // Reject stale or held work.
   task.attempt_id=Number(a.id);task.status='delivered';task.delivered_at=now(ctx)
   addMessage(s,'Agent speaking with '+person(s,task.profile_id).name+' received: '+task.reason,now(ctx));write(ctx,a.support_case_id,s)
 })
@@ -135,7 +136,10 @@ export const assistanceOperator = spacetimedb.reducer({ case_id:t.u64(), command
       a.status='approved';a.updated_at=now(ctx)
       addTask(s,a.helper_id,'helper_accept',now(ctx),'Ask the helper to accept the approved proposal',a.id)
       addMessage(s,'You approved asking '+person(s,a.helper_id).name+' to help '+person(s,a.recipient_id).name+'. Acceptance is still pending.',now(ctx),'decision')
-    } else cancelArrangement(s,a,typeof input.reason === 'string' ? text(input.reason,'reason',1000) : 'The dispatcher withdrew the proposal',now(ctx))
+    } else {
+      cancelArrangement(s,a,typeof input.reason === 'string' ? text(input.reason,'reason',1000) : 'The dispatcher withdrew the proposal',now(ctx))
+      for(const proposal of s.arrangements.filter(item=>item.status==='proposed'))cancelArrangement(s,proposal,'Recompare remaining unapproved choices after the dispatcher withdrew an arrangement',now(ctx),true)
+    }
   } else if (input.action === 'pause' || input.action === 'resume') {
     s.paused=input.action==='pause'
     const policy=JSON.parse(c.policy_json) as InformationPolicy

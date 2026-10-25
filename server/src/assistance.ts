@@ -56,7 +56,7 @@ export async function nextVoiceTask(caseId:number,attemptId:number,callId:string
   const task=state.tasks.find(t=>t.attempt_id===attemptId&&t.status==='delivered')
   const p=state.people.find(p=>state.tasks.some(t=>t.attempt_id===attemptId&&t.profile_id===p.profile_id))
   if(p && (!p.consent || p.contact_blocked))return {status:'unavailable',next_sequence,instruction:'No further task is authorized for this participant. Do not disclose or repeat a previous arrangement instruction. Finish normally.'}
-  return task?{status:'task',next_sequence,task_id:task.id,kind:task.kind,instruction:taskInstruction(state,task),known_facts:person(state,task.profile_id).facts,locations:state.scenario.locations.map(l=>({id:l.id,label:l.label})),revision:state.revision}
+  return task?{status:'task',next_sequence,task_id:task.id,kind:task.kind,instruction:taskInstruction(state,task),suggested_location:state.scenario.locations.find(l=>l.id===p?.start_location_id)??null,known_facts:person(state,task.profile_id).facts,locations:state.scenario.locations.map(l=>({id:l.id,label:l.label})),revision:state.revision}
     :{status:'waiting',next_sequence,instruction:'No further question is ready. Do not promise a callback or keep the person waiting. If they are finished, submit the final report and end normally. Another authorized task can be handled by a later call.',known_facts:p?.facts??{},revision:state.revision}
 }
 const chats=new Map<string,Promise<unknown>>()

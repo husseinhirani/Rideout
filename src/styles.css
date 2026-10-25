@@ -1673,3 +1673,47 @@ button.tile:hover { transform: translateY(-3px); box-shadow: 0 16px 34px rgba(17
   .assistance-task-list li { flex-direction: column; }
   .assistance-board.compact { max-height: 480px; }
 }
+
+/* The incident map uses the coordinator's coordinates, independent of stored home addresses. */
+.incident-map-on { background: #ecece8; }
+.incident-map-on .brand strong, .incident-map-on .top-end > time { color: #111214; }
+.incident-map-on .map-controls { display: none; }
+.incident-map-scene { position: absolute; inset: 96px 404px 22px 22px; overflow-y: auto; border-radius: 25px; background: #fff; padding: 24px; }
+.incident-geography { display: flex; flex-direction: column; gap: 12px; min-width: 0; color: #1a1e16; }
+.incident-geography > header { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.incident-geography h3 { margin: 0; font-size: 22px; letter-spacing: -.03em; }
+.incident-geography header p { margin: 5px 0 0; font-size: 12px; color: #727767; }
+.incident-north { font-size: 14px; font-weight: 650; }
+.incident-geography-map { display: block; width: 100%; min-height: 240px; max-height: 58vh; border-radius: 18px; }
+.incident-geography.compact .incident-geography-map { max-height: 360px; }
+.incident-person-marker { cursor: pointer; outline: none; }
+.incident-person-marker:focus > circle { stroke: #1e6aaf; stroke-width: 4; }
+.incident-map-key { display: flex; flex-wrap: wrap; gap: 10px 16px; font-size: 11px; color: #606957; }
+.incident-map-key span { display: flex; align-items: center; gap: 6px; }
+.incident-map-key i { width: 11px; height: 11px; border-radius: 50%; border: 1px solid #606957; }
+.incident-map-key .start { border-style: dashed; background: white; }
+.incident-map-key .reported { background: #d5f45c; }
+.incident-map-key .proposal, .incident-map-key .agreed { width: 18px; height: 0; border: 0; border-top: 2px dashed #bf6c30; border-radius: 0; }
+.incident-map-key .agreed { border-top-style: solid; border-top-color: #4c6d24; }
+.incident-person-list { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
+.incident-person-list button { display: flex; align-items: center; gap: 10px; padding: 11px; background: #f4f4ef; border: 1px solid transparent; border-radius: 13px; color: #25291e; text-align: left; cursor: pointer; }
+.incident-person-list button.selected { border-color: #8a9f3a; background: #f5f9df; }
+.incident-person-list button > b { display: grid; place-items: center; width: 25px; height: 25px; border-radius: 50%; background: white; flex: none; font-size: 12px; }
+.incident-person-list button > span { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.incident-person-list strong { font-size: 13px; }
+.incident-person-list small { font-size: 11px; line-height: 1.4; color: #727767; }
+.incident-selected-location { padding: 12px; border-radius: 12px; background: #f4f4ef; font-size: 12px; line-height: 1.5; margin: 0; }
+.incident-access-key { display: flex; flex-wrap: wrap; gap: 7px; font-size: 10px; color: #68705c; }
+.incident-access-key span { background: #f4f4ef; border-radius: 9px; padding: 6px 8px; }
+.incident-map-note { font-size: 11px; line-height: 1.5; color: #727767; margin: 0; }
+@media (max-width: 1000px) {
+  .incident-map-scene { right: 22px; bottom: 22px; }
+  .incident-map-on:not(.checks-on) > .right { display: none; }
+}
+@media (max-width: 650px) {
+  .incident-map-scene { padding: 16px; inset: 130px 12px 12px; }
+  .incident-person-list { grid-template-columns: 1fr; }
+  .incident-geography-map { min-height: 200px; }
+}
+.incident-map-tools { display: flex; gap: 12px; align-items: center; flex: none; }
+.incident-map-tools button { border: 1px solid #dce0d1; border-radius: 20px; padding: 7px 10px; background: #fff; color: #4b573c; font: inherit; font-size: 11px; cursor: pointer; }

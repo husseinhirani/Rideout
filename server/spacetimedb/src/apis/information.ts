@@ -4,7 +4,7 @@ import { nextCaseId, nextIncidentId } from "../ids"
 import { canonicalJson, commandId, contactEligibility, contactScope, informationPolicy, matchesScope, normalizePhone, object, profilePreferences, revision, text, id, areaFilter, type ContactScope, type InformationPolicy, type ProfileSettingsRow } from "../../../shared/information"
 import { disclosureFacts, parseInformationPlan, type DisclosureFact } from "../../../shared/information-plan"
 import { incomingCandidateIds, parseInformationIncomingAssessment, type InformationIncomingProposal, type InformationIncomingResolution } from "../../../shared/information-incoming"
-import { EVACUATION_DRILL, SIMULATED_NEIGHBORS } from '../../../mock/evacuation'
+import { EVACUATION_DRILL, SIMULATED_NEIGHBORS, DRILL_STARTING_LOCATIONS } from '../../../mock/evacuation'
 import { addTask, emptyFacts, taskInstruction, type AssistanceState } from '../../../shared/assistance'
 type Ctx = ReducerCtx<typeof spacetimedb.schemaType>
 const now = (ctx: Ctx) => Number(ctx.timestamp.microsSinceUnixEpoch) / 1000
@@ -306,6 +306,7 @@ function drillProfiles(ctx: Ctx, input: Record<string, unknown>) {
     if (!/^\+[1-9]\d{7,14}$/.test(phone) || phone.startsWith("+1555555")) return fail("A real test phone is required")
     if (destinations.has(phone)) return fail("Each drill participant must have a different phone")
     destinations.add(phone)
+    if(recipient.location_id!==undefined && !EVACUATION_DRILL.locations.some(l=>l.id===recipient.location_id))return fail('Choose a supplied drill location')
     const matches = [...ctx.db.profile.iter()].filter(p => normalizePhone(p.phone) === phone)
     if (matches.length > 1) return fail("Multiple profiles use a participant phone; resolve them before starting")
     let profile = matches[0]
@@ -351,7 +352,7 @@ export const startWildfireDrill = spacetimedb.reducer({ command_id: t.string(), 
   createCase(ctx, { command_id: args.command_id + ":case", payload_json: canonicalJson(creation), actor: args.actor })
   const created = JSON.parse(ctx.db.operatorCommand.command_id.find(args.command_id + ":case")!.result_json)
   const state: AssistanceState = { case_id:created.support_case_id,revision:1,planned_revision:0,paused:false,
-    scenario:EVACUATION_DRILL,people:people.map((p,index)=>({profile_id:Number(p.id),name:p.name,mode:index < realPeople.length ? 'real' : 'simulated',facts:emptyFacts(),sources:{},consent:true,unreachable:false,...(index < realPeople.length ? {} : {simulation:SIMULATED_NEIGHBORS[index-realPeople.length].facts})})),
+    scenario:EVACUATION_DRILL,people:people.map((p,index)=>({profile_id:Number(p.id),name:p.name,mode:index < realPeople.length ? 'real' : 'simulated',...(index < realPeople.length ? {start_location_id: ((input.participants as {location_id?:string}[]|undefined)?.[index]?.location_id ?? DRILL_STARTING_LOCATIONS[index].id)} : {}),facts:emptyFacts(),sources:{},consent:true,unreachable:false,...(index < realPeople.length ? {} : {simulation:SIMULATED_NEIGHBORS[index-realPeople.length].facts})})),
     findings:[],tasks:[],arrangements:[],messages:[{id:'started:'+created.support_case_id,from:'facilitator',text:'I’m checking who needs assistance and who may be able to help. Proposed arrangements will need your approval. This is a fictional drill.',at:now(ctx),kind:'update'}],review:null,failure_count:0,retry_at:0,error:'',processed_reports:[] }
   ctx.db.assistanceSession.insert({case_id:BigInt(created.support_case_id),revision:1n,state_json:JSON.stringify(state)})
   const attemptIds: number[] = []

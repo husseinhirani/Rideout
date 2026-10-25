@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { IncidentMap, arrangementDistance, formatDistance } from "./IncidentMap";
+import { participantLocation } from "../server/shared/spatial";
 import type { Arrangement, AssistanceState, Participant, Task } from "../server/shared/assistance";
 import type { CoordinatorAction } from "./updated-ui-api";
 import { Icon, type Opener } from "./Dashboard";
@@ -76,6 +78,7 @@ export function AssistanceBoard({ session, disabled, closed, now, compact = fals
       <header><span className="arrangement-stage">{STAGES[arrangement.status]}</span><small>{new Date(arrangement.updated_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</small></header>
       <h3>{name(arrangement.helper_id)} <span aria-label="helping">→</span> {name(arrangement.recipient_id)}</h3>
       <p>{arrangement.reason}</p>
+      {arrangementDistance(session, arrangement) !== null && <p className="assistance-note">Approximately {formatDistance(arrangementDistance(session, arrangement)!)} apart in a straight line · not a driving distance</p>}
       <ol className="arrangement-milestones" aria-label="Arrangement progress">
         <li className={arrangement.status !== "proposed" && arrangement.status !== "cancelled" ? "done" : ""}>Approved</li>
         <li className={arrangement.helper_accepted ? "done" : ""}>Helper accepted</li>
@@ -100,11 +103,12 @@ export function AssistanceBoard({ session, disabled, closed, now, compact = fals
       {onOpen && <button className="assistance-more" type="button" onClick={onOpen}>View people, tasks and incident details <Icon name="chevron" /></button>}
     </>}
     {!compact && <>
+      <IncidentMap session={session} compact />
       <section className="assistance-section"><h3>People and reported needs</h3><p className="assistance-note">Reports remain attributed to their source. Unknown information is left unknown.</p>
         <div className="assistance-people">{session.people.map(p => <article key={p.profile_id}>
           <header><b>{p.name}</b>{p.mode === "simulated" && <small>Simulated</small>}</header>
           <strong className={p.unreachable || p.contact_blocked || p.facts.needs_transport ? "attention" : ""}>{personStatus(p, session)}</strong>
-          <p>{session.scenario.locations.find(l => l.id === p.facts.location_id)?.label ?? "Location not confirmed"}</p>
+          <p>{participantLocation(session, p).location?.label ?? "Location unknown"}{!participantLocation(session, p).confirmed && participantLocation(session, p).location ? " · simulation start, unconfirmed" : ""}</p>
           {p.contact_blocked && <p>{p.contact_blocked}</p>}
           <div className="assistance-facts">
             {p.facts.party_size !== null && <span>{p.facts.party_size} passenger{p.facts.party_size === 1 ? "" : "s"}</span>}
