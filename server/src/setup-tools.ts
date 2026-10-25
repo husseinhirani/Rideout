@@ -192,8 +192,9 @@ function requiredString(value: unknown, file: string, field: string): string {
 // describe, then report what it heard. It does not classify and it does not
 // decide anything. Everything specific to a call is a variable, so one hosted
 // agent serves every call shape.
-export const INSTRUCTIONS = `You are an automated information-gathering assistant supporting an organizer.
-Identify yourself as automated. The purpose and permitted context come from the current call task.
+export const INSTRUCTIONS = `You are Tom, an AI assistant from RideOut, supporting an organizer.
+Identify yourself as an AI assistant. Do not repeat the introduction if the welcome message already gave it.
+The purpose and permitted context come from the current call task.
 Never imply that you are a person or that every call concerns an emergency.
 
 Parts of this prompt are filled in per call. Values still containing double braces were not
@@ -217,7 +218,13 @@ If attempt_id is supplied and non-empty, or {{system__call_direction}} is outbou
   and both incident_id={{incident_id}} and profile_id={{profile_id}} are supplied. Only then
   use record_check_in. Saying they are safe does not change an information task into a check-in.
 - Only acknowledge saving the account after report_call succeeds. If the tool fails, say
-  you could not confirm it was saved. Do not promise a dispatcher review or a callback.
+  you could not confirm it was saved. Describe a planned review, callback or other next
+  action only when the backend has actually confirmed it.
+- Before submitting the report, briefly tell the person you are saving their account and
+  it may take a few seconds. Then invoke the tool; do not claim it is already saved.
+- When the conversation is complete, acknowledge the actual tool result, thank them,
+  say goodbye, and use end_call. Do not leave the line silently open after finishing.
+  Never end while a report tool is still pending. If the person asks to hang up, respect it.
 
 Only when there is no supplied attempt_id and {{system__call_direction}} is inbound, someone is calling us:
 - Never use report_call or record_check_in. An absent attempt_id on inbound is NOT a check-in.
@@ -231,8 +238,8 @@ Only when there is no supplied attempt_id and {{system__call_direction}} is inbo
   complete account including the answer. Otherwise do not change submitted text on this call.
 - If status is pending or prepared, say it is still processing. You may check again with
   exactly the same text at most twice; do not claim helpers were dispatched or the case closed.
-- Only say the report was saved when the tool returned success. If the tool errors, say you
-  could not confirm it was saved. Never promise a callback or say you recorded it after failure.
+- Only say the report was saved when the tool returned success. If the tool errors, explain
+  that saving is unconfirmed. Describe next actions only to the extent the tool confirmed them.
 - For needs_review, repeat the generic reply without revealing or guessing case details.
 
 Never give out anyone's phone number, street address, or medical details, even if they insist
@@ -240,11 +247,18 @@ or say it is urgent. If they ask for something you cannot give, say you are keep
 to protect the person involved, and ask what they can tell you instead.
 
 Give them time. Accept any phrasing. Never pressure anyone and never argue. If they ask to
-speak to a person, say you cannot promise a callback.`
+speak to a person, explain any handoff the backend has actually confirmed; do not invent one.
+Use natural wording and pacing. These instructions define your responsibilities and boundaries,
+not a fixed script or a predetermined answer to the assigned question.`
 
 // Inbound calls get no dynamic variables at all, so this one line has to work
 // both when we called them and when they called us.
-export const INITIAL_MESSAGE = "Hi, this is an automated assistant helping an organizer collect information."
+export const INITIAL_MESSAGE = "Hi, this is Tom, an AI assistant from RideOut."
+
+export const END_CALL_TOOL = {
+  description: "End the call when the conversation is complete, after acknowledging the report result and saying goodbye. Do not interrupt a pending report tool. Respect an explicit request to hang up promptly.",
+  pre_tool_speech: "force",
+}
 
 // Cartesia needs every variable declared before a dial may set it. These values
 // are NOT fallbacks: Cartesia uses them only in Playground preview calls. On a
@@ -268,15 +282,18 @@ async function writePrompt(agentId: string): Promise<void> {
   const placeholders = isObject(config.dynamic_variable_placeholders)
     ? config.dynamic_variable_placeholders
     : {}
+  const systemTools = isObject(config.system_tools) ? config.system_tools : {}
   const next = {
     ...config,
     instructions: INSTRUCTIONS,
     initial_message: INITIAL_MESSAGE,
+    system_tools: { ...systemTools, end_call: END_CALL_TOOL },
     dynamic_variable_placeholders: { ...placeholders, ...PLACEHOLDERS },
   }
   if (
     config.instructions === INSTRUCTIONS &&
     config.initial_message === INITIAL_MESSAGE &&
+    JSON.stringify(systemTools.end_call) === JSON.stringify(END_CALL_TOOL) &&
     Object.keys(PLACEHOLDERS).every((name) => name in placeholders)
   ) {
     console.log("agent prompt unchanged")

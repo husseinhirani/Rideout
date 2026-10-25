@@ -26,6 +26,14 @@ interpreter: inbound processing remains disabled for this baseline and is tracke
 in #19. A natural correction/refusal is reported as information, not an instruction
 to switch workflows. Live retry results are recorded in #27.
 
+The phone identity is Tom, an AI assistant from RideOut. The prompt explains report
+submission before waiting and acknowledges only the actual tool result. Setup
+enables Cartesia's built-in `end_call`, preserving other system-tool settings, so
+Tom can say goodbye and end a completed conversation. This does not shorten the
+legacy handler's interpretation-before-response latency; durable early receipt
+is part of #22. Hang-up configuration readback and actual live hang-up are separate
+verification steps.
+
 Shared vocabulary, workflow, tech stack, architecture, and decisions. Keep this in sync with the code.
 
 Status markers used below: **Decided** (agreed), **Proposed** (suggested, needs confirmation), **Open** (not decided).
