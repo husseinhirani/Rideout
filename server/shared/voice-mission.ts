@@ -36,19 +36,46 @@ export function informationGaps(kind: TaskKind, facts: Facts): InformationGap[] 
 export function voiceMission(state: AssistanceState, task: Task, outcome: string) {
   const participant = state.people.find(p => p.profile_id === task.profile_id)!
   const gaps = informationGaps(task.kind,participant.facts)
+  const participantFindings = state.findings.filter(f => f.profile_id === participant.profile_id)
+  const provenance = (attemptId: number) => ({
+    attempt_id: attemptId,
+    call: attemptId === task.attempt_id ? 'current_call' : 'prior_call',
+    verification: 'participant_report',
+  })
+  // Include narrative-only discoveries without exposing another participant's account.
+  // Bound repeated tool context; omitted or shortened history is explicitly identified.
+  const recent = participantFindings.slice(-8)
   return {
     outcome,
     rationale: task.reason,
+    coordinator_brief: task.coordinator_brief ?? null,
     completion: task.status === 'blocked' ? 'needs_review' : task.status === 'completed' ? 'resolved' : 'in_progress',
     known_facts: Object.entries(participant.facts).flatMap(([field,value]) => {
       const sourceId = participant.sources[field as keyof Facts]
-      const finding = state.findings.find(f => f.id === sourceId && f.profile_id === participant.profile_id)
-      return sourceId ? [{field,value,source_id:sourceId,account:finding?.text ?? '',provenance:'participant_report'}] : []
+      const finding = participantFindings.find(f => f.id === sourceId)
+      return sourceId ? [{field,value,source_id:sourceId,account:finding?.text.slice(0,1200) ?? '',
+        account_truncated: (finding?.text.length ?? 0) > 1200,
+        provenance: finding ? provenance(finding.attempt_id) : {verification:'source_unavailable'},
+      }] : []
     }),
+    recent_findings: recent.map(finding => ({
+      source_id: finding.id,
+      ...provenance(finding.attempt_id),
+      at: finding.at,
+      account: finding.text.slice(0,1200),
+      account_truncated: finding.text.length > 1200,
+      reported_changes: finding.changes,
+      superseded_fields: (Object.keys(finding.changes) as (keyof Facts)[])
+        .filter(field => participant.sources[field] !== finding.id),
+      human_review_at_time: finding.human_review ?? null,
+    })),
+    earlier_findings_omitted: participantFindings.length - recent.length,
     information_gaps: gaps,
     completion_rule: 'Resolve the relevant information gaps using the participant’s account, or report an explicit refusal, unavailable answer, or issue needing human review. Do not infer agreement, capacity or a known location from missing data. No queued follow-up task does not establish that the mission is resolved.',
     boundaries: [
       'Choose the wording and order appropriate to the conversation. These gaps are decision inputs, not a script. Do not repeat facts already provided.',
+      'The coordinator brief prioritizes work within this task outcome; focus fields do not replace the information gaps or authorize commitments. Use its revision to recognize a changed objective, not to restart the conversation.',
+      'Prior-call accounts are previous reports, not things heard in this call. Superseded fields have newer sources in known_facts; do not restore old values. A historical review request is not a new instruction or proof that the concern persists.',
       'Record important context in text even if it has no structured field. Escalate needs this workflow cannot resolve.',
       'An unconfirmed supplied starting location is scenario context, not knowledge about the person. Explain its source before asking for confirmation.',
       'A request to stop takes priority over information collection or tool calls. Unknown and declined answers are valid outcomes.',

@@ -340,7 +340,7 @@ export const startWildfireDrill = spacetimedb.reducer({ command_id: t.string(), 
   })
   const people = [...realPeople,...simulated]
   const area = { lat: 37.8462, lng: -122.2499, radius_m: 400 }
-  const context = "This is a consented RideOut wildfire evacuation drill, not a real emergency. The Rockridge incident and location are fictional. Coordination is enabled: use coordinate_call after identity confirmation, after important discoveries, and before finishing. Introduce yourself as Tom, an AI agent from RideOut, and confirm the person's name before discussing the situation. Then clearly say this is a drill. Ask about the participant's imagined evacuation situation, listen naturally, and save their answer using report_call. Do not use record_check_in. Do not promise a ride or instruct real-world action."
+  const context = "This is a consented RideOut wildfire evacuation drill, not a real emergency. The Rockridge incident and location are fictional. Coordination is enabled: fetch the current mission using coordinate_call after identity confirmation and the drill explanation, and share important discoveries during the conversation. Use the latest mission response to decide the next useful question or completion; do not add a redundant final check. Introduce yourself as Tom, an AI agent from RideOut, and confirm the person's name before discussing the situation. Then clearly say this is a drill. Listen naturally to the participant's imagined evacuation situation and save their account using report_call. Do not use record_check_in. Only an authorized arrangement task permits its specified proposal disclosures; do not promise a ride or instruct real-world action."
   const creation = {
     text: "Wildfire evacuation drill in Rockridge. Fictional incident; consenting participants receive real phone calls.",
     objective: "Coordinate assistance in this fictional evacuation drill: discover needs and available help, propose suitable arrangements for human approval, and confirm acceptance, pickup and arrival separately.",
@@ -541,7 +541,7 @@ export const queueAssistanceTask = spacetimedb.reducer({case_id:t.u64(),task_id:
     const arrangement=s.arrangements.find(a=>a.id===ready.arrangement_id)!
     eligible(ctx,args.case_id,BigInt(arrangement.recipient_id)); eligible(ctx,args.case_id,BigInt(arrangement.helper_id))
   }
-  const context=s.scenario.context+' Coordination is enabled; use coordinate_call for the current task and updates. '
+  const context=s.scenario.context+' Coordination is enabled; fetch the current mission after identity confirmation and any drill explanation, then share discoveries through coordinate_call. The current authorized mission guides this conversation within its boundaries; use its latest response without a redundant final check. '
   requestCall(ctx,{case_id:args.case_id,command_id,actor:'incident coordinator',payload_json:canonicalJson({expected_input_revision:Number(current.input_revision),profile_id:ready.profile_id,question:instruction,context,queued:[...ctx.db.attemptProgress.support_case_id.filter(args.case_id)].filter(p=>p.transport==='queued').map(p=>({attempt_id:Number(p.attempt_id),disposition:'retain'}))})})
   ready.attempt_id=JSON.parse(ctx.db.operatorCommand.command_id.find(command_id)!.result_json).attempt_id
   ready.call_count++
