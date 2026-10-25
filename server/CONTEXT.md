@@ -43,8 +43,11 @@ two predefined locations. Its agreed scope is GitHub issue #2. Ticket #3 adds an
 isolated planning harness (`npm run demo:coordinator`); it does not activate
 automatic outreach in the HTTP server. Follow-up becomes due 10 seconds after
 acceptance, with at most two outbound calls per helper and parent confirmation
-required before closure. The existing runtime workflow below remains unchanged
-until the durable-loop and verified phone-integration tickets land.
+required before closure. Ticket #5 adds opt-in automatic coordination (`AUTO_COORDINATE=1`) to the
+HTTP backend using persisted attempts, notes and progress records. It uses the
+same worker with simulated or real calls. Phone intake, unsolicited updates and
+parent-confirmed closure still require ticket #6. The workflow below describes
+legacy cases when automatic coordination is disabled.
 
 One neighborhood, one simulated fire, one complete loop:
 

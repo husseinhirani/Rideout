@@ -58,6 +58,53 @@ export type NoteRow = {
   at: string
 }
 
+export type CaseProgressRow = {
+  support_case_id: number
+  helper_profile_ids: number[]
+  input_revision: number
+  evaluated_revision: number
+  failure_count: number
+  retry_at_ms: number | null
+  blocked_reason: string
+}
+
+export type AttemptProgressRow = {
+  attempt_id: number
+  support_case_id: number
+  context: string
+  transport: "queued" | "dispatching" | "active" | "ended" | "unknown" | "cancelled"
+  claim_token: string
+  dispatch_error: string
+  claimed_at_ms: number | null
+  report_received: boolean
+  report_processed: boolean
+  raw_concern: string
+  report_received_at_ms: number | null
+  accepted_at_ms: number | null
+  review_consumed: boolean
+}
+
+export async function caseProgress(): Promise<CaseProgressRow[]> {
+  return (await query("SELECT * FROM case_progress")).map(row => ({
+    support_case_id: asId(row.support_case_id), helper_profile_ids: asIdList(row.helper_profile_ids),
+    input_revision: asId(row.input_revision), evaluated_revision: asId(row.evaluated_revision),
+    failure_count: asNumber(row.failure_count), retry_at_ms: optionalNumber(row.retry_at_ms),
+    blocked_reason: asString(row.blocked_reason),
+  }))
+}
+
+export async function attemptProgress(): Promise<AttemptProgressRow[]> {
+  return (await query("SELECT * FROM attempt_progress")).map(row => ({
+    attempt_id: asId(row.attempt_id), support_case_id: asId(row.support_case_id),
+    context: asString(row.context), transport: asString(row.transport) as AttemptProgressRow["transport"],
+    claim_token: asString(row.claim_token), claimed_at_ms: optionalNumber(row.claimed_at_ms),
+    dispatch_error: optionalString(row.dispatch_error) ?? "",
+    report_received: row.report_received === true, report_processed: row.report_processed === true,
+    raw_concern: asString(row.raw_concern), report_received_at_ms: optionalNumber(row.report_received_at_ms),
+    accepted_at_ms: optionalNumber(row.accepted_at_ms), review_consumed: row.review_consumed === true,
+  }))
+}
+
 export async function callReducer(name: string, args: unknown[]): Promise<void> {
   const response = await spacetimeFetch("/call/" + encodeURIComponent(reducerName(name)), {
     method: "POST",

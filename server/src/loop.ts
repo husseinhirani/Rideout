@@ -2,14 +2,19 @@ import {
   brief,
   interpretAnswer,
   interpretIncident,
+  interpretCoordinationAnswer,
   plan,
+  planStrict,
   type Brief,
   type IncidentSketch,
   type PlannedCall,
 } from "./agent"
-import { placeCall, placeCheckInCall } from "./cartesia"
+import { getCall, placeCall, placeCheckInCall } from "./cartesia"
+import { createCoordinatorWorker, readStableCoordinationState, type CoordinationState } from "./coordinator-worker"
 import {
   attempts,
+  attemptProgress,
+  caseProgress,
   callReducer,
   incidentPeople,
   incidents,
@@ -24,14 +29,9 @@ import {
 } from "./db"
 import { ServiceError } from "./service"
 
-// The coordinator loop. Claude decides who to call and what to ask, Cartesia
-// does the talking, the dispatcher decides what happens. Two rules keep this
-// small:
-//
-//   1. Nothing blocks on a call in flight. A report lands, it becomes notes,
-//      the brief regenerates. Other calls keep ringing.
-//   2. Dispatcher input re-plans. Everything else only adds facts. That is
-//      enforced by which function is called, not by a prompt.
+// Legacy cases replan on dispatcher input. Opt-in coordinated cases instead use
+// the durable worker below; both paths share dial() and the provider adapter.
+// A report is evidence, not proof that the phone conversation has ended.
 
 const NO_ANSWER_MS = 90_000
 const E164 = /^\+[1-9]\d{1,14}$/
@@ -49,16 +49,48 @@ const CONCERN = "concern"
 
 const EMPTY_BRIEF: Brief = { summary: "", suggestions: [] }
 
+const automatic = () => process.env.AUTO_COORDINATE === "1"
+async function readCoordinationState(): Promise<CoordinationState> {
+  return readStableCoordinationState(caseProgress, async () => {
+    const [cases, allIncidents, allProfiles, allAttempts, allNotes, attempt_progress] = await Promise.all([
+      supportCases(), incidents(), profiles(), attempts(), notes(), attemptProgress(),
+    ])
+    return {cases,incidents:allIncidents,profiles:allProfiles,attempts:allAttempts,notes:allNotes,attempt_progress}
+  })
+}
+const coordinationWorker = createCoordinatorWorker({
+  read: readCoordinationState, reduce: callReducer, plan: planStrict,
+  interpret: interpretCoordinationAnswer, now: Date.now, inspect: getCall,
+  dial: (attempt, profile, context, claimToken) => dial({attemptId:attempt.id,profile,ask:attempt.ask,context,claimToken}),
+})
+let coordinatorTimer: ReturnType<typeof setInterval> | undefined
+export function startCoordinatorWorker(): void {
+  if (!automatic() || coordinatorTimer) return
+  coordinatorTimer = setInterval(() => background("coordinator scan", coordinationWorker.tick()), 1_000)
+  coordinatorTimer.unref()
+  background("coordinator startup", coordinationWorker.tick())
+}
+
+function configuredHelperIds(): number[] {
+  const ids = (process.env.COORDINATOR_HELPER_IDS ?? "").split(",").map(value => Number(value.trim()))
+  if (ids.length !== 2 || new Set(ids).size !== 2 || ids.some(id => !Number.isSafeInteger(id) || id <= 0)) {
+    throw new Error("AUTO_COORDINATE requires COORDINATOR_HELPER_IDS with exactly two profile IDs")
+  }
+  return ids
+}
+
 // ------------------------------------------------------------------ reading
 
 export async function getState(): Promise<Record<string, unknown>> {
-  const [allProfiles, allIncidents, people, cases, allAttempts, allNotes] = await Promise.all([
+  const [allProfiles, allIncidents, people, cases, allAttempts, allNotes, coordination, attempt_progress] = await Promise.all([
     profiles(),
     incidents(),
     incidentPeople(),
     supportCases(),
     attempts(),
     notes(),
+    caseProgress(),
+    attemptProgress(),
   ])
   return {
     simulate: process.env.SIMULATE === "1",
@@ -68,6 +100,8 @@ export async function getState(): Promise<Record<string, unknown>> {
     cases,
     attempts: allAttempts,
     notes: allNotes,
+    coordination,
+    attempt_progress,
   }
 }
 
@@ -248,6 +282,10 @@ export async function closeCase(
 }
 
 async function startCase(supportCaseId: number): Promise<void> {
+  if (automatic()) {
+    await callReducer("enableCoordination", [supportCaseId, configuredHelperIds()])
+    startCoordinatorWorker()
+  }
   await runPlan(supportCaseId, "")
   await refreshBriefs(supportCaseId)
 }
@@ -284,9 +322,31 @@ export async function onReport(input: {
   concern: string
 }): Promise<{ support_case_id: number }> {
   if (input.answer.trim().length === 0) throw new ServiceError(400, "answer is required")
+  if (input.attempt_id !== null) {
+    const progress = (await attemptProgress()).find(row => row.attempt_id === input.attempt_id)
+    if (progress) {
+      const attempt = (await attempts()).find(row => row.id === input.attempt_id)
+      if (!attempt) throw new ServiceError(404, "Attempt not found")
+      if (progress.report_received && (attempt.answer !== input.answer || progress.raw_concern !== input.concern)) {
+        throw new ServiceError(409, "A different final report already exists for this attempt")
+      }
+      try {
+        await callReducer("receiveCoordinationReport", [input.attempt_id, input.answer, input.concern])
+      } catch (error) {
+        if (errorMessage(error).includes("different final report")) throw new ServiceError(409, "A different final report already exists for this attempt")
+        throw error
+      }
+      // The scanner resumes processing even if Node stops immediately after ACK.
+      // No Claude request or new call is awaited in this callback.
+      return {support_case_id: progress.support_case_id}
+    }
+  }
   const target = await resolveReport(input)
   if (!target) throw new ServiceError(404, "No case matches this call")
   const { supportCaseId, attempt } = target
+  if ((await caseProgress()).some(row => row.support_case_id === supportCaseId)) {
+    throw new ServiceError(409, "Coordinated inbound updates need an explicitly matched case; inbound integration is pending")
+  }
   const facts = await caseFacts(supportCaseId)
   const learned = await interpretAnswer(
     {
@@ -367,6 +427,10 @@ async function runPlan(
   supportCaseId: number,
   instruction: string,
 ): Promise<{ planned: number; reason: string }> {
+  if ((await caseProgress()).some(row => row.support_case_id === supportCaseId)) {
+    if (automatic()) background("automatic plan", coordinationWorker.tick())
+    return {planned: 0, reason: automatic() ? "Automatic coordination queued." : "Automatic coordination is paused."}
+  }
   const facts = await caseFacts(supportCaseId)
   if (facts.supportCase.status === CLOSED) return { planned: 0, reason: "Case is closed." }
   if (facts.candidates.length === 0) {
@@ -437,7 +501,22 @@ function choosePicks(calls: PlannedCall[], candidates: ProfileRow[], goal: strin
   return picks
 }
 
-async function dial(item: Pick & { attemptId: number }): Promise<void> {
+async function dial(item: Pick & { attemptId: number; claimToken?: string }): Promise<void> {
+  if (item.claimToken) {
+    let callId = ""
+    try {
+      if (!isDialable(item.profile.phone)) throw new Error("Destination is not dialable in this mode")
+      callId = await placeCall(item.profile.phone, {
+        attempt_id:String(item.attemptId),person_name:item.profile.name,ask:item.ask,context:item.context,
+      })
+      await callReducer("recordCoordinationDispatch", [item.attemptId,item.claimToken,callId,""])
+    } catch (error) {
+      // The provider may have accepted the request; preserve uncertainty and any
+      // known call id instead of treating an exception as an unanswered call.
+      await callReducer("recordCoordinationDispatch", [item.attemptId,item.claimToken,callId,errorMessage(error)])
+    }
+    return
+  }
   try {
     const callId = await placeCall(item.profile.phone, {
       attempt_id: String(item.attemptId),
@@ -470,6 +549,7 @@ async function expire(attemptId: number): Promise<void> {
 // ------------------------------------------------------------------- briefs
 
 async function refreshBriefs(supportCaseId: number): Promise<void> {
+  if ((await caseProgress()).some(row => row.support_case_id === supportCaseId)) return
   const facts = await caseFacts(supportCaseId)
   const result = await brief(
     {
@@ -502,6 +582,8 @@ async function refreshIncidentBrief(incidentId: number): Promise<void> {
   const incident = (await incidents()).find((row) => row.id === incidentId)
   if (!incident) return
   const cases = (await supportCases()).filter((row) => row.incident_id === incidentId)
+  const coordinated = new Set((await caseProgress()).map(row => row.support_case_id))
+  if (cases.some(row => coordinated.has(row.id))) return
   const people = (await incidentPeople()).filter((row) => row.incident_id === incidentId)
   const byId = new Map((await profiles()).map((row) => [row.id, row]))
   const result = await brief(
