@@ -4,6 +4,31 @@ Shared vocabulary, workflow, tech stack, architecture, and decisions. Keep this 
 
 Status markers used below: **Decided** (agreed), **Proposed** (suggested, needs confirmation), **Open** (not decided).
 
+## Coordinator fixture slice (issue #3)
+
+`src/coordinator.ts` builds planning context and validates a complete proposal
+against a supplied snapshot. `src/demo-coordinator.ts` runs five independent
+fictional snapshots from `mock/coordinator.ts`: initial outreach, not-yet-due
+follow-up, new sighting at the due checkpoint, possible find, and closed case.
+These snapshot types are internal harness inputs, not a new HTTP/provider schema.
+
+The agent-led demo permits two overlapping helper calls, a 10-second review delay
+after acceptance and at most two outbound attempts per helper. Unknown or active
+transport blocks another call to that destination. A report does not imply the
+transport ended. Invalid proposals reject the entire call set without substituting
+another helper. Closed snapshots bypass planning; possible-find evidence alone
+does not close an open snapshot. Phone fields are omitted from planner context;
+free-text reports are still untrusted data, not an implemented privacy filter.
+
+`planStrict()` reuses the existing plan schema and SDK path but propagates failure
+instead of using a fallback. The harness never imports Cartesia or the database,
+and never dials or writes rows. Scripted mode illustrates policy with fixed output;
+real mode calls Claude. Neither mode implements durable event ingestion, timers,
+revision checks or verified parent identity. Those belong to subsequent tickets.
+
+The HTTP runtime described below is still the baseline behavior. This slice does
+not wire the new evaluator into `runPlan()` or change the hosted phone contracts.
+
 ## 1. Glossary
 
 Use these terms exactly in code, comments, UI copy, and docs.

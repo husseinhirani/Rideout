@@ -38,6 +38,23 @@ export async function ask<T>(options: AskOptions<T>): Promise<T> {
   }
 }
 
+// Bounded coordinator requests must distinguish model failure from a real plan.
+// Existing callers can still explicitly use ask() with their legacy fallback.
+export async function askStrict<T>(options: Omit<AskOptions<T>, "fallback">): Promise<T> {
+  const reply = await anthropic().messages.parse({
+    model: MODEL,
+    max_tokens: MAX_TOKENS,
+    thinking: { type: "adaptive" },
+    system: options.system,
+    output_config: { format: { type: "json_schema", schema: options.schema } },
+    messages: [{ role: "user", content: JSON.stringify(options.input) }],
+  }, { timeout: 60_000, maxRetries: 0 })
+  if (reply.stop_reason !== "end_turn" || reply.parsed_output == null) {
+    throw new Error("Claude returned no complete structured output")
+  }
+  return reply.parsed_output as T
+}
+
 export function objectSchema(
   properties: Record<string, unknown>,
   required: string[],

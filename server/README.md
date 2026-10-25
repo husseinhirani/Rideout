@@ -1,5 +1,34 @@
 # Running the server
 
+## Coordinator demo without phone/database setup
+
+From `server/`, install dependencies with `npm ci`, then run:
+
+```bash
+npm run demo:coordinator -- --scripted
+npm test
+npm run check
+```
+
+The scripted command uses fictional snapshots and fixed proposals. Expect two
+initial questions, no outreach at 9 seconds, a changed playground question at
+10 seconds after new evidence, an open possible-find case waiting for parent
+confirmation, and no outreach for the parent-confirmed closed case. These are
+independent snapshots, not a persisted event replay. It makes no network calls.
+
+To use real Claude with the same simulated communications, set
+`ANTHROPIC_API_KEY` in the environment or an existing local `.env`, then run:
+
+```bash
+npm run demo:coordinator
+```
+
+This uses the model already configured in `src/llm.ts`. It exits with an explicit
+failure on unavailable/invalid model output and never falls back to scripted
+calls. Compare the printed before/after questions to assess actual model behavior;
+a scripted pass is not evidence of model adaptation. Both modes leave the database,
+phone tools, live agent and tunnel untouched. No extra provider setup is needed.
+
 Design and vocabulary are in `DESIGN.md`. Conventions are in `CONTEXT.md`. This file is only
 how to start it and how to run a real phone call end to end.
 
