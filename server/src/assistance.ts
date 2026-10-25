@@ -41,7 +41,10 @@ export async function coordinateCall(body: unknown) {
 function voiceUpdate(input: Record<string,unknown>): VoiceUpdate | null {
   if(input.operation!=='update' && input.operation!=='check' && input.operation!=='finish')throw new ServiceError(400,'Invalid coordination operation')
   if(input.operation==='check')return null
-  const rawFacts=typeof input.facts_json==='string'?JSON.parse(input.facts_json):input.facts??{}
+  let rawFacts:unknown=input.facts??{}
+  if(typeof input.facts_json==='string'&&input.facts_json.trim()){
+    try{rawFacts=JSON.parse(input.facts_json)}catch{throw new ServiceError(400,'facts_json must be a JSON object, for example {"needs_transport":true}')}
+  }
   const result:VoiceUpdate={sequence:Number(input.sequence),text:typeof input.text==='string'?input.text:'',facts:rawFacts as VoiceUpdate['facts']}
   if(typeof input.task_id==='string'&&input.task_id)result.task_id=input.task_id
   if(input.result && input.result!=='pending')result.result=input.result as VoiceUpdate['result']
