@@ -1,5 +1,21 @@
 # design.md
 
+## Manual baseline console (issue #16)
+
+`GET /` serves the backend test console, separate from the product frontend.
+It shows configured profiles with masked phone numbers, backend mode/database,
+attempt and provider IDs, and report status separately from transport. Legacy
+attempts without progress rows explicitly have untracked transport; an absent
+report does not mean the phone is ringing. Connection loss retains the last
+snapshot, shows its age and disables mutations until the next successful poll.
+The close button explicitly says "Close case".
+
+Use a dedicated empty test database for the live baseline. Profile seeding refuses
+to change an already populated directory and never prints full phone numbers.
+Current product scope is GitHub #15; #27 records human test results. These console
+changes do not implement the later generic coordinator or establish a live
+provider pass.
+
 Shared vocabulary, workflow, tech stack, architecture, and decisions. Keep this in sync with the code.
 
 Status markers used below: **Decided** (agreed), **Proposed** (suggested, needs confirmation), **Open** (not decided).

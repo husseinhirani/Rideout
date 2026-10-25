@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>RideOut dispatcher</title>
+<title>RideOut backend test console</title>
 <style>
   :root { color-scheme: dark; }
   body {
@@ -54,6 +54,7 @@
     border-radius: 3px; padding: 5px 12px; font: inherit; cursor: pointer;
   }
   button:hover { background: #2c343b; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
   button.go { border-color: #3d6b4f; color: #8fd4a6; }
   .bar { display: flex; gap: 8px; margin-top: 8px; align-items: flex-start; }
   .err { background: #3a1f20; border: 1px solid #6b3134; color: #e4a1a3; padding: 6px 10px; border-radius: 3px; margin-bottom: 12px; }
@@ -68,21 +69,26 @@
 <body>
 <div class="wrap">
   <div class="top">
-    <h1>RideOut dispatcher</h1>
-    <span class="tag sim" id="sim" hidden>SIMULATE</span>
+    <h1>RideOut backend test console</h1>
+    <span class="tag" id="sim">MODE UNKNOWN</span>
     <span class="grow"></span>
     <span class="dot off" id="dot"></span>
     <span class="sub" id="dotText">connecting</span>
   </div>
 
   <div class="err" id="err" hidden></div>
+  <div class="sub" id="environment">Waiting for backend state. This console is separate from the product UI.</div>
+  <section>
+    <h2>Available profiles</h2>
+    <div class="body" id="profiles">Waiting for the database.</div>
+  </section>
 
   <section>
     <h2>What is happening?</h2>
     <div class="body">
       <textarea id="newIncident" rows="2" placeholder="7-year-old Ava Reyes missing near Loma Alta Park since 3pm"></textarea>
       <div class="bar">
-        <button class="go" id="openIncident">Open incident</button>
+        <button class="go" id="openIncident" disabled>Open incident</button>
         <span class="sub" id="newHint"></span>
       </div>
     </div>
@@ -100,6 +106,8 @@ let state = null
 let selectedIncident = null
 let selectedCase = null
 let busy = false
+let connected = false
+let lastSeenAt = 0
 
 const els = {
   sim: document.getElementById("sim"),
@@ -109,6 +117,8 @@ const els = {
   view: document.getElementById("view"),
   newIncident: document.getElementById("newIncident"),
   newHint: document.getElementById("newHint"),
+  environment: document.getElementById("environment"),
+  profiles: document.getElementById("profiles"),
 }
 
 // --------------------------------------------------------------- plumbing
@@ -119,6 +129,7 @@ function showError(message) {
 }
 
 async function post(path, body) {
+  if (!connected) throw new Error("Backend disconnected. Wait for a fresh state before making changes.")
   const response = await fetch(path, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -144,18 +155,46 @@ async function send(button, work) {
   } catch (error) {
     showError(error.message || "request failed")
   } finally {
-    if (button) { button.disabled = false; button.textContent = label }
+    if (button) button.textContent = label
     busy = false
+    updateControls()
   }
 }
 
 async function poll() {
-  const response = await fetch("/state")
+  const response = await fetch("/state", { signal: AbortSignal.timeout(10000) })
   if (!response.ok) throw new Error("state failed (" + response.status + ")")
   state = await response.json()
-  els.sim.hidden = !state.simulate
+  connected = true
+  lastSeenAt = Date.now()
+  els.sim.textContent = state.simulate ? "SIMULATED CALLS" : "REAL CALLS"
+  els.sim.classList.toggle("sim", state.simulate)
+  const mode = state.demo_mode || {}
+  els.environment.textContent = "Database: " + (mode.database || "not reported")
+    + " · Planning: " + (mode.scripted === true ? "SCRIPTED" : mode.scripted === false ? "Claude" : "not reported")
+    + " · Automatic coordination: " + (mode.auto_coordinate === true ? "on" : mode.auto_coordinate === false ? "off" : "not reported")
+  renderProfiles()
   els.dot.classList.remove("off")
-  els.dotText.textContent = "live"
+  els.dotText.textContent = "connected"
+  updateControls()
+}
+
+function updateControls() {
+  for (const button of document.querySelectorAll("button")) {
+    button.disabled = busy || !connected || button.dataset.locked === "true"
+  }
+}
+
+function renderProfiles() {
+  els.profiles.replaceChildren()
+  for (const profile of state.profiles || []) {
+    const line = el("div", "row")
+    const contacts = (profile.contact_profile_ids || []).map(personName).join(", ") || "none"
+    line.append(el("span", "name", "#" + profile.id + " " + profile.name))
+    line.append(el("span", "sub", (profile.phone ? "Phone ending " + profile.phone.slice(-4) : "No phone") + " · Contacts: " + contacts))
+    els.profiles.append(line)
+  }
+  if (!(state.profiles || []).length) els.profiles.textContent = "No profiles loaded."
 }
 
 // The poll must never eat half-typed text. Anything the dispatcher has
@@ -172,8 +211,10 @@ async function tick() {
     await poll()
     if (!busy && !typing()) render()
   } catch {
+    connected = false
     els.dot.classList.add("off")
-    els.dotText.textContent = "disconnected"
+    els.dotText.textContent = "disconnected" + (lastSeenAt ? " · last update " + Math.floor((Date.now() - lastSeenAt) / 1000) + "s ago" : "")
+    updateControls()
   }
 }
 
@@ -256,6 +297,7 @@ function render() {
   els.view.append(caseListSection(cases))
   const current = cases.find((row) => row.id === selectedCase)
   if (current) els.view.append(caseSection(current))
+  updateControls()
 }
 
 function incidentSection(incident, incidents, cases) {
@@ -298,12 +340,12 @@ function caseListSection(cases) {
     body.append(el("div", "muted", "no cases on this incident yet"))
   }
   for (const row of cases) {
-    const ringing = (state.attempts || [])
+    const pending = (state.attempts || [])
       .filter((item) => item.support_case_id === row.id && item.outcome === null).length
     const line = el("div", "row pick" + (row.id === selectedCase ? " sel" : ""))
     line.append(el("span", "name", personName(row.victim_profile_id)))
     line.append(el("span", "badge " + row.status, row.status.replace("_", " ")))
-    line.append(el("span", "grow sub", ringing > 0 ? ringing + " ringing" : ""))
+    line.append(el("span", "grow sub", pending > 0 ? pending + " without an interpreted report" : ""))
     line.onclick = () => { selectedCase = row.id; render() }
     body.append(line)
   }
@@ -323,16 +365,19 @@ function caseSection(current) {
   body.append(el("h2", "", "Calls"))
   if (calls.length === 0) body.append(el("div", "muted", "no calls placed yet"))
   for (const call of calls) {
-    const outcome = call.outcome || "ringing"
+    const outcome = call.outcome || "pending"
+    const progress = (state.attempt_progress || []).find(row => row.attempt_id === call.id)
     const line = el("div", "row")
     const who = el("span", "name", personName(call.profile_id))
     who.title = personPhone(call.profile_id)
     line.append(who)
-    line.append(el("span", "badge " + outcome, outcome.replace("_", " ")))
+    line.append(el("span", "badge " + outcome, "Report: " + (call.outcome ? outcome.replace("_", " ") : progress?.report_received ? "received; processing" : "not received")))
     const detail = el("span", "grow")
     const ask = el("div", "sub", call.ask)
     ask.title = call.ask
     detail.append(ask)
+    detail.append(el("div", "sub", "Attempt #" + call.id + " · Provider: " + (call.call_id || "not recorded")
+      + " · Transport: " + (progress ? progress.transport : "not tracked by legacy call path")))
     if (call.answer) detail.append(el("div", "quote", '"' + call.answer + '"'))
     if (state.simulate && call.outcome === null) detail.append(simulateBox(call.id))
     line.append(detail)
@@ -405,7 +450,8 @@ function dispatcherBox(current) {
     text.value = ""
     send(sendButton, () => post("/cases/" + current.id + "/input", { text: typed }))
   }
-  const accept = el("button", "", "Accept — close case")
+  const accept = el("button", "", "Close case")
+  accept.dataset.locked = String(current.status === "closed")
   accept.disabled = current.status === "closed"
   accept.onclick = () => { send(accept, () => post("/cases/" + current.id + "/close", {})) }
   bar.append(sendButton, accept)
