@@ -1,0 +1,23 @@
+{
+  "name": "inbound_context",
+  "description": "Read-only context for an inbound caller after they state their full name. Uses provider-bound call metadata, never caller-provided profile or attempt IDs. Unknown or unconfirmed callers receive no history. If several open incidents match, ask which one before selecting a returned case_id. Use returning_latest_call only when the caller explicitly says they are returning the most recent call. This does not record a report or authorize an outbound task.",
+  "pre_tool_speech": "off",
+  "execution_mode": "immediate",
+  "response_timeout_secs": 45,
+  "api_schema": {
+    "url": "/calls/inbound-context",
+    "method": "POST",
+    "request_body_schema": {
+      "type": "object",
+      "properties": {
+        "provider_call_id": {"type": "string", "dynamic_variable": "system__conversation_id"},
+        "from_phone": {"type": "string", "dynamic_variable": "system__caller_id"},
+        "direction": {"type": "string", "dynamic_variable": "system__call_direction"},
+        "confirmed_name": {"type": "string", "description": "The full name the caller explicitly gave. Never invent or copy a name from an earlier call or directory hint."},
+        "returning_latest_call": {"type": "boolean", "description": "True only when this caller explicitly says they are returning the most recent call; otherwise omit or false. Selecting this is not permission for another phone call."},
+        "case_id": {"type": "string", "description": "Optional case_id returned in this tool's choices, selected after the caller identifies the incident. Empty or omitted initially. Never invent an ID or select another participant's case."}
+      },
+      "required": ["confirmed_name"]
+    }
+  }
+}
