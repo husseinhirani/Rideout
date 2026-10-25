@@ -65,6 +65,8 @@ export type Sighting = {
   lng: number;
   lat: number;
   safe: boolean;
+  // Live mode names the pin itself (a demo location, an unverified report).
+  label?: string;
 };
 
 export type Incident = {

@@ -27,8 +27,8 @@ import type {
  * and keys feature-state on `house.id` (the OpenStreetMap way id).
  */
 const place = placeJson as Place;
-const footprints = northOfFreeway(buildings as FeatureCollection);
-const GEO = buildingExtent();
+export const footprints = northOfFreeway(buildings as FeatureCollection);
+export const GEO = buildingExtent();
 
 function northOfFreeway(collection: FeatureCollection): FeatureCollection {
   const features = collection.features.filter((feature) => {
