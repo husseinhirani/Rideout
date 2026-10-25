@@ -1,12 +1,13 @@
-import { useEffect, useState, type ReactNode } from "react";
-import type { CallCard, House, HouseStatus, InboundReport } from "./types";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import type { CallCard, ChatMessage, House, InboundReport, Incident } from "./types";
 
 /**
  * RideOut agents for the neighborhood lead. Not a city dispatch center.
  * Check-in caller: operations welfare checks, the outbound calls.
  * Call taker: a 911 call-taker. She interviews and records. She does not send a ride.
- * Facilitator: the liaison between those desks, the way a dispatcher passes a need on.
- * Registrar: the ICS documentation unit, the book of who left and what happened.
+ * Facilitator: the liaison between those desks and the lead. The lead chats with it,
+ * it hands call jobs to the caller, and it reports back what was done.
+ * The registrar's book is the Export log download in the top bar, not a desk on screen.
  */
 const AGENTS = {
   caller: {
@@ -22,74 +23,28 @@ const AGENTS = {
   facilitator: {
     name: "Jonah Reid",
     title: "Facilitator",
-    duty: "Passes a need to a neighbor who can help, and stops a ride that would cross the fire.",
-  },
-  registrar: {
-    name: "Ruth Keller",
-    title: "Registrar",
-    duty: "Writes down who left, who needs a ride, and who did not answer.",
+    duty: "Takes your requests, sends the caller to the houses you name, and reports back. Stops any ride that would cross the fire.",
   },
 } as const;
 
-const STATUS: Record<HouseStatus, string> = {
-  waiting: "Queued",
-  out: "Out",
-  needs_ride: "Needs a ride",
-  unknown: "No answer",
-  no_ride: "No ride",
-  blocked: "Not offered",
-};
-
-type OutcomeEntry = {
-  id: string;
-  name: string;
-  status: HouseStatus;
-  note: string;
-};
-
 type Note = { key: string; text: string; warn: boolean };
 
-function useOutcomeLog(calls: CallCard[], houses: House[]) {
-  const [entries, setEntries] = useState<OutcomeEntry[]>([]);
+const SUGGESTIONS = ["Call who didn't answer", "Call everyone who needs a ride", "Who still needs a ride?"];
 
-  useEffect(() => {
-    if (calls.length === 0) {
-      setEntries((current) => (current.length === 0 ? current : []));
-      return;
-    }
-    setEntries((current) => {
-      const known = new Set(current.map((entry) => entry.id));
-      let next = current;
-      for (const call of calls) {
-        if (call.phase !== "done" && call.phase !== "missed" && call.phase !== "declined") continue;
-        if (known.has(call.id)) continue;
-        const house = houses.find((item) => item.name === call.name);
-        if (!house || house.status === "waiting") continue;
-        known.add(call.id);
-        next = [{ id: call.id, name: call.name, status: house.status, note: house.note }, ...next];
-      }
-      return next;
-    });
-  }, [calls, houses]);
-
-  return entries;
-}
-
-function useFresh(id: string | null) {
-  const [fresh, setFresh] = useState(false);
-  useEffect(() => {
-    if (!id) {
-      setFresh(false);
-      return;
-    }
-    setFresh(true);
-    const timer = window.setTimeout(() => setFresh(false), 1800);
-    return () => window.clearTimeout(timer);
-  }, [id]);
-  return fresh;
-}
-
-function facilitatorCopy(houses: House[], started: boolean, inbound: InboundReport | null) {
+function facilitatorCopy(houses: House[], started: boolean, inbound: InboundReport | null, incident: Incident) {
+  if (incident.kind === "missing_child" && incident.child) {
+    const { child, sightings, foundAt } = incident;
+    return {
+      live: !foundAt,
+      kicker: foundAt ? "Found" : "Missing child",
+      lead: `${child.name}, ${child.age}. Wearing ${child.clothing}. Last seen at ${child.lastSeen}.`,
+      notes: sightings.map((sighting) => ({
+        key: sighting.id,
+        text: `${sighting.safe ? "Safe" : "Seen"} · ${sighting.reporter}, ${sighting.address}: ${sighting.text}`,
+        warn: !sighting.safe,
+      })),
+    };
+  }
   const helen = houses.find((house) => house.name === "Helen Cho");
   const luis = houses.find((house) => house.name === "Luis Ortega");
   const maya = houses.find((house) => house.name === "Maya Chen");
@@ -172,25 +127,32 @@ export function Checks({
   houses,
   calls,
   inbound,
+  incident,
   started,
   running,
   now,
+  chat,
+  busy,
+  onAsk,
+  onCall,
 }: {
   visible: boolean;
   houses: House[];
   calls: CallCard[];
   inbound: InboundReport | null;
+  incident: Incident;
   started: boolean;
   running: boolean;
   now: number;
+  chat: ChatMessage[];
+  busy: boolean;
+  onAsk: (request: string) => void;
+  onCall: CallActions;
 }) {
-  const entries = useOutcomeLog(calls, houses);
-  const fresh = useFresh(entries[0]?.id ?? null);
-  const callerLive = calls.some((call) => call.phase === "calling" || call.phase === "live");
+  const callerLive = calls.some((call) => call.phase === "calling" || call.phase === "live" || call.phase === "holding");
   const finished = started && !running && calls.length > 0 && !callerLive;
-  const desk = facilitatorCopy(houses, started, inbound);
+  const desk = facilitatorCopy(houses, started, inbound, incident);
   const takerLive = inbound?.phase === "ringing" || inbound?.phase === "live";
-  const recordLabel = entries.length === 0 ? "Log" : fresh ? "Writing" : "Recorded";
 
   let takerKicker = "Standing by";
   let takerWho = "";
@@ -209,17 +171,18 @@ export function Checks({
   } else if (inbound?.phase === "filed") {
     takerKicker = "Recorded";
     takerWho = inbound.from;
-    takerText = "Leo is not home. He was at a friend’s on Colby and is not picking up. Logged for the neighborhood lead. RideOut does not call 911.";
+    takerText = inbound.summary ?? inbound.transcript;
   }
 
   return (
     <section className={visible ? "checks" : "checks is-hidden"} aria-hidden={!visible} aria-label="Agent workflow">
       <header className="term-bar">
         <p>rideout · checks</p>
-        <p>caller · inbound · facilitator · registrar</p>
+        <p>caller · inbound · facilitator</p>
       </header>
       <Agent title={AGENTS.caller.title} name={AGENTS.caller.name} duty={AGENTS.caller.duty} live={callerLive} source="caller">
-        <CallBoard calls={calls} now={now} started={started} finished={finished} />
+        <DirectCall houses={houses} actions={onCall} />
+        <CallBoard calls={calls} now={now} started={started} finished={finished} actions={onCall} />
       </Agent>
 
       <Agent title={AGENTS.taker.title} name={AGENTS.taker.name} duty={AGENTS.taker.duty} live={takerLive} source="inbound">
@@ -234,7 +197,14 @@ export function Checks({
         </div>
       </Agent>
 
-      <Agent title={AGENTS.facilitator.title} name={AGENTS.facilitator.name} duty={AGENTS.facilitator.duty} live={desk.live} source="facilitator">
+      <Agent
+        title={AGENTS.facilitator.title}
+        name={AGENTS.facilitator.name}
+        duty={AGENTS.facilitator.duty}
+        live={desk.live || busy}
+        source="facilitator"
+        wide
+      >
         <div className="agent-now" aria-live="polite">
           <p className={desk.live ? "kicker hot" : "kicker"}>{desk.kicker}</p>
           <p className="action">{desk.lead}</p>
@@ -244,63 +214,118 @@ export function Checks({
             </p>
           ))}
         </div>
-      </Agent>
-
-      <Agent title={AGENTS.registrar.title} name={AGENTS.registrar.name} duty={AGENTS.registrar.duty} live={fresh} source="registrar">
-        <p className={fresh ? "kicker hot rec-label" : "kicker rec-label"}>{recordLabel}</p>
-        <div className="log-list" aria-live="polite">
-          {entries.length === 0 ? (
-            <div className="entry">
-              <p>Nothing recorded yet.</p>
-            </div>
-          ) : (
-            entries.map((entry, index) => (
-              <div key={entry.id} className={index === 0 && fresh ? "entry fresh" : "entry"}>
-                <div className="entry-top">
-                  <b>{entry.name}</b>
-                  <em className={entry.status}>{STATUS[entry.status]}</em>
-                </div>
-                <p>{entry.note}</p>
-              </div>
-            ))
-          )}
-        </div>
+        <FacilitatorChat chat={chat} busy={busy} onAsk={onAsk} />
       </Agent>
     </section>
   );
 }
 
-const PHASE_RANK: Record<CallCard["phase"], number> = {
-  calling: 0,
-  live: 1,
-  missed: 2,
-  declined: 2,
-  done: 3,
+export type CallActions = {
+  busy: boolean;
+  cancel: (id: string) => void;
+  takeOver: (id: string) => void;
+  callDirect: (householdId: number) => void;
+  listen: (id: string) => void;
+  listeningId: string | null;
 };
 
-function CallBoard({ calls, now, started, finished }: { calls: CallCard[]; now: number; started: boolean; finished: boolean }) {
+const PHASE_RANK: Record<CallCard["phase"], number> = {
+  holding: 0,
+  operator: 1,
+  calling: 2,
+  live: 3,
+  missed: 4,
+  declined: 4,
+  canceled: 5,
+  done: 6,
+};
+
+const ACTIVE = new Set<CallCard["phase"]>(["calling", "live", "holding"]);
+
+function DirectCall({ houses, actions }: { houses: House[]; actions: CallActions }) {
+  const [pick, setPick] = useState("");
+  const chosen = Number(pick);
+  return (
+    <form
+      className="direct-call"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (chosen) actions.callDirect(chosen);
+      }}
+    >
+      <select value={pick} onChange={(event) => setPick(event.target.value)} aria-label="Who to call yourself">
+        <option value="">Call someone yourself…</option>
+        {houses.map((house) => (
+          <option key={house.id} value={house.id}>
+            {house.name}
+          </option>
+        ))}
+      </select>
+      <button type="submit" disabled={!chosen || actions.busy}>
+        {actions.busy ? "On a call" : "Call"}
+      </button>
+    </form>
+  );
+}
+
+function CallBoard({
+  calls,
+  now,
+  started,
+  finished,
+  actions,
+}: {
+  calls: CallCard[];
+  now: number;
+  started: boolean;
+  finished: boolean;
+  actions: CallActions;
+}) {
   const [openId, setOpenId] = useState<string | null>(null);
   const ordered = [...calls].sort((a, b) => PHASE_RANK[a.phase] - PHASE_RANK[b.phase] || a.startedAt - b.startedAt);
-  if (!started || calls.length === 0) {
+  if (!started && calls.length === 0) {
     return <p className="term-wait">Check-in calls start together when the drill starts.</p>;
   }
   return (
     <div className="call-board">
-      <p className="legend"><i className="dot calling" /> ringing <i className="dot live" /> connected <i className="dot missed" /> no answer</p>
+      <p className="legend">
+        <i className="dot calling" /> ringing <i className="dot live" /> connected <i className="dot holding" /> needs you{" "}
+        <i className="dot missed" /> no answer
+      </p>
       {ordered.map((call) => {
-        const open = openId === call.id;
+        const open = openId === call.id || call.phase === "holding";
         return (
-          <div key={call.id} className={open ? "call-item open" : "call-item"}>
-            <button type="button" className="call-hit" onClick={() => setOpenId(open ? null : call.id)}>
+          <div key={call.id} className={`call-item${open ? " open" : ""}${call.phase === "holding" ? " needs-you" : ""}`}>
+            <button type="button" className="call-hit" onClick={() => setOpenId(openId === call.id ? null : call.id)}>
               <i className={`dot ${call.phase}`} />
-              <span>{call.name}</span>
+              <span>
+                {call.name}
+                {call.taskId ? <small className="call-tag">your request</small> : null}
+                {call.handledBy === "operator" ? <small className="call-tag you">you</small> : null}
+              </span>
               <em>{callLabel(call)}</em>
             </button>
+            {ACTIVE.has(call.phase) ? (
+              <div className="call-actions">
+                <button type="button" className={call.phase === "holding" ? "hot" : ""} disabled={actions.busy} onClick={() => actions.takeOver(call.id)}>
+                  {call.phase === "holding" ? "Pick up" : "Take over"}
+                </button>
+                <button type="button" onClick={() => actions.cancel(call.id)}>
+                  Cancel call
+                </button>
+                {call.phase === "live" ? (
+                  <button type="button" onClick={() => actions.listen(call.id)}>
+                    {actions.listeningId === call.id ? "Mute" : "Listen"}
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
             <div className="call-detail">
               <div>
-                {stepsFor(call, now).map((line) => (
-                  <p key={line}>{line}</p>
+                {stepsFor(call, now).map((line, index) => (
+                  <p key={`${index}-${line}`}>{line}</p>
                 ))}
+                {call.recording ? <audio className="call-audio" controls src={call.recording.url} /> : null}
               </div>
             </div>
           </div>
@@ -314,8 +339,11 @@ function CallBoard({ calls, now, started, finished }: { calls: CallCard[]; now: 
 function callLabel(call: CallCard) {
   if (call.phase === "calling") return "Ringing";
   if (call.phase === "live") return "Connected";
+  if (call.phase === "holding") return "Needs you";
+  if (call.phase === "operator") return "You're on";
   if (call.phase === "missed") return "No answer";
   if (call.phase === "declined") return "Declined";
+  if (call.phase === "canceled") return "Canceled";
   return "Ended";
 }
 
@@ -326,25 +354,26 @@ function seconds(from: number, to: number) {
 function stepsFor(call: CallCard, now: number) {
   const ringEnd = call.answeredAt ?? call.endedAt ?? now;
   const rang = seconds(call.startedAt, ringEnd);
-  const lines = [`Dialed ${call.name}.`];
+  const lines = [call.handledBy === "operator" && call.id.startsWith("lead-") ? `You called ${call.name}.` : `Dialed ${call.name}.`];
   if (call.phase === "calling") {
     lines.push(`Ringing for ${seconds(call.startedAt, now)} seconds.`);
     return lines;
   }
-  if (call.phase === "missed") {
-    lines.push(`Rang for ${rang} seconds. No answer.`);
+  if (call.phase === "missed" || call.phase === "declined") {
+    lines.push(`Rang for ${rang} seconds. ${call.phase === "missed" ? "No answer." : "Declined."}`);
     lines.push("Call ended.");
     return lines;
   }
-  if (call.phase === "declined") {
-    lines.push(`Rang for ${rang} seconds. Declined.`);
-    lines.push("Call ended.");
-    return lines;
-  }
-  lines.push(`Answered after ${rang} seconds.`);
-  if (call.transcript) lines.push(call.transcript);
-  if (call.endedAt && call.answeredAt) lines.push(`Call ended. On the line for ${seconds(call.answeredAt, call.endedAt)} seconds.`);
-  else lines.push("Still on the line.");
+  if (call.answeredAt && !call.id.startsWith("lead-")) lines.push(`Answered after ${rang} seconds.`);
+  const said = call.segments?.length
+    ? call.segments.map((part) => (part.speaker === "system" ? part.text : `${part.speaker === "operator" ? "You" : call.name.split(" ")[0]}: ${part.text}`))
+    : call.transcript
+      ? [call.transcript]
+      : [];
+  lines.push(...said);
+  if (call.phase === "holding" && call.escalation) lines.push(`On hold for ${seconds(call.escalation.at, now)} seconds. Waiting for you.`);
+  else if (call.endedAt && call.answeredAt) lines.push(`Call ended. On the line for ${seconds(call.answeredAt, call.endedAt)} seconds.`);
+  else if (call.phase !== "canceled") lines.push("Still on the line.");
   return lines;
 }
 
@@ -354,6 +383,7 @@ function Agent({
   duty,
   live,
   source,
+  wide = false,
   children,
 }: {
   title: string;
@@ -361,14 +391,73 @@ function Agent({
   duty: string;
   live: boolean;
   source: string;
+  wide?: boolean;
   children: ReactNode;
 }) {
   return (
-    <article className={live ? "term is-live" : "term"}>
+    <article className={`term${live ? " is-live" : ""}${wide ? " wide" : ""}`}>
       <p className="term-source">source {source}{live ? " · live" : ""}</p>
       <h3>{name}</h3>
       <p className="duty">{title}. {duty}</p>
       {children}
     </article>
+  );
+}
+
+function FacilitatorChat({ chat, busy, onAsk }: { chat: ChatMessage[]; busy: boolean; onAsk: (request: string) => void }) {
+  const [draft, setDraft] = useState("");
+  const feed = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const node = feed.current;
+    if (node) node.scrollTop = node.scrollHeight;
+  }, [chat, busy]);
+
+  const send = (text: string) => {
+    if (!text.trim()) return;
+    onAsk(text);
+    setDraft("");
+  };
+
+  return (
+    <div className="chat">
+      <div className="chat-feed" ref={feed} aria-live="polite">
+        {chat.length === 0 ? (
+          <p className="chat-empty">Tell Jonah which houses to call. He hands the job to Amina and reports back here.</p>
+        ) : (
+          chat.map((message) => (
+            <div key={message.id} className={`chat-msg ${message.from}`}>
+              <span className="chat-from">{message.from === "lead" ? "You" : "Jonah · facilitator"}</span>
+              <p>{message.text}</p>
+            </div>
+          ))
+        )}
+        {busy ? <p className="chat-busy">Amina is on the phone…</p> : null}
+      </div>
+      <div className="chat-chips">
+        {SUGGESTIONS.map((suggestion) => (
+          <button key={suggestion} type="button" onClick={() => send(suggestion)}>
+            {suggestion}
+          </button>
+        ))}
+      </div>
+      <form
+        className="chat-input"
+        onSubmit={(event) => {
+          event.preventDefault();
+          send(draft);
+        }}
+      >
+        <input
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          placeholder="Call Luis, call 5530 Manila, call everyone on Manila Ave…"
+          aria-label="Message the facilitator"
+        />
+        <button type="submit" disabled={!draft.trim()}>
+          Send
+        </button>
+      </form>
+    </div>
   );
 }

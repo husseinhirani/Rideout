@@ -1,9 +1,15 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { BlockGraph } from "./BlockGraph";
 import { Checks } from "./Checks";
+import { SAMPLE_CHILD } from "./facilitator";
+import { MapStats } from "./MapStats";
+import { MissingChildForm } from "./MissingChildForm";
 import { NeighborhoodMap } from "./NeighborhoodMap";
+import { OperatorPanel } from "./OperatorPanel";
+import { downloadLog } from "./exportLog";
+import { householdFor } from "./households";
 import { useRideOut } from "./telemetry";
-import type { House, HouseStatus } from "./types";
+import type { HouseStatus } from "./types";
 
 const STATUS: Record<HouseStatus, string> = {
   waiting: "Queued",
@@ -14,24 +20,16 @@ const STATUS: Record<HouseStatus, string> = {
   blocked: "Not offered",
 };
 
-const RANK: Record<HouseStatus, number> = {
-  needs_ride: 0,
-  no_ride: 1,
-  unknown: 2,
-  blocked: 3,
-  waiting: 4,
-  out: 5,
-};
-
 export function App() {
   const ride = useRideOut();
-  const feed = useRef<HTMLDivElement>(null);
   const [tab, setTab] = useState<"map" | "checks">("map");
   const [scene, setScene] = useState<"side" | "aerial" | "nodes">("side");
   const [now, setNow] = useState(() => new Date());
-  const houses = [...ride.houses].sort((a, b) => RANK[a.status] - RANK[b.status]);
-  const out = ride.houses.filter((house) => house.status === "out").length;
-  const focus = ride.selected ?? houses.find((house) => house.status === "needs_ride" || house.status === "no_ride") ?? null;
+  const [menu, setMenu] = useState(false);
+  const [form, setForm] = useState(false);
+  const waiting = ride.calls.find((call) => call.phase === "holding");
+  const child = ride.incident.kind === "missing_child" ? ride.incident.child : null;
+  const selected = ride.selected;
   const clock = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
   useEffect(() => {
@@ -39,20 +37,17 @@ export function App() {
     return () => window.clearInterval(timer);
   }, []);
 
-  useEffect(() => {
-    const node = feed.current;
-    if (node) node.scrollTop = node.scrollHeight;
-  }, [ride.calls, tab]);
-
   return (
     <main className={`${tab === "checks" ? "stage checks-on" : "stage"}${scene === "nodes" ? " nodes-on" : ""}`}>
-      <NeighborhoodMap place={ride.place} houses={ride.houses} onSelect={ride.select} angle={scene === "aerial" ? "aerial" : "side"} />
-      {scene === "nodes" ? <BlockGraph houses={ride.houses} selectedId={focus?.id ?? null} onSelect={ride.select} /> : null}
-      <div className="view-toggle" role="group" aria-label="Map style">
-        <button type="button" className={scene === "side" ? "on" : ""} onClick={() => setScene("side")}>Side</button>
-        <button type="button" className={scene === "aerial" ? "on" : ""} onClick={() => setScene("aerial")}>Aerial</button>
-        <button type="button" className={scene === "nodes" ? "on" : ""} onClick={() => setScene("nodes")}>Nodes</button>
-      </div>
+      <NeighborhoodMap
+        place={ride.place}
+        houses={ride.houses}
+        onSelect={ride.select}
+        angle={scene === "aerial" ? "aerial" : "side"}
+        showFire={ride.incident.kind === "wildfire"}
+        sightings={ride.incident.sightings}
+      />
+      {scene === "nodes" ? <BlockGraph houses={ride.houses} calls={ride.calls} selectedId={selected?.id ?? null} onSelect={ride.select} /> : null}
 
       <header className="top">
         <div className="brand">
@@ -65,95 +60,118 @@ export function App() {
           <button type="button" className={tab === "map" ? "on" : ""} aria-pressed={tab === "map"} onClick={() => setTab("map")}>
             Map
           </button>
-          <span>Routes</span>
-          <span>Fire</span>
         </nav>
         <div className="top-end">
+          <div className="view-toggle" role="group" aria-label="Map style">
+            <button type="button" className={scene === "side" ? "on" : ""} aria-pressed={scene === "side"} onClick={() => setScene("side")}>Side</button>
+            <button type="button" className={scene === "aerial" ? "on" : ""} aria-pressed={scene === "aerial"} onClick={() => setScene("aerial")}>Aerial</button>
+            <button type="button" className={scene === "nodes" ? "on" : ""} aria-pressed={scene === "nodes"} onClick={() => setScene("nodes")}>Nodes</button>
+          </div>
           <time>{clock}</time>
-          <button type="button" onClick={ride.start} disabled={ride.running}>
-            {ride.running ? "Live" : ride.started ? "Run again" : "Start drill"}
+          <button
+            type="button"
+            className="ghost"
+            onClick={() =>
+              downloadLog({
+                place: ride.place,
+                houses: ride.houses,
+                calls: ride.calls,
+                inbound: ride.inbound,
+                inboundLog: ride.inboundLog,
+                incident: ride.incident,
+                chat: ride.chat,
+                tasks: ride.tasks,
+                started: ride.started,
+                running: ride.running,
+                recordingFor: ride.recordingFor,
+              })
+            }
+          >
+            Export log
           </button>
+          <div className="start-menu">
+            <button type="button" onClick={() => setMenu((open) => !open)} disabled={ride.running} aria-expanded={menu}>
+              {ride.running ? "Live" : ride.started ? "New incident ▾" : "Start ▾"}
+            </button>
+            {menu && !ride.running ? (
+              <div className="start-options" role="menu">
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setMenu(false);
+                    ride.start();
+                  }}
+                >
+                  <b>Wildfire drill</b>
+                  <small>Check every registered neighbor and match rides</small>
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setMenu(false);
+                    setForm(true);
+                  }}
+                >
+                  <b>Missing child</b>
+                  <small>Call every home with the child's description</small>
+                </button>
+              </div>
+            ) : null}
+          </div>
         </div>
       </header>
 
       {tab === "map" ? (
         <>
-          <section className="left">
-            <article className="glass metrics">
-              <div>
-                <p>Without a ride</p>
-                <strong className={ride.withoutRide > 0 ? "hot" : ""}>{ride.withoutRide}</strong>
-                <small>Needs a car that fits</small>
-              </div>
-              <div>
-                <p>Already out</p>
-                <strong>{out}</strong>
-                <small>of {ride.houses.length} registered</small>
-              </div>
-            </article>
-
-            <article className="glass list-card">
-              <h2>Incoming checks</h2>
-              <div className="calls">
-                {houses.map((house) => (
-                  <button
-                    key={house.id}
-                    type="button"
-                    className={focus?.id === house.id ? "row on" : "row"}
-                    onClick={() => ride.select(house.id)}
-                  >
-                    <span>
-                      <b>{house.name}</b>
-                      <small>{house.note}</small>
-                    </span>
-                    <em className={house.status}>{STATUS[house.status]}</em>
-                  </button>
-                ))}
-              </div>
-            </article>
-          </section>
+          <MapStats
+            calls={ride.calls}
+            houses={ride.houses}
+            incident={ride.incident}
+            callBacks={ride.inboundLog.length}
+            homes={ride.homesOnBlock}
+            started={ride.started}
+            now={now.getTime()}
+          />
 
           <aside className="right">
-            <article className="glass match">
-              <p className="kicker">Recommended</p>
-              <Recommendation houses={ride.houses} started={ride.started} latest={ride.calls.at(-1)?.transcript} />
-            </article>
-            {focus ? (
+            {child ? (
+              <article className="glass child-card">
+                <p className={ride.incident.foundAt ? "kicker found" : "kicker hot"}>{ride.incident.foundAt ? "Found" : "Missing child"}</p>
+                <h3>
+                  {child.name}, {child.age}
+                </h3>
+                <dl>
+                  <div>
+                    <dt>Wearing</dt>
+                    <dd>{child.clothing}</dd>
+                  </div>
+                  <div>
+                    <dt>Last seen</dt>
+                    <dd>{child.lastSeen}</dd>
+                  </div>
+                  <div>
+                    <dt>Call-back</dt>
+                    <dd>{child.callback}</dd>
+                  </div>
+                </dl>
+                {ride.incident.foundAt ? null : (
+                  <button type="button" className="mark-found" onClick={ride.markFound}>
+                    Mark found
+                  </button>
+                )}
+              </article>
+            ) : null}
+            {selected ? (
               <article className="glass person">
-                <p className="kicker">{STATUS[focus.status]}</p>
-                <h3>{focus.name}</h3>
-                <p>{focus.note}</p>
+                <p className="kicker">{STATUS[selected.status]}</p>
+                <h3>{selected.name}</h3>
+                <p>{householdFor(selected.id, selected.name).address}</p>
+                <p>{selected.note}</p>
               </article>
             ) : null}
           </aside>
-
-          <section className="glass log">
-            <h2>Live log</h2>
-            <div className="log-feed" ref={feed}>
-              {ride.calls.length === 0 ? (
-                <p>Calls show up here. Unmute one to listen.</p>
-              ) : (
-                ride.calls.slice(-3).map((call) => (
-                  <article key={call.id} className={`call-row ${call.phase}`}>
-                    <p className="who">
-                      {call.phase === "calling" ? `Calling ${call.name}…` : call.phase === "missed" ? `${call.name} · no answer` : call.name}
-                    </p>
-                    <button
-                      type="button"
-                      className={ride.listeningId === call.id ? "listen on" : "listen"}
-                      onClick={() => ride.listen(call.id)}
-                    >
-                      {ride.listeningId === call.id ? "Mute" : "Unmute"}
-                    </button>
-                    <p className="said">
-                      {call.transcript}
-                      {call.phase === "live" ? <i className="caret"> ▍</i> : null}
-                    </p>
-                  </article>
-                ))
-              )}
-            </div>
-          </section>
         </>
       ) : null}
 
@@ -162,36 +180,60 @@ export function App() {
         houses={ride.houses}
         calls={ride.calls}
         inbound={ride.inbound}
+        incident={ride.incident}
         started={ride.started}
         running={ride.running}
         now={now.getTime()}
+        chat={ride.chat}
+        busy={ride.tasks.some((task) => task.state === "running")}
+        onAsk={ride.ask}
+        onCall={{
+          busy: Boolean(ride.operator),
+          cancel: ride.cancelCall,
+          takeOver: ride.takeOver,
+          callDirect: ride.callDirect,
+          listen: ride.listen,
+          listeningId: ride.listeningId,
+        }}
       />
-    </main>
-  );
-}
 
-function Recommendation({ houses, started, latest }: { houses: House[]; started: boolean; latest?: string }) {
-  const helen = houses.find((house) => house.name === "Helen Cho");
-  const luis = houses.find((house) => house.name === "Luis Ortega");
-  const maya = houses.find((house) => house.name === "Maya Chen");
-  let title = "Waiting for the drill";
-  let body = "Registered homes are loaded on this block. Start the drill to place the check-in calls.";
-  if (started && helen?.status === "needs_ride") {
-    title = "Ask Daniel Ruiz";
-    body = "Gray Honda, two seats. The detour to Helen Cho stays outside the fire. A walker fits.";
-  } else if (helen?.note.includes("Daniel")) {
-    title = "Daniel accepted";
-    body = "Helen hears his name, the car, and to call 911 if he does not arrive.";
-  } else if (started) {
-    title = "Sorting the block";
-    body = latest ?? "Calls are going out.";
-  }
-  return (
-    <>
-      <h3>{title}</h3>
-      <p>{body}</p>
-      {maya?.status === "blocked" ? <p className="warn">Maya Chen’s van was not offered. The route crosses the fire.</p> : null}
-      {luis?.status === "no_ride" ? <p className="warn">Luis Ortega still has no ride. A wheelchair does not fit the open car.</p> : null}
-    </>
+      {waiting && !ride.operator ? (
+        <div className="handoff-banner" role="alert">
+          <p>
+            <b>{waiting.name} needs a person.</b> {waiting.escalation?.reason}
+          </p>
+          <button type="button" className="pick-up" onClick={() => ride.takeOver(waiting.id)}>
+            Pick up
+          </button>
+          <button type="button" onClick={() => ride.cancelCall(waiting.id)}>
+            Cancel call
+          </button>
+        </div>
+      ) : null}
+
+      {ride.operator ? (
+        <OperatorPanel
+          key={ride.operator.callId}
+          session={ride.operator}
+          call={ride.calls.find((call) => call.id === ride.operator?.callId)}
+          house={ride.houses.find((house) => house.id === ride.operator?.householdId)}
+          now={now.getTime()}
+          onSaid={ride.operatorSaid}
+          onHangUp={ride.hangUp}
+        />
+      ) : null}
+
+      {form ? (
+        <MissingChildForm
+          initial={SAMPLE_CHILD}
+          homes={ride.homesOnBlock}
+          onClose={() => setForm(false)}
+          onStart={(details) => {
+            setForm(false);
+            ride.startMissingChild(details);
+          }}
+        />
+      ) : null}
+    </main>
   );
 }

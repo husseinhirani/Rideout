@@ -1,9 +1,25 @@
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
+import { DRACOLoader } from "three/addons/loaders/DRACOLoader.js";
+import { TilesRenderer } from "3d-tiles-renderer/three";
+import { GoogleCloudAuthPlugin } from "3d-tiles-renderer/core/plugins";
+import { GLTFExtensionsPlugin, ReorientationPlugin, TileCompressionPlugin, TilesFadePlugin } from "3d-tiles-renderer/three/plugins";
 import buildingData from "./data/buildings.json";
-import type { House, Place } from "./types";
+import { householdFor } from "./households";
+import type { House, Place, Sighting } from "./types";
 
-type Tip = { x: number; y: number; kicker: string; title: string; detail: string };
+type Tip = {
+  x: number;
+  y: number;
+  kicker: string;
+  owner: string;
+  number: number;
+  street: string;
+  people: number;
+  vehicles: string[];
+  needs?: string;
+  note: string;
+};
 type Ring = number[][];
 type BuildingFeature = {
   id?: number;
@@ -16,6 +32,8 @@ type Props = {
   houses: House[];
   onSelect: (id: number) => void;
   angle?: "side" | "aerial";
+  showFire?: boolean;
+  sightings?: Sighting[];
 };
 
 const STATUS: Record<House["status"], string> = {
@@ -29,9 +47,22 @@ const STATUS: Record<House["status"], string> = {
 
 const PIN_STATUS = new Set<House["status"]>(["needs_ride", "no_ride", "unknown", "blocked"]);
 
-export function NeighborhoodMap({ place, houses, onSelect, angle = "side" }: Props) {
+// With a Google Maps Platform key (Map Tiles API enabled) the block renders as Google's
+// photorealistic 3D mesh. Without one it falls back to OSM footprints lifted from the Esri photo.
+const GOOGLE_KEY = import.meta.env.VITE_GOOGLE_MAPS_KEY as string | undefined;
+const OPEN_CREDIT = "Rockridge. Satellite © Esri, Maxar. Buildings © OpenStreetMap.";
+const HAZE = 0x3a302a;
+// Common East Bay house paints: cream, warm gray, sage, beige, pale blue, white, tan, olive gray.
+const SIDING = [0xe9e2d3, 0xd8d3c8, 0xc9d1c4, 0xe8d9bf, 0xcdd6dd, 0xf2efe9, 0xbfae98, 0xa9b4a5];
+const HOVER_GLOW = 0xffb347;
+const HOVER_LIFT = 2.2;
+
+export function NeighborhoodMap({ place, houses, onSelect, angle = "side", showFire = true, sightings = [] }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const housesRef = useRef(houses);
+  const sightingsRef = useRef(sightings);
+  const fireRef = useRef<THREE.Mesh | null>(null);
+  sightingsRef.current = sightings;
   const angleRef = useRef(angle);
   const nudge = useRef<((polar: number, radius: number) => void) | null>(null);
   housesRef.current = houses;
@@ -40,8 +71,14 @@ export function NeighborhoodMap({ place, houses, onSelect, angle = "side" }: Pro
   useEffect(() => {
     nudge.current?.(angle === "aerial" ? 1.42 : 0.5, angle === "aerial" ? 340 : 280);
   }, [angle]);
+  useEffect(() => {
+    if (fireRef.current) fireRef.current.visible = showFire;
+  }, [showFire]);
+  const showFireRef = useRef(showFire);
+  showFireRef.current = showFire;
   const [tip, setTip] = useState<Tip | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
+  const [credit, setCredit] = useState(GOOGLE_KEY ? "Google" : OPEN_CREDIT);
 
   useEffect(() => {
     const node = container.current;
@@ -134,92 +171,65 @@ export function NeighborhoodMap({ place, houses, onSelect, angle = "side" }: Pro
     };
     placeCamera();
 
-    const roofMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide });
-    const material = new THREE.ShaderMaterial({
-      uniforms: {
-        photo: { value: null },
-        uMin: { value: new THREE.Vector2(minX, minZ) },
-        uSize: { value: new THREE.Vector2(maxX - minX, maxZ - minZ) },
-      },
-      vertexShader: `
-        attribute float roofness;
-        attribute vec3 tint;
-        varying vec3 vWorld;
-        varying vec3 vNormalW;
-        varying float vRoof;
-        varying vec3 vTint;
-        void main() {
-          vec4 world = modelMatrix * vec4(position, 1.0);
-          vWorld = world.xyz;
-          vNormalW = normalize(mat3(modelMatrix) * normal);
-          vRoof = roofness;
-          vTint = tint;
-          gl_Position = projectionMatrix * viewMatrix * world;
-        }
-      `,
-      fragmentShader: `
-        precision highp float;
-        uniform sampler2D photo;
-        uniform vec2 uMin;
-        uniform vec2 uSize;
-        varying vec3 vWorld;
-        varying vec3 vNormalW;
-        varying float vRoof;
-        varying vec3 vTint;
-        void main() {
-          vec2 uv = vec2(
-            (vWorld.x - uMin.x) / uSize.x,
-            1.0 - (vWorld.z - uMin.y) / uSize.y
-          );
-          vec3 tex = texture2D(photo, clamp(uv, 0.0, 1.0)).rgb;
-          vec3 n = normalize(vNormalW);
-          float lambert = 0.72 + 0.28 * max(dot(n, normalize(vec3(-0.35, 0.9, 0.22))), 0.0);
-          vec3 base = mix(vTint, tex, vRoof);
-          gl_FragColor = vec4(base * lambert, 1.0);
-        }
-      `,
-      side: THREE.DoubleSide,
+    // Smoke haze hides the edge of the photo and sits the block in the fire's light.
+    scene.fog = new THREE.Fog(HAZE, 700, 1900);
+    renderer.setClearColor(HAZE);
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    scene.add(new THREE.HemisphereLight(0xdde6f2, 0x5a4a3c, 1.5));
+    // Late-afternoon sun from the west, so shadows fall east where the default camera can see them.
+    const sun = new THREE.DirectionalLight(0xffdcb4, 3.2);
+    const span = Math.max(maxX - minX, maxZ - minZ);
+    sun.position.set(-0.8 * span, 0.62 * span, 0.18 * span);
+    sun.castShadow = true;
+    sun.shadow.mapSize.set(4096, 4096);
+    sun.shadow.camera.left = -span * 0.75;
+    sun.shadow.camera.right = span * 0.75;
+    sun.shadow.camera.top = span * 0.75;
+    sun.shadow.camera.bottom = -span * 0.75;
+    sun.shadow.camera.far = span * 3;
+    sun.shadow.camera.updateProjectionMatrix();
+    sun.shadow.bias = -0.0004;
+    sun.shadow.normalBias = 0.4;
+    scene.add(sun, sun.target);
+
+    const photoUv = (x: number, z: number) => [(x - minX) / (maxX - minX), 1 - (z - minZ) / (maxZ - minZ)];
+    const roofMaterial = new THREE.MeshLambertMaterial({ color: 0x8a8076, side: THREE.DoubleSide });
+    const wallMaterial = new THREE.MeshLambertMaterial({ map: facadeTexture(), vertexColors: true });
+    const capMaterial = new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false });
+    // The hovered house swaps to warmer copies of its materials and grows an outline.
+    const wallHot = wallMaterial.clone();
+    wallHot.emissive.set(0x5a3510);
+    const roofHot = roofMaterial.clone();
+    roofHot.emissive.set(0x5a3510);
+    const hullMaterial = new THREE.MeshBasicMaterial({ color: HOVER_GLOW, side: THREE.BackSide });
+    const edgeMaterial = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85 });
+    const wideGroundMat = new THREE.MeshLambertMaterial({ color: 0x5b5249 });
+    // The sharp photo sits a hair above the wide one so the block's streets stay crisp.
+    const sharpGroundMat = new THREE.MeshLambertMaterial({
+      color: 0x5b5249,
+      polygonOffset: true,
+      polygonOffsetFactor: -2,
+      polygonOffsetUnits: -2,
     });
 
-    const ground = new THREE.BufferGeometry();
-    ground.setAttribute(
-      "position",
-      new THREE.Float32BufferAttribute(
-        [wideMinX, 0, wideMinZ, wideMaxX, 0, wideMinZ, wideMaxX, 0, wideMaxZ, wideMinX, 0, wideMaxZ],
-        3,
-      ),
-    );
-    ground.setIndex([0, 2, 1, 0, 3, 2]);
-    ground.computeVertexNormals();
-    const groundMat = new THREE.ShaderMaterial({
-      uniforms: {
-        wideTex: { value: null },
-        wideMin: { value: new THREE.Vector2(wideMinX, wideMinZ) },
-        wideSize: { value: new THREE.Vector2(wideMaxX - wideMinX, wideMaxZ - wideMinZ) },
-      },
-      vertexShader: `
-        varying vec3 vWorld;
-        void main() {
-          vec4 world = modelMatrix * vec4(position, 1.0);
-          vWorld = world.xyz;
-          gl_Position = projectionMatrix * viewMatrix * world;
-        }
-      `,
-      fragmentShader: `
-        precision highp float;
-        uniform sampler2D wideTex;
-        uniform vec2 wideMin;
-        uniform vec2 wideSize;
-        varying vec3 vWorld;
-        void main() {
-          vec2 uv = vec2((vWorld.x - wideMin.x) / wideSize.x, 1.0 - (vWorld.z - wideMin.y) / wideSize.y);
-          gl_FragColor = vec4(texture2D(wideTex, clamp(uv, 0.0, 1.0)).rgb, 1.0);
-        }
-      `,
-    });
-    scene.add(new THREE.Mesh(ground, groundMat));
+    const photoreal = GOOGLE_KEY ? createPhotoreal(GOOGLE_KEY, centerLat, centerLng) : null;
+    if (photoreal) {
+      photoreal.tiles.setCamera(camera);
+      photoreal.tiles.setResolutionFromRenderer(camera, renderer);
+      photoreal.tiles.addEventListener("tiles-load-end", () => settleOnGround(photoreal, minX, maxX, minZ, maxZ));
+      photoreal.tiles.addEventListener("load-error", () => {
+        if (!cancelled) setProblem("Google 3D tiles did not load. Check the key has the Map Tiles API enabled.");
+      });
+      scene.add(photoreal.holder);
+    } else {
+      scene.add(groundPlane(wideMinX, wideMaxX, wideMinZ, wideMaxZ, wideGroundMat));
+      scene.add(groundPlane(minX, maxX, minZ, maxZ, sharpGroundMat));
+    }
 
     const meshes: THREE.Mesh[] = [];
+    const byId = new Map<number, THREE.Mesh[]>();
+    const footprints: { id: number; ring: { x: number; z: number }[] }[] = [];
     for (const feature of features) {
       const ring = feature.geometry.coordinates[0];
       const unique = ring[0][0] === ring[ring.length - 1][0] && ring[0][1] === ring[ring.length - 1][1] ? ring.slice(0, -1) : ring;
@@ -231,9 +241,16 @@ export function NeighborhoodMap({ place, houses, onSelect, angle = "side" }: Pro
         if (index === 0) shape.moveTo(x, northing);
         else shape.lineTo(x, northing);
       });
-      const area = feature.properties?.area ?? 0;
       const id = feature.id ?? 0;
-      const height = area < 1.2e-8 ? 3.2 : 6.2 + (Math.abs(id) % 5) * 1.2;
+      footprints.push({ id, ring: unique.map(([lng, lat]) => toWorld(lng, lat)) });
+      if (photoreal) continue;
+      // Rockridge is mostly one- and two-story houses, so size the walls off the real footprint.
+      const ring2d = footprints[footprints.length - 1].ring;
+      const floorArea = Math.abs(ring2d.reduce((sum, a, i) => {
+        const b = ring2d[(i + 1) % ring2d.length];
+        return sum + a.x * b.z - b.x * a.z;
+      }, 0)) / 2;
+      const height = floorArea < 45 ? 3 : floorArea < 260 ? 5 + (Math.abs(id) % 3) * 0.8 : 7 + (Math.abs(id) % 3) * 1.2;
       let geometry: THREE.ExtrudeGeometry;
       try {
         geometry = new THREE.ExtrudeGeometry(shape, { depth: height, bevelEnabled: false });
@@ -248,46 +265,37 @@ export function NeighborhoodMap({ place, houses, onSelect, angle = "side" }: Pro
         position.setXYZ(i, x, h + 0.15, -northing);
       }
       geometry.computeVertexNormals();
-      const roofness = new Float32Array(position.count);
-      const tint = new Float32Array(position.count * 3);
-      for (let i = 0; i < position.count; i += 1) {
-        roofness[i] = 0;
-        tint[i * 3] = 0.45;
-        tint[i * 3 + 1] = 0.42;
-        tint[i * 3 + 2] = 0.38;
-      }
-      geometry.setAttribute("roofness", new THREE.BufferAttribute(roofness, 1));
-      geometry.setAttribute("tint", new THREE.BufferAttribute(tint, 3));
-      let sampleX = 0;
-      let sampleZ = 0;
-      unique.forEach(([lng, lat]) => {
-        sampleX += (lng - centerLng) * metersLng;
-        sampleZ += (centerLat - lat) * metersLat;
-      });
-      const mesh = new THREE.Mesh(geometry, [
-        new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false }),
-        material,
-      ]);
-      mesh.userData = { id, sampleX: sampleX / unique.length, sampleZ: sampleZ / unique.length };
+      // Siding takes a house color; the facade texture's UVs come out of ExtrudeGeometry in meters.
+      const paint = new THREE.Color(SIDING[Math.abs(id) % SIDING.length]);
+      const colors = new Float32Array(position.count * 3);
+      for (let i = 0; i < position.count; i += 1) paint.toArray(colors, i * 3);
+      geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+      const mesh = new THREE.Mesh(geometry, [capMaterial, wallMaterial]);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      mesh.userData = { id, base: mesh.material, hot: [capMaterial, wallHot] };
       scene.add(mesh);
       meshes.push(mesh);
 
-      const roofGeo = new THREE.ShapeGeometry(shape);
+      const eave = height + 0.15;
+      let roofGeo = hipRoof(footprints[footprints.length - 1].ring, eave);
+      if (!roofGeo) {
+        roofGeo = new THREE.ShapeGeometry(shape);
+        const flat = roofGeo.attributes.position;
+        for (let i = 0; i < flat.count; i += 1) flat.setXYZ(i, flat.getX(i), eave + 0.13, -flat.getY(i));
+        roofGeo.computeVertexNormals();
+      }
       const roofPos = roofGeo.attributes.position;
-      for (let i = 0; i < roofPos.count; i += 1) {
-        roofPos.setXYZ(i, roofPos.getX(i), height + 0.28, -roofPos.getY(i));
-      }
-      roofGeo.computeVertexNormals();
       const uvs = new Float32Array(roofPos.count * 2);
-      for (let i = 0; i < roofPos.count; i += 1) {
-        uvs[i * 2] = (roofPos.getX(i) - minX) / (maxX - minX);
-        uvs[i * 2 + 1] = 1 - (roofPos.getZ(i) - minZ) / (maxZ - minZ);
-      }
+      for (let i = 0; i < roofPos.count; i += 1) uvs.set(photoUv(roofPos.getX(i), roofPos.getZ(i)), i * 2);
       roofGeo.setAttribute("uv", new THREE.BufferAttribute(uvs, 2));
       const roof = new THREE.Mesh(roofGeo, roofMaterial);
-      roof.userData = { id };
+      roof.castShadow = true;
+      roof.receiveShadow = true;
+      roof.userData = { id, base: roofMaterial, hot: roofHot };
       scene.add(roof);
       meshes.push(roof);
+      byId.set(id, [mesh, roof]);
     }
 
     const cutLng = west + (east - west) * 0.72;
@@ -304,12 +312,21 @@ export function NeighborhoodMap({ place, houses, onSelect, angle = "side" }: Pro
     );
     fireGeo.setIndex([0, 1, 2, 0, 2, 3]);
     fireGeo.computeVertexNormals();
-    scene.add(
-      new THREE.Mesh(
-        fireGeo,
-        new THREE.MeshBasicMaterial({ color: 0xff5a1f, transparent: true, opacity: 0.16, depthWrite: false, side: THREE.DoubleSide }),
-      ),
+    const fireMesh = new THREE.Mesh(
+      fireGeo,
+      new THREE.MeshBasicMaterial({
+        color: 0xff5a1f,
+        transparent: true,
+        opacity: 0.16,
+        depthWrite: false,
+        // Real terrain rises above the flat overlay, so draw it on top of the mesh.
+        depthTest: !photoreal,
+        side: THREE.DoubleSide,
+      }),
     );
+    fireMesh.visible = showFireRef.current;
+    fireRef.current = fireMesh;
+    scene.add(fireMesh);
 
     const raycaster = new THREE.Raycaster();
     const pointer = new THREE.Vector2();
@@ -327,29 +344,102 @@ export function NeighborhoodMap({ place, houses, onSelect, angle = "side" }: Pro
       camera.aspect = width / height;
       camera.updateProjectionMatrix();
       renderer.setSize(width, height);
+      photoreal?.tiles.setResolutionFromRenderer(camera, renderer);
     };
     const observer = new ResizeObserver(resize);
     observer.observe(node);
 
-    const hoverAt = (event: PointerEvent) => {
+    const pickAt = (event: PointerEvent) => {
       const rect = node.getBoundingClientRect();
       pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
       pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
       raycaster.setFromCamera(pointer, camera);
-      const hit = raycaster.intersectObjects(meshes, false)[0];
-      if (!hit) {
+      if (!photoreal) {
+        const hit = raycaster.intersectObjects(meshes, false)[0];
+        return hit ? (hit.object.userData.id as number) : null;
+      }
+      // The Google mesh is one surface, so map the hit point back to the OSM footprint under it.
+      const hit = raycaster.intersectObject(photoreal.tiles.group, true)[0];
+      if (!hit) return null;
+      return footprints.find((footprint) => insideRing(hit.point.x, hit.point.z, footprint.ring))?.id ?? null;
+    };
+
+    let hoverId: number | null = null;
+    let beacon: THREE.Group | null = null;
+
+    const outline = (mesh: THREE.Mesh) => {
+      const existing = mesh.userData.outline as THREE.Group | undefined;
+      if (existing) return existing;
+      // Inverted hull: a slightly larger back-face copy reads as a rim around the silhouette.
+      mesh.geometry.computeBoundingBox();
+      const center = mesh.geometry.boundingBox?.getCenter(new THREE.Vector3()) ?? new THREE.Vector3();
+      const hull = new THREE.Mesh(mesh.geometry, hullMaterial);
+      hull.scale.setScalar(1.12);
+      hull.position.copy(center).multiplyScalar(-0.12);
+      const group = new THREE.Group();
+      group.add(hull, new THREE.LineSegments(new THREE.EdgesGeometry(mesh.geometry, 25), edgeMaterial));
+      mesh.add(group);
+      mesh.userData.outline = group;
+      return group;
+    };
+
+    const setHover = (id: number | null) => {
+      if (id === hoverId) return;
+      for (const mesh of hoverId === null ? [] : byId.get(hoverId) ?? []) {
+        mesh.material = mesh.userData.base;
+        outline(mesh).visible = false;
+      }
+      if (beacon) {
+        scene.remove(beacon);
+        beacon.traverse((child) => (child as THREE.Mesh).geometry?.dispose());
+        beacon = null;
+      }
+      hoverId = id;
+      renderer.domElement.style.cursor = id === null ? "" : "pointer";
+      if (id === null) return;
+      if (photoreal) {
+        const footprint = footprints.find((item) => item.id === id);
+        if (footprint) {
+          beacon = footprintBeacon(footprint.ring);
+          scene.add(beacon);
+        }
+        return;
+      }
+      for (const mesh of byId.get(id) ?? []) {
+        mesh.material = mesh.userData.hot;
+        outline(mesh).visible = true;
+      }
+    };
+
+    const hoverAt = (event: PointerEvent) => {
+      const rect = node.getBoundingClientRect();
+      const id = pickAt(event);
+      setHover(id);
+      if (id === null) {
         setTip(null);
         return;
       }
-      const id = hit.object.userData.id as number;
       const house = housesRef.current.find((item) => item.id === id);
-      const x = Math.min(Math.max(12, event.clientX - rect.left + 16), rect.width - 292);
-      const y = Math.min(Math.max(12, event.clientY - rect.top + 16), rect.height - 128);
-      setTip(
-        house
-          ? { x, y, kicker: STATUS[house.status], title: house.name, detail: house.note }
-          : { x, y, kicker: "Not on the list", title: "No check-in", detail: "This home is not registered for a ride." },
-      );
+      const home = householdFor(id, house?.name);
+      const x = Math.min(Math.max(12, event.clientX - rect.left + 16), rect.width - 312);
+      const y = Math.min(Math.max(12, event.clientY - rect.top + 16), rect.height - 250);
+      setTip({
+        x,
+        y,
+        kicker: house ? STATUS[house.status] : "Not registered",
+        owner: home.owner,
+        number: home.number,
+        street: home.address.replace(/^\d+\s*/, ""),
+        people: home.people,
+        vehicles: home.vehicles,
+        needs: home.needs,
+        note: house ? house.note : "Not on the ride check-in list.",
+      });
+    };
+    const onPointerLeave = () => {
+      if (dragging) return;
+      setHover(null);
+      setTip(null);
     };
 
     const onPointerDown = (event: PointerEvent) => {
@@ -377,12 +467,7 @@ export function NeighborhoodMap({ place, houses, onSelect, angle = "side" }: Pro
       dragging = false;
       if (moved > 6) return;
       hoverAt(event);
-      const rect = node.getBoundingClientRect();
-      pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-      pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-      raycaster.setFromCamera(pointer, camera);
-      const hit = raycaster.intersectObjects(meshes, false)[0];
-      const id = hit?.object.userData.id as number | undefined;
+      const id = pickAt(event);
       if (id && housesRef.current.some((house) => house.id === id)) onSelect(id);
     };
     const onWheel = (event: WheelEvent) => {
@@ -395,6 +480,7 @@ export function NeighborhoodMap({ place, houses, onSelect, angle = "side" }: Pro
     renderer.domElement.addEventListener("pointermove", onPointerMove);
     renderer.domElement.addEventListener("pointerup", onPointerUp);
     renderer.domElement.addEventListener("wheel", onWheel, { passive: false });
+    renderer.domElement.addEventListener("pointerleave", onPointerLeave);
 
     const animate = () => {
       frame = window.requestAnimationFrame(animate);
@@ -402,6 +488,11 @@ export function NeighborhoodMap({ place, houses, onSelect, angle = "side" }: Pro
         view.polar += (goalPolar - view.polar) * 0.16;
         view.radius += (goalRadius - view.radius) * 0.16;
         placeCamera();
+      }
+      for (const mesh of meshes) {
+        const goal = mesh.userData.id === hoverId ? HOVER_LIFT : 0;
+        const gap = goal - mesh.position.y;
+        mesh.position.y = Math.abs(gap) < 0.01 ? goal : mesh.position.y + gap * 0.22;
       }
       const width = node.clientWidth;
       const height = node.clientHeight;
@@ -421,9 +512,35 @@ export function NeighborhoodMap({ place, houses, onSelect, angle = "side" }: Pro
         pin.style.left = `${sx}px`;
         pin.style.top = `${sy}px`;
       }
+      for (const sighting of sightingsRef.current) {
+        const pin = document.getElementById(sighting.id);
+        if (!pin) continue;
+        const spot = toWorld(sighting.lng, sighting.lat);
+        const projected = new THREE.Vector3(spot.x, 12, spot.z).project(camera);
+        const sx = (projected.x * 0.5 + 0.5) * width;
+        const sy = (-projected.y * 0.5 + 0.5) * height;
+        const visible = projected.z < 1 && sx > -20 && sx < width + 20 && sy > -20 && sy < height + 20;
+        pin.style.visibility = visible ? "visible" : "hidden";
+        pin.style.left = `${sx}px`;
+        pin.style.top = `${sy}px`;
+      }
+      if (photoreal) {
+        camera.updateMatrixWorld();
+        photoreal.tiles.update();
+      }
       renderer.render(scene, camera);
     };
     animate();
+
+    const creditTimer = photoreal
+      ? window.setInterval(() => {
+          const sources = photoreal.tiles
+            .getAttributions()
+            .filter((item) => item.type === "string" && item.value)
+            .map((item) => String(item.value));
+          setCredit(["Google", ...sources].join(" · "));
+        }, 2000)
+      : 0;
 
     const loadPhoto = async () => {
       const [sharpCanvas, wideCanvas] = await Promise.all([
@@ -433,33 +550,39 @@ export function NeighborhoodMap({ place, houses, onSelect, angle = "side" }: Pro
       if (cancelled) return;
       const sharpTexture = new THREE.CanvasTexture(sharpCanvas);
       const wideTexture = new THREE.CanvasTexture(wideCanvas);
-      sharpTexture.colorSpace = THREE.LinearSRGBColorSpace;
-      wideTexture.colorSpace = THREE.LinearSRGBColorSpace;
+      sharpTexture.colorSpace = THREE.SRGBColorSpace;
+      wideTexture.colorSpace = THREE.SRGBColorSpace;
       sharpTexture.anisotropy = renderer.capabilities.getMaxAnisotropy();
       wideTexture.anisotropy = renderer.capabilities.getMaxAnisotropy();
-      material.uniforms.photo.value = sharpTexture;
-      groundMat.uniforms.wideTex.value = wideTexture;
-      roofMaterial.map = sharpTexture;
-      roofMaterial.needsUpdate = true;
-      try {
-        paintWalls(meshes, sharpCanvas, minX, minZ, maxX - minX, maxZ - minZ);
-      } catch {
-        // Walls keep a warm gray if the photo canvas cannot be read back.
+      for (const [target, map] of [
+        [roofMaterial, sharpTexture],
+        [roofHot, sharpTexture],
+        [sharpGroundMat, sharpTexture],
+        [wideGroundMat, wideTexture],
+      ] as const) {
+        target.map = map;
+        target.color.set(0xffffff);
+        target.needsUpdate = true;
       }
     };
-    loadPhoto().catch((error: unknown) => {
-      if (!cancelled) setProblem(error instanceof Error ? error.message : "The neighborhood photo did not load.");
-    });
+    if (!photoreal) {
+      loadPhoto().catch((error: unknown) => {
+        if (!cancelled) setProblem(error instanceof Error ? error.message : "The neighborhood photo did not load.");
+      });
+    }
 
     return () => {
       nudge.current = null;
       cancelled = true;
       window.cancelAnimationFrame(frame);
+      window.clearInterval(creditTimer);
+      photoreal?.tiles.dispose();
       observer.disconnect();
       renderer.domElement.removeEventListener("pointerdown", onPointerDown);
       renderer.domElement.removeEventListener("pointermove", onPointerMove);
       renderer.domElement.removeEventListener("pointerup", onPointerUp);
       renderer.domElement.removeEventListener("wheel", onWheel);
+      renderer.domElement.removeEventListener("pointerleave", onPointerLeave);
       renderer.dispose();
       node.removeChild(renderer.domElement);
     };
@@ -480,39 +603,189 @@ export function NeighborhoodMap({ place, houses, onSelect, angle = "side" }: Pro
           {house.name}
         </button>
       ))}
+      {sightings.map((sighting) => (
+        <p key={sighting.id} id={sighting.id} className={sighting.safe ? "pin pin-sighting safe" : "pin pin-sighting"} style={{ visibility: "hidden" }}>
+          {sighting.safe ? "Safe here" : "Seen here"} · {new Date(sighting.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+        </p>
+      ))}
       {problem ? <p className="scene-problem">{problem}</p> : null}
       {tip ? (
         <aside className="hover-card" style={{ left: tip.x, top: tip.y }}>
           <p>{tip.kicker}</p>
-          <strong>{tip.title}</strong>
-          <span>{tip.detail}</span>
+          <strong>{tip.owner}</strong>
+          <span className="hover-address">
+            House #{tip.number} · {tip.street}
+          </span>
+          <dl>
+            <div>
+              <dt>People</dt>
+              <dd>{tip.people}</dd>
+            </div>
+            <div>
+              <dt>{tip.vehicles.length === 1 ? "Vehicle" : "Vehicles"}</dt>
+              <dd>{tip.vehicles.length ? tip.vehicles.join(", ") : "None"}</dd>
+            </div>
+            {tip.needs ? (
+              <div>
+                <dt>Needs</dt>
+                <dd>{tip.needs}</dd>
+              </div>
+            ) : null}
+          </dl>
+          <span>{tip.note}</span>
         </aside>
       ) : null}
-      <p className="credits">Rockridge. Satellite © Esri, Maxar. Buildings © OpenStreetMap.</p>
+      <p className="credits">{credit}</p>
     </div>
   );
 }
 
-function paintWalls(meshes: THREE.Mesh[], canvas: HTMLCanvasElement, minX: number, minZ: number, sizeX: number, sizeZ: number) {
-  const context = canvas.getContext("2d");
-  if (!context) return;
-  for (const mesh of meshes) {
-    const sampleX = mesh.userData.sampleX as number | undefined;
-    const sampleZ = mesh.userData.sampleZ as number | undefined;
-    const roofness = mesh.geometry.attributes.roofness;
-    const tint = mesh.geometry.attributes.tint;
-    if (sampleX === undefined || sampleZ === undefined || !roofness || !tint) continue;
-    const uvX = (sampleX - minX) / sizeX;
-    const uvY = 1 - (sampleZ - minZ) / sizeZ;
-    const px = Math.min(canvas.width - 1, Math.max(0, Math.round(uvX * (canvas.width - 1))));
-    const py = Math.min(canvas.height - 1, Math.max(0, Math.round((1 - uvY) * (canvas.height - 1))));
-    const pixel = context.getImageData(px, py, 1, 1).data;
-    for (let i = 0; i < roofness.count; i += 1) {
-      if (roofness.getX(i) > 0.5) continue;
-      tint.setXYZ(i, (pixel[0] / 255) * 0.78, (pixel[1] / 255) * 0.78, (pixel[2] / 255) * 0.78);
+type Photoreal = { tiles: TilesRenderer; holder: THREE.Group };
+
+function createPhotoreal(apiToken: string, lat: number, lng: number): Photoreal {
+  const tiles = new TilesRenderer();
+  const draco = new DRACOLoader().setDecoderPath("https://www.gstatic.com/draco/versioned/decoders/1.5.7/");
+  tiles.registerPlugin(new GoogleCloudAuthPlugin({ apiToken, autoRefreshToken: true }));
+  tiles.registerPlugin(new GLTFExtensionsPlugin({ dracoLoader: draco }));
+  tiles.registerPlugin(new TileCompressionPlugin());
+  tiles.registerPlugin(new TilesFadePlugin());
+  tiles.registerPlugin(new ReorientationPlugin({ lat: (lat * Math.PI) / 180, lon: (lng * Math.PI) / 180 }));
+  // The plugin puts north on +Z and west on +X; this scene uses south on +Z and east on +X.
+  const holder = new THREE.Group();
+  holder.rotation.y = Math.PI;
+  holder.add(tiles.group);
+  return { tiles, holder };
+}
+
+// Tiles are placed on the ellipsoid, so drop the mesh until the lowest street in view sits at y = 0.
+function settleOnGround({ tiles, holder }: Photoreal, minX: number, maxX: number, minZ: number, maxZ: number) {
+  holder.updateMatrixWorld(true);
+  const ray = new THREE.Raycaster();
+  const down = new THREE.Vector3(0, -1, 0);
+  let lowest = Infinity;
+  for (let i = 0; i <= 4; i += 1) {
+    for (let j = 0; j <= 4; j += 1) {
+      ray.set(new THREE.Vector3(minX + ((maxX - minX) * i) / 4, 5000, minZ + ((maxZ - minZ) * j) / 4), down);
+      const hit = ray.intersectObject(tiles.group, true)[0];
+      if (hit) lowest = Math.min(lowest, hit.point.y);
     }
-    tint.needsUpdate = true;
   }
+  if (Number.isFinite(lowest)) holder.position.y -= lowest;
+}
+
+function insideRing(x: number, z: number, ring: { x: number; z: number }[]) {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i, i += 1) {
+    const a = ring[i];
+    const b = ring[j];
+    if (a.z > z !== b.z > z && x < ((b.x - a.x) * (z - a.z)) / (b.z - a.z) + a.x) inside = !inside;
+  }
+  return inside;
+}
+
+// A translucent column over a footprint, for the Google mesh where buildings cannot be lifted.
+function footprintBeacon(ring: { x: number; z: number }[]) {
+  const shape = new THREE.Shape(ring.map((point) => new THREE.Vector2(point.x, -point.z)));
+  const geometry = new THREE.ExtrudeGeometry(shape, { depth: 14, bevelEnabled: false });
+  geometry.rotateX(-Math.PI / 2);
+  const fill = new THREE.Mesh(
+    geometry,
+    new THREE.MeshBasicMaterial({ color: HOVER_GLOW, transparent: true, opacity: 0.22, depthTest: false, depthWrite: false }),
+  );
+  const edges = new THREE.LineSegments(
+    new THREE.EdgesGeometry(geometry, 25),
+    new THREE.LineBasicMaterial({ color: 0xffffff, depthTest: false }),
+  );
+  fill.renderOrder = 10;
+  edges.renderOrder = 11;
+  const group = new THREE.Group();
+  group.add(fill, edges);
+  return group;
+}
+
+// A flat photo plane whose UVs line up with stitchAerial's crop of the same bounds.
+function groundPlane(x0: number, x1: number, z0: number, z1: number, material: THREE.Material) {
+  const geometry = new THREE.PlaneGeometry(x1 - x0, z1 - z0);
+  geometry.rotateX(-Math.PI / 2);
+  geometry.translate((x0 + x1) / 2, 0, (z0 + z1) / 2);
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.receiveShadow = true;
+  return mesh;
+}
+
+// One 4.5 m wide, 2.8 m tall bay of painted lap siding with a framed double-hung window,
+// tinted per house by vertex color. Canvas bottom is the floor line.
+function facadeTexture() {
+  const canvas = document.createElement("canvas");
+  canvas.width = 384;
+  canvas.height = 240;
+  const context = canvas.getContext("2d");
+  if (context) {
+    context.fillStyle = "#fbf8f3";
+    context.fillRect(0, 0, 384, 240);
+    context.fillStyle = "#e2dcd2";
+    for (let y = 0; y < 240; y += 12) context.fillRect(0, y, 384, 2);
+    context.fillStyle = "#ffffff";
+    context.fillRect(136, 44, 112, 140);
+    const glass = context.createLinearGradient(146, 54, 238, 174);
+    glass.addColorStop(0, "#7d8c96");
+    glass.addColorStop(0.5, "#34404a");
+    glass.addColorStop(1, "#222a31");
+    context.fillStyle = glass;
+    context.fillRect(146, 54, 92, 120);
+    context.fillStyle = "#ffffff";
+    context.fillRect(146, 110, 92, 7);
+    context.fillStyle = "#d4cdc2";
+    context.fillRect(130, 184, 124, 8);
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(1 / 4.5, 1 / 2.8);
+  texture.anisotropy = 8;
+  return texture;
+}
+
+// Rectangular house footprints get a hip roof: four slopes up to a ridge along the long side.
+// Anything else (L shapes, big commercial boxes) keeps a flat roof.
+function hipRoof(corners: { x: number; z: number }[], eave: number) {
+  if (corners.length !== 4) return null;
+  const length = (a: { x: number; z: number }, b: { x: number; z: number }) => Math.hypot(b.x - a.x, b.z - a.z);
+  const diagonalA = length(corners[0], corners[2]);
+  const diagonalB = length(corners[1], corners[3]);
+  if (Math.abs(diagonalA - diagonalB) > 0.12 * Math.max(diagonalA, diagonalB)) return null;
+  const sideA = (length(corners[0], corners[1]) + length(corners[2], corners[3])) / 2;
+  const sideB = (length(corners[1], corners[2]) + length(corners[3], corners[0])) / 2;
+  const long = Math.max(sideA, sideB);
+  const short = Math.min(sideA, sideB);
+  if (short > 16 || long > 32) return null;
+  const [from, to] = sideA >= sideB ? [corners[0], corners[1]] : [corners[1], corners[2]];
+  const ux = (to.x - from.x) / length(from, to);
+  const uz = (to.z - from.z) / length(from, to);
+  const cx = corners.reduce((sum, point) => sum + point.x, 0) / 4;
+  const cz = corners.reduce((sum, point) => sum + point.z, 0) / 4;
+  const half = Math.max(long / 2 - short / 2, 0);
+  const peak = eave + Math.min(short * 0.32, 3.2);
+  const ridge = [
+    { x: cx - ux * half, z: cz - uz * half },
+    { x: cx + ux * half, z: cz + uz * half },
+  ];
+  const end = (point: { x: number; z: number }) => ((point.x - cx) * ux + (point.z - cz) * uz < 0 ? 0 : 1);
+  const positions: number[] = [];
+  const triangle = (a: { x: number; z: number }, ay: number, b: { x: number; z: number }, by: number, c: { x: number; z: number }, cy: number) =>
+    positions.push(a.x, ay, a.z, b.x, by, b.z, c.x, cy, c.z);
+  corners.forEach((a, index) => {
+    const b = corners[(index + 1) % 4];
+    const ra = end(a);
+    const rb = end(b);
+    triangle(a, eave, b, eave, ridge[rb], peak);
+    if (ra !== rb) triangle(a, eave, ridge[rb], peak, ridge[ra], peak);
+  });
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  geometry.computeVertexNormals();
+  return geometry;
 }
 
 async function stitchAerial(west: number, south: number, east: number, north: number, zoom: number) {
