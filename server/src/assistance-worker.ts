@@ -2,18 +2,24 @@ import { callReducer } from './db'
 import { assistanceStates, assistanceState, callSnapshot, nextVoiceTask } from './assistance'
 import { planAssistance } from './assistance-agent'
 import { requiresInformationReview, type AssistanceState, type Task, type VoiceUpdate } from '../shared/assistance'
+import { classifyCoordinatorError } from '../shared/coordinator-errors'
 
 export function startAssistanceWorker():()=>void {
   let stopped=false,scanning=false
   const planning=new Set<number>(), simulating=new Set<number>(), lastRevision=new Map<number,{revision:number,at:number}>()
   async function plan(s:AssistanceState){
-    if(planning.has(s.case_id)||s.paused||s.planned_revision===s.revision||s.failure_count>=3||s.retry_at>Date.now())return
+    if(planning.has(s.case_id)||s.paused||s.planning_error?.blocked||s.planned_revision===s.revision||s.failure_count>=3||s.retry_at>Date.now())return
     const seen=lastRevision.get(s.case_id)
     if(!seen||seen.revision!==s.revision){lastRevision.set(s.case_id,{revision:s.revision,at:Date.now()});return}
     if(Date.now()-seen.at<700)return
     planning.add(s.case_id)
-    try{const result=await planAssistance(s);if(!stopped)await callReducer('commitAssistancePlan',[s.case_id,s.revision,JSON.stringify(result)])}
-    catch(error){if(!stopped)await callReducer('failAssistancePlan',[s.case_id,s.revision,error instanceof Error?error.message:'Planning failed'])}
+    let phase:'model'|'commit'='model'
+    try{const result=await planAssistance(s);phase='commit';if(!stopped)await callReducer('commitAssistancePlan',[s.case_id,s.revision,JSON.stringify(result)])}
+    catch(error){
+      // A newer incident revision invalidates an in-flight plan, not the model service.
+      if(phase==='commit' && error instanceof Error && /Stale coordinator plan|Case is closed or paused/.test(error.message))return
+      if(!stopped)await callReducer('failAssistancePlan',[s.case_id,s.revision,JSON.stringify(classifyCoordinatorError(error,phase))])
+    }
     finally{planning.delete(s.case_id)}
   }
   async function dispatch(s:AssistanceState,task:Task,snapshot:Awaited<ReturnType<typeof callSnapshot>>){

@@ -2,6 +2,7 @@ import { t, SenderError, type ReducerCtx } from 'spacetimedb/server'
 import spacetimedb from '../models'
 import { addMessage, addTask, applyFinding, applyPlan, cancelArrangement, matchReasons, person, taskInstruction, touch, type AssistanceState, type VoiceUpdate } from '../../../shared/assistance'
 import { canonicalJson, commandId, object, text, contactEligibility, matchesScope, type InformationPolicy } from '../../../shared/information'
+import { decodeCoordinatorFailure } from '../../../shared/coordinator-errors'
 type Ctx = ReducerCtx<typeof spacetimedb.schemaType>
 const now = (ctx: Ctx) => Number(ctx.timestamp.microsSinceUnixEpoch)/1000
 function read(ctx: Ctx, caseId: bigint) {
@@ -64,13 +65,20 @@ export const commitAssistancePlan = spacetimedb.reducer({ case_id:t.u64(), expec
   if(reconcileContacts(ctx,args.case_id,s)){touch(s);write(ctx,args.case_id,s);return}
   if (s.revision !== Number(args.expected_revision) || s.planned_revision === s.revision) throw new SenderError('Stale coordinator plan')
   try{applyPlan(s,JSON.parse(args.plan_json),now(ctx))}catch(error){throw new SenderError(error instanceof Error?error.message:'Invalid coordinator plan')}
+  s.planning_error=undefined
   write(ctx,args.case_id,s)
 })
 export const failAssistancePlan = spacetimedb.reducer({ case_id:t.u64(), expected_revision:t.u64(), message:t.string() }, (ctx,args) => {
   const {state:s} = read(ctx,args.case_id)
-  if (s.revision !== Number(args.expected_revision) || s.planned_revision===s.revision) return
-  s.failure_count++; s.retry_at = now(ctx) + Math.min(60000,5000*s.failure_count); s.error = args.message.slice(0,2000)
-  if (s.failure_count === 3) { s.review = 'The coordinator could not produce a valid plan. Please review the incident.'; addMessage(s,s.review,now(ctx),'review') }
+  const failure=decodeCoordinatorFailure(args.message)
+  if ((!failure.blocked && s.revision !== Number(args.expected_revision)) || s.planned_revision===s.revision) return
+  if(s.planning_error?.blocked)return
+  s.failure_count++; s.planning_error=failure; s.error=failure.message
+  s.retry_at=failure.blocked?0:now(ctx)+Math.min(60000,(failure.kind==='rate_limit'?15000:5000)*s.failure_count)
+  if(failure.blocked || s.failure_count===3){
+    const notice=failure.message+(failure.blocked?'':' Automatic planning retries stopped. Choose Retry planning when ready.')
+    addMessage(s,notice,now(ctx),'review')
+  }
   write(ctx,args.case_id,s)
 })
 export const recordAssistanceUpdate = spacetimedb.reducer({ attempt_id:t.u64(), provider_call_id:t.string(), update_json:t.string() }, (ctx,args) => {
@@ -155,7 +163,7 @@ export const assistanceOperator = spacetimedb.reducer({ case_id:t.u64(), command
       const reasons=matchReasons(s,a.recipient_id,a.helper_id,a.id);if(reasons.length) cancelArrangement(s,a,reasons.join('; '),now(ctx))
     }
     addMessage(s,'Dispatcher changed access at '+location.label+' to '+location.access+'.',now(ctx),'decision')
-  } else if(input.action==='retry_planning') { s.error='';s.failure_count=0;s.retry_at=0 }
+  } else if(input.action==='retry_planning') { s.error='';s.planning_error=undefined;s.failure_count=0;s.retry_at=0 }
   else throw new SenderError('Unsupported coordinator action')
   touch(s);write(ctx,args.case_id,s)
   receipt(ctx,args.command_id,'assistance_operator',payload,{status:'recorded',support_case_id:Number(args.case_id),revision:s.revision})
@@ -197,12 +205,19 @@ export const synchronizeAssistance = spacetimedb.reducer({ case_id:t.u64() }, (c
         else s.missing_report_attempts=[...(s.missing_report_attempts??[]),attemptId]
         changed=true
         const unreachable=['not_reached','no_answer'].includes(a.outcome??'')
+        const savedFindings=s.findings.some(f=>f.attempt_id===attemptId)
+        const earlierFindings=s.findings.some(f=>f.profile_id===Number(a.profile_id))
+        const missingSummary=savedFindings?'Call findings are saved, but the final summary is missing. Review any unanswered questions or unconfirmed commitments.':earlierFindings?'No new findings or final summary were saved from this call. Earlier findings remain available; review unresolved questions or commitments.':'The call ended without saved findings or a final summary. Their situation remains unknown; human follow-up is needed.'
         if(finalReport)participant.unreachable=unreachable
-        addMessage(s,participant.name+': '+(finalReport?(unreachable?'not reached. Their situation remains unknown.':a.answer||'final report received.'):'call ended without a saved report. Human follow-up is needed.'),now(ctx),unreachable||!finalReport?'review':'update')
+        addMessage(s,participant.name+': '+(finalReport?(unreachable?(earlierFindings?'not reached on this call. Earlier findings remain available; their current situation needs confirmation.':'not reached. Their situation remains unknown.'):a.answer||'final report received.'):missingSummary),now(ctx),unreachable||!finalReport?'review':'update')
+        if(finalReport&&missingAlready&&s.review?.startsWith(participant.name+':')&&/final summary.*missing|without saved findings or a final summary|final summary were saved/i.test(s.review))s.review=participant.name+': The final summary has now arrived. Previously unresolved questions or commitments still need review.'
         if(unreachable)s.review=participant.name+' was not reached; human follow-up is needed.'
-        if(!finalReport)s.review=participant.name+' needs follow-up review. No automatic callback is authorized.'
+        if(!finalReport)s.review=participant.name+': '+missingSummary+' No automatic callback is authorized.'
         for(const t of s.tasks.filter(t=>t.attempt_id===attemptId&&['pending','delivered'].includes(t.status))) {
-          if(unreachable || !eligible || !finalReport || missingAlready) { t.status='blocked';t.result='Person not reached, no final report, or contact unavailable';s.review=participant.name+' needs follow-up review. No automatic callback is authorized.' }
+          if(unreachable || !eligible || !finalReport || missingAlready) {
+            t.status='blocked';t.result=unreachable?'Person not reached':!eligible?'Contact is unavailable':finalReport?'Final summary arrived after the review deadline; this task remains unconfirmed':savedFindings?'Findings saved; final summary missing. This task remains unconfirmed':'Final summary missing; this task remains unconfirmed'
+            s.review=participant.name+': '+t.result+'. No automatic callback is authorized.'
+          }
           else if(t.call_count>=2){t.status='blocked';t.result='Task callback limit reached';s.review=participant.name+' needs human follow-up.'}
           else { t.status='pending';t.attempt_id=null;t.delivered_at=null;t.due_at=now(ctx)+30000 }
         }
