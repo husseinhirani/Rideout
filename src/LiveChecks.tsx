@@ -3,12 +3,10 @@ import type { BackendState } from "./api";
 import { eventKey } from "./backend";
 import { FacilitatorChat } from "./Checks";
 import {
-  AgentColumn,
   barHeight,
   Bars,
   DashRail,
   FacilitatorTile,
-  Faces,
   FocusView,
   Icon,
   initials,
@@ -96,13 +94,31 @@ export function LiveChecks({
   const latest = inbound[0];
 
   const rail: RailItem<Focus>[] = [
-    { id: "outgoing", label: "Outgoing calls", value: calls.length, icon: "phoneOut" },
-    { id: "incoming", label: "Incoming calls", value: inbound.length, icon: "phoneIn" },
-    { id: "checkins", label: "Check-in sweep", value: people.length, icon: "check" },
-    { id: "need", label: "Need help", value: needHelp.length, icon: "alert" },
-    { id: "help", label: "Can help", value: helpers.length, icon: "hand" },
-    { id: "links", label: "Accepted", value: links.length, icon: "link" },
-    { id: "facilitator", label: "Facilitator agent", value: null, icon: "spark", agent: true },
+    {
+      id: "outgoing",
+      label: "Outgoing calls",
+      value: calls.length,
+      icon: "phoneOut",
+      detail: calls.length ? `${reach}% reported · ${active.length} on the line${current?.person ? ` · ${current.person.name.split(" ")[0]}` : ""}` : row ? "No calls planned yet" : "Calls appear once a case opens",
+    },
+    {
+      id: "incoming",
+      label: "Incoming calls",
+      value: inbound.length,
+      icon: "phoneIn",
+      detail: review.length ? `${review.length} need${review.length === 1 ? "s" : ""} you` : latest ? `${latest.caller.split(" · ")[0]} · ${latest.label}` : state.demo_mode.inbound ? "Line open" : "Inbound calls are off",
+    },
+    {
+      id: "checkins",
+      label: "Check-in sweep",
+      value: people.length,
+      icon: "check",
+      detail: sweep ? `${count("safe")} safe · ${count("victim")} need help · ${count("unknown")} no answer` : "No sweep yet",
+    },
+    { id: "need", label: "Need help", value: needHelp.length, icon: "alert", detail: names(needHelp.map((house) => house.name), "No one has asked for help") },
+    { id: "help", label: "Can help", value: helpers.length, icon: "hand", detail: names(helpers.map((profile) => profile.name), "No helpers yet") },
+    { id: "links", label: "Accepted", value: links.length, icon: "link", detail: links[0] ? `${links[0].from} → ${links[0].to}` : "No helper has accepted yet" },
+    { id: "facilitator", label: "Facilitator agent", value: null, icon: "spark", agent: true, detail: busy ? "Working…" : row ? `Case #${row.id}` : "No case" },
   ];
   const focused = focus ? rail.find((item) => item.id === focus.id) : undefined;
 
@@ -184,87 +200,20 @@ export function LiveChecks({
 
             </div>
           </div>
-          <AgentColumn
-            top={
-              <>
-                <div className="dash-pair">
-                  <button type="button" className="tile stat reach" onClick={(event) => open("outgoing", event)}>
-                    <span className="tile-label">Reported</span>
-                    <strong className="big">
-                      {reach}
-                      <small>%</small>
-                    </strong>
-                    <span className="tile-foot">
-                      {reported} of {calls.length} calls sent a report
-                    </span>
-                  </button>
-
-                  <button type="button" className={review.length ? "tile stat incoming ringing" : "tile stat incoming"} onClick={(event) => open("incoming", event)}>
-                    <span className="tile-label">
-                      Incoming
-                      <em className={review.length ? "chip hot" : "chip"}>{review.length ? `Needs you · ${review.length}` : state.demo_mode.inbound ? "Line open" : "Off"}</em>
-                    </span>
-                    <strong className="big">{inbound.length}</strong>
-                    <span className="tile-foot">{latest ? `${latest.caller.split(" · ")[0]} · ${latest.label}` : "Elena records call-ins"}</span>
-                  </button>
-
-                </div>
-                <div className="dash-pair">
-                  <button type="button" className={current ? "tile stat sky on" : "tile stat sky"} onClick={(event) => open("outgoing", event, current ? String(current.attempt.id) : undefined)}>
-                    <span className="tile-label">On the line</span>
-                    <strong className="big">
-                      {active.length}
-                      <small>active</small>
-                    </strong>
-                    <span className="tile-foot">
-                      {current ? `${current.person?.name ?? "Unknown"}${current.progress?.claimed_at_ms ? ` · ${mmss(seconds(current.progress.claimed_at_ms, now))}` : ""}` : "No one on the line"}
-                    </span>
-                  </button>
-
-                  <div className="tile people">
-                    <button type="button" className="people-half" onClick={(event) => open("need", event)}>
-                      <span className="tile-label">
-                        <i className="k-miss" />
-                        Need help
-                      </span>
-                      <span className="people-row">
-                        <strong className="big">{needHelp.length}</strong>
-                        <Faces names={needHelp.map((house) => house.name)} />
-                      </span>
-                    </button>
-                    <button type="button" className="people-half" onClick={(event) => open("help", event)}>
-                      <span className="tile-label">
-                        <i className="k-dark" />
-                        Can help
-                      </span>
-                      <span className="people-row">
-                        <strong className="big">{helpers.length}</strong>
-                        <Faces names={helpers.map((profile) => profile.name)} />
-                      </span>
-                    </button>
-                  </div>
-
-                </div>
-              </>
-            }
-            agent={
-              <FacilitatorTile
-                chat={chat}
-                name="Jonah Reid"
-                kicker={row ? `Case #${row.id}` : "No case"}
-                lead={row ? brief?.summary || row.goal : "Open a case first, or describe the incident when the backend can use Claude."}
-                live={busy}
-                busy={busy}
-                suggestions={brief?.suggestions.slice(0, 3) ?? []}
-                placeholder={row ? "A witness reports a red backpack near the playground…" : "Describe what is happening…"}
-                onOpen={(from) => open("facilitator", from)}
-                onAsk={(text, from) => {
-                  actions.ask(text);
-                  open("facilitator", from);
-                }}
-              />
-            }
-          />
+          <div className="dash-col agent-col">
+            <FacilitatorTile
+              chat={chat}
+              name="Jonah Reid"
+              kicker={row ? `Case #${row.id}` : "No case"}
+              lead={row ? brief?.summary || row.goal : "Open a case first, or describe the incident when the backend can use Claude."}
+              live={busy}
+              busy={busy}
+              suggestions={brief?.suggestions.slice(0, 3) ?? []}
+              placeholder={row ? "A witness reports a red backpack near the playground…" : "Describe what is happening…"}
+              onOpen={(from) => open("facilitator", from)}
+              onAsk={(text) => actions.ask(text)}
+            />
+          </div>
         </div>
       </div>
 
@@ -390,6 +339,11 @@ export function LiveChecks({
       ) : null}
     </section>
   );
+}
+
+function names(list: string[], none: string) {
+  if (list.length === 0) return none;
+  return list.length > 2 ? `${list.slice(0, 2).join(", ")} +${list.length - 2}` : list.join(" and ");
 }
 
 function callTone(call: LiveCall): BarTone {
