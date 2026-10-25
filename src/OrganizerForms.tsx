@@ -2,9 +2,9 @@ import { useRef, useState, type ReactNode } from "react";
 import { api, ApiError, informationCases, type BackendState, type ContactScope, type DirectoryResult, type InformationCase, type IncomingRequestRow } from "./api";
 import { eventKey, type RunAction } from "./backend";
 
-export function CommandForm({ run, prepare, children, label, disabled = false, onSaved }: {
+export function CommandForm({ run, prepare, children, label, disabled = false, onSaved, className = "", submitIcon }: {
   run: RunAction; prepare: (id: string) => () => Promise<unknown>; children?: ReactNode;
-  label: string; disabled?: boolean; onSaved?: (value: unknown) => void;
+  label: string; disabled?: boolean; onSaved?: (value: unknown) => void; className?: string; submitIcon?: ReactNode;
 }) {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
@@ -22,13 +22,13 @@ export function CommandForm({ run, prepare, children, label, disabled = false, o
       setMessage((error instanceof Error ? error.message : "Request failed") + (uncertain ? " Retry the same request to confirm its result." : " Review the current state before submitting again."));
     } finally { lock.current = false; setBusy(false); }
   };
-  return <form className="organizer-form" onSubmit={event => {
+  return <form className={`organizer-form ${className}`} onSubmit={event => {
     event.preventDefault();
     if (disabled || lock.current || retry) return;
     try { void send(prepare(eventKey())); }
     catch (error) { setMessage(error instanceof Error ? error.message : "Check these fields."); }
   }}>
-    <fieldset disabled={disabled || busy || !!retry}>{children}<button type="submit">{busy ? "Saving…" : label}</button></fieldset>
+    <fieldset disabled={disabled || busy || !!retry}>{children}<button type="submit" aria-label={label}>{busy ? "Saving…" : submitIcon ?? label}</button></fieldset>
     {message && <p role="status" className="form-message">{message}</p>}
     {retry && <button type="button" disabled={disabled || busy} onClick={() => void send(retry)}>Retry same request</button>}
   </form>;

@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { api, type BackendState, type InformationCase, type InformationDecisionRow } from "./api";
+import type { ChatMessage } from "./types";
 import type { RunAction } from "./backend";
-import { Bars, DashRail, FacilitatorTile, FocusView, Icon, Timeline, useFocus, type RailItem } from "./Dashboard";
+import { Bars, DashRail, FacilitatorTile, FocusView, Icon, Timeline, mmss, seconds, useFocus, type RailItem } from "./Dashboard";
 import { callsFor, coordinationOf, inboundFrom, type LiveCall } from "./live";
 import { CaseSettings, CommandForm, IntakeSettings, ManualCall, OrganizerInput, ReviewReport } from "./OrganizerForms";
 
-type Focus = "outgoing" | "incoming" | "evidence" | "contacts" | "settings" | "facilitator" | "intake";
+type Focus = "outgoing" | "incoming" | "evidence" | "contacts" | "settings" | "facilitator" | "intake" | "matches";
 
 export function LiveChecks({ visible, state, row, now, disabled, run }: {
   visible: boolean; state: BackendState; row: InformationCase | null; now: number; disabled: boolean; run: RunAction;
@@ -22,11 +23,28 @@ export function LiveChecks({ visible, state, row, now, disabled, run }: {
   const pending = calls.filter(c => ["active", "dispatching", "queued"].includes(c.transport ?? ""));
   const reported = calls.filter(c => c.progress?.report_received).length;
   const status = row ? coordinationOf(state, row.id, now).text : "Open an investigation to begin.";
+  const incident = state.incidents.find(i => i.id === row?.incident_id);
+  const elapsed = incident ? seconds(Date.parse(incident.created_at), incident.ended_at ? Date.parse(incident.ended_at) : now) : 0;
+  const chat: ChatMessage[] = [
+    ...notes.filter(n => n.source === "organizer").map(n => ({ id: `note:${n.id}`, from: "lead" as const, text: n.text, at: Date.parse(n.at) })),
+    ...(state.information_decisions ?? []).filter(d => d.support_case_id === row?.id).map(d => ({ id: d.id, from: "facilitator" as const, text: `${d.based_on_revision === row?.input_revision ? "Current" : "Earlier"} decision · revision ${d.based_on_revision}\n${d.plan.summary}`, at: Date.parse(d.created_at) })),
+  ].sort((a, b) => a.at - b.at);
+  const latestCalls = [...new Map(calls.map(c => [c.attempt.profile_id, c])).values()];
+  const neighborStatuses = [
+    { key: "out", label: "Safe", count: null },
+    { key: "needs_ride", label: "Ride", count: null },
+    { key: "unknown", label: "No ans.", count: latestCalls.filter(c => c.attempt.outcome === "no_answer").length },
+    { key: "no_ride", label: "No ride", count: null },
+    { key: "blocked", label: "Blocked", count: null },
+    { key: "waiting", label: "Queued", count: latestCalls.filter(c => c.transport === "queued").length },
+  ];
+  const most = Math.max(1, ...neighborStatuses.map(s => s.count ?? 0));
   const rail: RailItem<Focus>[] = [
     { id: "outgoing", label: "Calls", value: calls.length, icon: "phoneOut", detail: `${reported} reports saved · ${active.length} on the line` },
     { id: "incoming", label: "Incoming reports", value: inbound.length, icon: "phoneIn", detail: `${reviews.length} awaiting review` },
     { id: "evidence", label: "Evidence", value: notes.length, icon: "check", detail: "Source-attributed accounts and organizer input" },
     { id: "contacts", label: "Directory", value: state.profiles.length, icon: "hand", detail: state.profiles.map(p => p.name).slice(0, 3).join(", ") || "No profiles yet" },
+    { id: "matches", label: "Matches", value: null, icon: "link", detail: "Ride matching is not available" },
     { id: "settings", label: "Organizer controls", value: null, icon: "grid", detail: "Scope, consent, pause and closure" },
     { id: "intake", label: "Phone intake", value: null, icon: "phoneIn", detail: "Permissions for incoming investigations" },
     { id: "facilitator", label: "Coordinator", value: null, icon: "spark", agent: true, detail: status },
@@ -36,32 +54,41 @@ export function LiveChecks({ visible, state, row, now, disabled, run }: {
   return <section className={`dash${visible ? "" : " is-hidden"}${focus ? " focusing" : ""}`} aria-hidden={!visible} aria-label="Investigation dashboard">
     <DashRail items={rail} active={focus?.id ?? null} onOpen={open} />
     <div className={focus ? "dash-body blurred" : "dash-body"}>
-      <header className="dash-head"><div><h1>Coordination</h1><p>{row ? `Investigation #${row.id} · ${row.status}${row.status !== "closed" && row.policy.paused ? " · paused" : ""}` : "Information coordination"}</p></div>
-        <div className="dash-pills"><span className="dash-pill dark">{state.demo_mode.simulate ? "Simulated phones" : "Real calls"}</span><span className="dash-pill">{row ? `Revision ${row.input_revision}` : "Standing by"}</span></div>
+      <header className="dash-head"><div><h1>Checks</h1><p>{incident?.description ?? "Open an investigation to begin"}</p></div>
+        <div className="dash-pills"><span className={`dash-pill${active.length ? " live" : ""}`}><i />{row?.status === "closed" ? "Closed" : row?.policy.paused ? "Paused" : active.length ? "Live" : "Standing by"}</span><span className="dash-pill"><Icon name="clock" />{row?.status === "closed" && !incident?.ended_at ? "—" : mmss(elapsed)}</span><span className="dash-pill dark">{state.profiles.length} directory profiles</span></div>
       </header>
       <div className="dash-grid">
         <div className="dash-col">
           <button type="button" className="tile calls" onClick={e => open("outgoing", e)}>
             <span className="tile-title"><i className="swatch" />Outgoing calls<Icon name="expand" /></span>
-            <span className="calls-figures"><span><small>Calls</small><strong>{calls.length}</strong></span><span><small>Reports saved</small><strong>{reported}</strong></span>{pending.length > 0 && <em className="chip">{pending.length} in progress</em>}</span>
-            <Bars bars={calls.slice(-22).map(c => ({ id: String(c.attempt.id), height: c.transport === "active" ? 85 : c.transport === "ended" ? 60 : 30, tone: c.transport === "active" ? "live" : c.transport === "unknown" ? "hold" : c.transport === "ended" ? "done" : c.transport === "cancelled" ? "off" : "ring", title: `${c.person?.name ?? "Unknown"} · ${c.transportLabel} · ${c.reportLabel}` }))} empty="No calls yet" />
-            <span className="tile-foot">Transport and saved reports are tracked separately.</span>
+            <span className="calls-figures"><span><small>Calls</small><strong>{calls.length}</strong></span><span><small>Avg on line</small><strong title="Provider connection duration is not available in the current backend">—</strong></span>{pending.length > 0 && <em className="chip">{pending.length} in progress</em>}</span>
+            <Bars bars={calls.slice(-22).map(c => ({ id: String(c.attempt.id), height: c.transport === "active" ? 85 : c.transport === "ended" ? 60 : 30, tone: c.transport === "active" ? "live" : c.transport === "unknown" ? "hold" : c.attempt.outcome === "no_answer" ? "miss" : c.transport === "ended" ? "done" : c.transport === "cancelled" ? "off" : "ring", title: `${c.person?.name ?? "Unknown"} · ${c.transportLabel} · ${c.reportLabel}` }))} empty="No calls yet" />
+            <span className="legend-row"><span><i className="k-live" />Active</span><span><i className="k-ring" />Queued / dialing</span><span><i className="k-miss" />No answer</span><span><i className="k-done" />Ended</span></span>
           </button>
           <div className="dash-pair low">
-            <button type="button" className="tile lime" onClick={e => open("evidence", e)}><span className="tile-label">Evidence</span><strong className="huge">{notes.length}</strong><span className="tile-foot">Source-attributed accounts and organizer input</span></button>
-            <button type="button" className="tile status" onClick={e => open("settings", e)}><span className="tile-title">Organizer controls<Icon name="expand" /></span><p>{row?.status === "closed" ? "Closed · history preserved" : row?.policy.paused ? "Paused · awaiting your decision" : planning?.enabled ? "Automatic questions enabled" : "Manual questions"}</p><span className="tile-foot">Scope, consent, pause and closure</span></button>
+            <button type="button" className="tile lime" onClick={e => open("matches", e)}>
+              <span className="tile-label"><em className="chip light"><Icon name="link" />Matches</em></span>
+              <span className="pager" aria-hidden="true">{Array.from({ length: 4 }, (_, i) => <i key={i} />)}</span>
+              <span className="tile-unit">rides matched</span><strong className="huge">—</strong><span className="tile-foot">Ride matching is not available</span>
+            </button>
+            <button type="button" className="tile status" onClick={e => open("contacts", e)}>
+              <span className="tile-title">Neighbors</span>
+              <span className="sticks">{neighborStatuses.map(s => <span key={s.key} className={`stick s-${s.key}${s.count === null ? " unassessed" : ""}`}><span className="stick-track"><i style={{ height: `${10 + ((s.count ?? 0) / most) * 90}%` }}><b>{s.count ?? "—"}</b></i></span><small>{s.label}</small></span>)}</span>
+              <span className="tile-foot">— Not assessed · directory locations only</span>
+            </button>
           </div>
         </div>
         <div className="dash-col agent-col">
-          <FacilitatorTile name="Claude" kicker={row?.status === "closed" ? "Closed" : row?.policy.paused ? "Paused" : stale ? "Updating" : "Coordinator"} lead={decision?.plan.summary ?? row?.objective ?? "Describe an incident and what you need to learn."} live={!!row && row.status === "open" && !!planning?.enabled && !row.policy.paused} busy={false} disabled={disabled || !row || row.status === "closed"} chat={[]} suggestions={[]} placeholder="Give a direction or correction…" onOpen={e => { setDirection(""); open("facilitator", e); }} onAsk={(text, e) => { setDirection(text); open("facilitator", e); }} />
+          <FacilitatorTile name="Jonah Reid" kicker={row?.status === "closed" ? "Closed" : row?.policy.paused ? "Paused" : stale ? "Updating" : "Coordinator"} lead={decision?.plan.summary ?? row?.objective ?? "Describe an incident and what you need to learn."} live={!!row && row.status === "open" && !!planning?.enabled && !row.policy.paused} busy={false} disabled={disabled || !row || row.status === "closed"} chat={chat} suggestions={[]} placeholder="Give a direction or correction…" onOpen={e => { setDirection(""); open("facilitator", e); }} onAsk={(text, e) => { setDirection(text); open("facilitator", e); }} composer={row ? <CommandForm className="coordinator-composer" run={run} disabled={disabled || row.status === "closed"} label="Send direction" submitIcon={<Icon name="arrow" />} prepare={command_id => { const body = { command_id, expected_input_revision: row.input_revision, text: direction }; return () => api.caseInput(row.id, body); }} onSaved={() => setDirection("")}><Icon name="spark" /><input aria-label="Give a direction or correction" placeholder="Give a direction or correction…" required value={direction} onChange={e => setDirection(e.target.value)} /></CommandForm> : undefined} />
         </div>
       </div>
-      <p className="dashboard-status" role="status">{status}</p>
+      <p className="dashboard-status" role="status">{row && `Investigation #${row.id} · ${row.status}. `}{status}</p>
     </div>
     {focus && focused && <FocusView focus={focus} title={focused.label} kicker={row ? `Investigation #${row.id}` : "RideOut"} icon={focused.icon} agent={focus.id === "facilitator"} onClose={close}>
+      {focus.id === "matches" && <><p>Ride matching and accepted transport assignments are not available in this backend.</p><p>Caller reports and organizer directions are saved as evidence. No report automatically dispatches a person or promises a ride.</p></>}
       {focus.id === "outgoing" && <>
         {!row ? <p>Open an investigation first.</p> : <>
-          <p>Tom calls within the authorized scope. Saving a report does not mean the call has ended.</p>
+          <p>{reported} reports saved. Average connected duration is not available.</p><p>Tom calls within the authorized scope. Saving a report does not mean the call has ended.</p>
           {calls.map(call => <CallDetail key={call.attempt.id} state={state} row={row} call={call} run={run} disabled={disabled} />)}
           {!calls.length && <p>No calls placed yet.</p>}
           {planning?.enabled ? <p>Claude chooses calls within scope. Turn off automatic questions in organizer controls to place a manual call.</p> : <ManualCall state={state} row={row} run={run} disabled={disabled} />}

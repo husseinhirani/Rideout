@@ -33,15 +33,16 @@ export function App() {
     {!offline && <NeighborhoodMap place={place} houses={houses} onSelect={setSelected} angle={aerial ? "aerial" : "side"} simple={simple} showFire={false} sightings={pins} liveData />}
     <header className="top">
       <div className="brand"><strong>RideOut</strong><button type="button" className="mode-pill" onClick={() => { setOffline(!offline); setCreate(false); }}>{offline ? "Offline story → live" : "Live → offline story"}</button></div>
-      <nav aria-label="Views"><button type="button" className={tab === "checks" ? "on" : ""} onClick={() => setTab("checks")}>Coordination</button><button type="button" className={tab === "map" ? "on" : ""} onClick={() => setTab("map")}>Map</button></nav>
+      <nav aria-label="Views"><button type="button" className={tab === "checks" ? "on" : ""} onClick={() => setTab("checks")}>Checks</button><button type="button" className={tab === "map" ? "on" : ""} onClick={() => setTab("map")}>Map</button></nav>
       <div className="top-end">
         {!offline && <>
           <select aria-label="Investigation" value={row?.id ?? ""} onChange={e => setCaseId(Number(e.target.value))}><option value="" disabled>Choose investigation</option>{cases.map(c => <option key={c.id} value={c.id}>#{c.id} · {c.objective.slice(0, 60)} · {c.status}</option>)}</select>
-          <button type="button" disabled={!backend.connected} onClick={() => setCreate(true)}>New investigation</button>
-          <button type="button" disabled={!state} onClick={() => {
+          <time>{new Date(now).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time>
+          <button type="button" className="ghost" disabled={!state} onClick={() => {
             const url = URL.createObjectURL(new Blob([JSON.stringify(state, null, 2)], { type: "application/json" }));
             const link = document.createElement("a"); link.href = url; link.download = "rideout-state.json"; link.click(); URL.revokeObjectURL(url);
-          }}>Export</button>
+          }}>Export log</button>
+          <button type="button" aria-label="New investigation" disabled={!backend.connected} onClick={() => setCreate(true)}>Start</button>
         </>}
         {tab === "map" && <><button type="button" onClick={() => setSimple(!simple)}>{simple ? "Satellite" : "Simple map"}</button><button type="button" onClick={() => setAerial(!aerial)}>{aerial ? "Side" : "Aerial"}</button></>}
       </div>

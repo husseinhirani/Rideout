@@ -3,10 +3,13 @@
 ## Connected product
 
 The live dashboard uses generic investigations and the current operator API.
-The UpdatedUI layout gives the coordinator the right column. Calls, evidence
-and organizer controls remain on the left; sidebar previews lead to incoming
-reports, the directory, phone intake and full decision details. All counts and
-actions use the current backend. The teammate's map components are reused.
+The UpdatedUI layout keeps the call chart, Matches card and Neighbors chart
+on the left, with the coordinator history and composer on the right. Sidebar
+previews lead to evidence, organizer controls, incoming reports, the directory
+and phone intake. Organizer messages submit directly through the existing
+idempotent command API. Saved organizer notes and accepted decisions populate
+the conversation history. Missing ride/safety classifications, ride matches and
+connected-call duration display as unavailable, never as inferred counts. The teammate's map components are reused.
 Scenario-specific stories are available only through explicit offline selection.
 Live disconnect retains real state; stored directory coordinates never become
 fictional household facts. See `README.md` for local startup and the first UI check.

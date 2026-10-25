@@ -62,12 +62,12 @@ Do not wipe or reseed an existing database. This UI change adds no database sche
 
 1. Confirm the mode and database in the connection strip. Existing investigations
    should appear in the top selector, with the same reports as the HTML console.
-2. Click **New investigation**. Enter an incident and information objective.
+2. Click **Start** to open a new investigation. Enter an incident and information objective.
    Choose contacts directly or use area, relationship or tag filters. Search never
    calls anyone. Record consent only when the selected people agreed.
 3. Leave **Let Claude choose contacts and questions** off for the first UI check.
    Click **Open investigation**. Expect one saved case and no new calls.
-4. Open **Coordinator**, save a direction or correction, and refresh. It should
+4. Send a direction from the coordinator card, then refresh. It should
    remain under **Evidence**. With automatic questions off, this does not dial.
 5. Open **Incoming reports**. Review an appropriate pending account; choose its
    investigation and give a reason. Expect a persisted attachment or rejection.

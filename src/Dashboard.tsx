@@ -206,6 +206,7 @@ export function FacilitatorTile({
   placeholder,
   onOpen,
   onAsk,
+  composer,
 }: {
   name: string;
   kicker: string;
@@ -213,6 +214,7 @@ export function FacilitatorTile({
   live: boolean;
   busy: boolean;
   disabled?: boolean;
+  composer?: ReactNode;
   chat: ChatMessage[];
   suggestions: string[];
   placeholder: string;
@@ -256,7 +258,7 @@ export function FacilitatorTile({
           ))}
         </div>
       ) : null}
-      <form
+      {composer ?? <form
         className="agent-ask"
         onSubmit={(event) => {
           event.preventDefault();
@@ -271,7 +273,7 @@ export function FacilitatorTile({
         <button type="submit" disabled={busy || disabled || !draft.trim()} aria-label="Send to the facilitator">
           <Icon name="arrow" />
         </button>
-      </form>
+      </form>}
     </article>
   );
 }
