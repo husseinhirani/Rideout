@@ -31,8 +31,10 @@ with an open case linked through explicit contact selection, dispatched calls,
 or that caller's original intake. Ambiguous and unfamiliar reports need review.
 
 Phone intake requires an enabled line and a profile with `intake_allowed`.
-The caller supplies the incident and information objective; missing essentials
-prompt clarification. The organizer's stored scope, policy and disclosure facts
+The caller reports what happened and their needs; they do not need to supply an
+organizer's information objective. Claude can derive a narrow information objective
+from that account, identifying the inference in its reason. Missing incident
+essentials prompt clarification. The organizer's stored scope, policy and disclosure facts
 govern the new case. Intake permission never grants call consent.
 
 Two additive tables store line configuration and incoming resolutions. Reducers
