@@ -342,7 +342,7 @@ export const startWildfireDrill = spacetimedb.reducer({ command_id: t.string(), 
   })
   const people = [...realPeople,...simulated]
   const area = { lat: 37.8462, lng: -122.2499, radius_m: 400 }
-  const context = "This is a consented RideOut wildfire evacuation drill, not a real emergency. The Rockridge incident and location are fictional. Coordination is enabled: fetch the current mission using coordinate_call after identity confirmation and the drill explanation, and share important discoveries during the conversation. Use the latest mission response to decide the next useful question or completion; do not add a redundant final check. Introduce yourself as Tom, an AI agent from RideOut, and confirm the person's name before discussing the situation. Then clearly say this is a drill. Listen naturally to the participant's imagined evacuation situation and save their account using report_call. Do not use record_check_in. Only an authorized arrangement task permits its specified proposal disclosures; do not promise a ride or instruct real-world action."
+  const context = "This is a consented Sealert wildfire evacuation drill, not a real emergency. The Rockridge incident and location are fictional. Coordination is enabled: fetch the current mission using coordinate_call after identity confirmation and the drill explanation, and share important discoveries during the conversation. Use the latest mission response to decide the next useful question or completion; do not add a redundant final check. Introduce yourself as Tom, an AI agent from Sealert, and confirm the person's name before discussing the situation. Disclose the drill once at opening; do not repeat that it is fictional in subsequent turns. Use the mission evacuation_context for the situation, destination, time window and mode-specific travel estimates. Listen naturally to the participant's imagined evacuation situation and save their account using report_call. Do not use record_check_in. Only an authorized arrangement task permits its specified proposal disclosures; do not promise a ride or instruct real-world action."
   const creation = {
     text: "Wildfire evacuation drill in Rockridge. Fictional incident; consenting participants receive real phone calls.",
     objective: "Coordinate assistance in this fictional evacuation drill: discover needs and available help, propose suitable arrangements for human approval, and finish after helper acceptance and recipient confirmation. Pickup and arrival are outside this drill; do not claim either occurred.",
@@ -364,7 +364,7 @@ export const startWildfireDrill = spacetimedb.reducer({ command_id: t.string(), 
       case_id: BigInt(created.support_case_id), command_id: callCommand, actor: args.actor,
       payload_json: canonicalJson({ expected_input_revision: 1, profile_id: Number(person.id),
         queued: attemptIds.map(attempt_id => ({ attempt_id, disposition: "retain" })), context,
-        question: "For this wildfire drill, imagine you need to leave your neighborhood. Could you leave on your own, or what assistance would you need?" }),
+        question: "Explain the supplied evacuation situation and destination, understand how this person would get there in the available time, and find out what help they need or could offer." }),
     })
     const attemptId=JSON.parse(ctx.db.operatorCommand.command_id.find(callCommand)!.result_json).attempt_id
     attemptIds.push(attemptId)
