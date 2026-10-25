@@ -50,6 +50,16 @@ export function voiceMission(state: AssistanceState, task: Task, outcome: string
   return {
     outcome,
     rationale: task.reason,
+    evacuation_context: state.scenario.evacuation_brief ? {
+      ...state.scenario.evacuation_brief,
+      destination: state.scenario.destination,
+      arrival_deadline_at: state.messages[0]?.at !== undefined
+        ? state.messages[0].at + state.scenario.evacuation_brief.arrival_window_minutes * 60000 : null,
+      current_time: Date.now(),
+      location_confirmed: participant.facts.location_id !== null,
+      starting_location: state.scenario.locations.find(l => l.id === (participant.facts.location_id ?? participant.start_location_id)) ?? null,
+      travel_estimates: state.scenario.evacuation_brief.travel_estimates.filter(e => e.location_id === (participant.facts.location_id ?? participant.start_location_id)),
+    } : null,
     coordinator_brief: task.coordinator_brief ?? null,
     route_context: arrangement ? arrangementRouteContext(state,arrangement) : null,
     completion: task.status === 'blocked' ? 'needs_review' : task.status === 'completed' ? 'resolved' : 'in_progress',
@@ -85,7 +95,7 @@ export function voiceMission(state: AssistanceState, task: Task, outcome: string
       'A request to stop takes priority over information collection or tool calls. Unknown and declined answers are valid outcomes.',
       'Only an authorized arrangement task permits asking for that specific commitment. Never invent a match, ETA, dispatch, pickup or arrival.',
       ...(state.scenario.follow_through === 'arrangement' ? ['This session ends when the helper accepts and the recipient confirms the arrangement. Confirmation does not mean pickup or arrival; do not promise travel follow-up calls.'] : []),
-      ...(state.scenario.drill ? ['This is a fictional drill. Clarify whether an unexpected urgent statement describes a real situation or the drill; unresolved real urgency needs human review. Do not direct actual travel.'] : []),
+      ...(state.scenario.drill ? ['Disclose the drill once at opening, then discuss the scenario naturally without repeatedly saying fictional or simulated. Clarify whether an unexpected urgent statement describes a real situation or the drill; unresolved real urgency needs human review. Do not direct actual travel.'] : []),
     ],
   }
 }

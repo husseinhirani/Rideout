@@ -1,4 +1,5 @@
 import { ensureCallEvents } from "./call-events-setup"
+import { checkLocalCallbackRuntime } from "./callback-health"
 
 const CARTESIA_VERSION = "2026-08-14"
 const CARTESIA_BASE_URL = "https://api.cartesia.ai"
@@ -74,6 +75,7 @@ export async function placeCall(to: string, variables: Record<string, DynamicVal
     console.log("simulate dial for attempt " + String(variables.attempt_id ?? "unbound") + " to number ending " + to.slice(-4))
     return Promise.resolve(simulated)
   }
+  await verifyCallDestination()
   await ensureCallEvents(cartesiaJson)
   return postJson("/agents/calls", {
     from_number_id: requireEnv("CARTESIA_FROM_NUMBER_ID"),
@@ -109,6 +111,7 @@ export async function placeBatch(
       return Promise.reject(new Error("phone number must be E.164, for example +14155550123"))
     }
   }
+  await verifyCallDestination()
   await ensureCallEvents(cartesiaJson)
   return postJson("/agents/calls/batches", {
     from_number_id: requireEnv("CARTESIA_FROM_NUMBER_ID"),
@@ -248,4 +251,21 @@ function requireEnv(name: string): string {
   const value = process.env[name]
   if (!value) throw new Error(name + " is not set")
   return value
+}
+
+/** Check every dispatch: a shared agent or tunnel can be reassigned after API startup. */
+async function verifyCallDestination(): Promise<void> {
+  if (process.env.SIMULATE === "1") return
+  const base = new URL(requireEnv("NGROK_URL"))
+  if (base.protocol !== "https:" || base.username || base.password || base.search || base.hash || base.pathname !== "/")
+    throw new Error("NGROK_URL must be an HTTPS origin")
+  await checkLocalCallbackRuntime(base.origin, requireEnv("CALLBACK_SECRET"))
+  const query = new URLSearchParams({ type: "webhook", limit: "100", agent_id: requireEnv("CARTESIA_AGENT_ID") })
+  const payload = await cartesiaJson("GET", "/v1/agents/tools?" + query)
+  const attached = Array.isArray(payload.data) ? payload.data.map(objectOrEmpty) : []
+  for (const [name, path] of [["report_call", "/calls/report"], ["coordinate_call", "/calls/coordinate"]]) {
+    const matches = attached.filter(tool => tool.name === name)
+    if (matches.length !== 1 || objectOrEmpty(matches[0].api_schema).url !== base.origin + path)
+      throw new Error("The hosted " + name + " tool does not point to this API. Run npm --prefix server run setup-agent with this machine's NGROK_URL before placing calls.")
+  }
 }

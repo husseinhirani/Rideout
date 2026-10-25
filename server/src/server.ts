@@ -1,6 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http"
 import { resolve } from "node:path"
 import { loadEnv } from "./env"
+import { callbackRuntimeId } from "./callback-health"
 import { authorizeRequest, readAccessConfig } from "./operator-auth"
 import { createLocalConsole } from "./local-console"
 import { getState, registerProfile } from "./loop"
@@ -134,7 +135,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
   if (review) { send(res, 200, await reviewInformationIncoming(asId(review[1], "request_id"), body, actor)); return }
   if (path === "/calls/events") { send(res, 200, receiveCallEvent(body)); return }
   if (path === '/calls/coordinate') { send(res,200,await coordinateCall(body)); return }
-  if (path === '/calls/capabilities') { await assistanceStates(); send(res,200,{assistance_protocol_version:VOICE_PROTOCOL_VERSION,inbound_context:true,sequence_resync:true,inbound_reports_enabled:process.env.INBOUND_REQUESTS==='1'}); return }
+  if (path === '/calls/capabilities') { await assistanceStates(); send(res,200,{runtime_id:callbackRuntimeId,assistance_protocol_version:VOICE_PROTOCOL_VERSION,inbound_context:true,sequence_resync:true,inbound_reports_enabled:process.env.INBOUND_REQUESTS==='1'}); return }
   if (path === '/calls/inbound-context') { send(res,200,await inboundContext(body)); return }
   const coordinator = /^\/cases\/(\d+)\/coordinator$/.exec(path)
   if(coordinator) { send(res,200,await coordinatorCommand(asId(coordinator[1],'case_id'),body,actor));return }

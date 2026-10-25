@@ -11,7 +11,11 @@ export type Facts = {
 };
 export const emptyFacts = (): Facts => ({ location_id: null, needs_transport: null, party_size: null, wheelchair: null, pets: null, can_help: null, seats: null, wheelchair_space: null, pets_allowed: null });
 export type Location = { id: string; label: string; lat: number; lng: number; access: 'community' | 'specialist' | 'unknown'; zone_id?: string; source?: string };
-export type Scenario = { title: string; drill: boolean; context: string; locations: Location[]; community_routes: [string, string][]; destination: string; destination_location_id?: string; route_edges?: RouteEdge[]; handoff_mode?: 'callback' | 'in_call'; follow_through?: 'arrangement' | 'arrival'; follow_up_ms: number; max_tasks_per_person: number };
+export type EvacuationBrief = {
+  summary: string; destination_address: string; arrival_window_minutes: number; source: string;
+  travel_estimates: { location_id: string; mode: string; minutes: number }[];
+};
+export type Scenario = { evacuation_brief?: EvacuationBrief; title: string; drill: boolean; context: string; locations: Location[]; community_routes: [string, string][]; destination: string; destination_location_id?: string; route_edges?: RouteEdge[]; handoff_mode?: 'callback' | 'in_call'; follow_through?: 'arrangement' | 'arrival'; follow_up_ms: number; max_tasks_per_person: number };
 export type Participant = { profile_id: number; name: string; mode: 'real' | 'simulated'; start_location_id?: string; facts: Facts; sources: Partial<Record<keyof Facts, string>>; consent: boolean; contact_blocked?: string | null; review_reason?: string; simulation?: Facts; unreachable: boolean };
 export type TaskKind = 'assess' | 'needs' | 'location' | 'capability' | 'helper_accept' | 'recipient_confirm' | 'pickup' | 'arrival';
 export type MissionUpdate = { task_id: string; objective: string; reason: string; evidence_ids: string[]; focus_fields: (keyof Facts)[] };
@@ -100,7 +104,7 @@ export function addTask(s: AssistanceState, profileId: number, kind: TaskKind, n
 export function taskInstruction(s: AssistanceState, task: Task, now = Date.now()): string {
   if (!activeTask(task) || !person(s,task.profile_id).consent || person(s,task.profile_id).contact_blocked || requiresInformationReview(s,task.profile_id)) throw new Error('Task is no longer available');
   if (!task.arrangement_id && arrangementScopeResolved(s,task.profile_id)) throw new Error('The participant has a confirmed arrangement; the session outcome is resolved');
-  const prefix = s.scenario.drill ? 'This is a fictional drill; do not instruct actual travel. ' : '';
+  const prefix = s.scenario.drill ? 'Drill context already disclosed at opening; do not repeat the disclaimer or direct real travel. ' : '';
   if (task.kind === 'assess') return prefix + 'Understand how this person plans to evacuate and whether that plan provides available transport, then establish any assistance needs or willingness and capacity to help someone else. Gather enough attributed information for the coordinator to compare suitable assistance. Vague reassurance alone does not establish independent evacuation. Resolve relevant gaps naturally; the participant may decline or not know.';
   if (task.kind === 'location') return prefix + 'Establish a participant-reported scenario location for geographic comparison. Supplied starting points are unconfirmed scenario context. A different or unknown location is a valid answer; never substitute directory coordinates.';
   if (task.kind === 'needs') return prefix + 'Understand how the person plans to evacuate and whether they have available transport, so their current assistance needs can be evaluated. Vague reassurance alone does not establish independent evacuation. Follow changed circumstances rather than an assumed role, and preserve needs outside the structured fields in the account for human review.';
