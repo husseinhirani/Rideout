@@ -16,11 +16,11 @@ The repo root is the browser demo. It does not import `server/`. `server/` is th
 
 | Path | Put here | Do not put here |
 |---|---|---|
-| `server/src` | The process outside the database: HTTP routes, calls to Cartesia, reading rows, choosing the next reducer. `llm.ts` is the only file that talks to the Anthropic SDK. `agent.ts` holds the four Claude prompts. `loop.ts` holds the loop, the candidate filter, and the call deadline. `ui.html` is the test UI | Table definitions, reducer bodies |
+| `server/src` | The process outside the database: HTTP routes, calls to Cartesia, reading rows, choosing the next reducer. `llm.ts` is the only file that talks to the Anthropic SDK. `agent.ts` holds the four Claude prompts. `setup-tools.ts` holds the hosted Cartesia phone-agent instructions and setup command. `loop.ts` holds the loop, the candidate filter, and the call deadline. `ui.html` is the test UI | Table definitions, reducer bodies |
 | `server/spacetimedb` | The database module. `src/models.ts` is tables only. `src/apis/` is reducers, one file per area (profiles, incidents, support cases). `src/index.ts` re-exports them | HTTP, Cartesia, scripts that only a developer runs |
 | `server/tests` | Checks that a behavior works. A manual check is still a test | Product behavior the running server needs |
 | `server/mock` | Shared fixtures the team can load, including typed fictional coordinator snapshots. No one's real phone number | Runtime behavior |
-| `server/tools` | Cartesia webhook tool JSON, one file per tool, currently `record_check_in` and `report_call`. `api_schema.url` is a path such as `/calls/report`. `npm run setup-agent` prefixes `NGROK_URL` and attaches the `CALLBACK_SECRET` bearer | Phone numbers, secrets, the agent prompt |
+| `server/tools` | Cartesia webhook tool JSON, one file per tool. `api_schema.url` is a path such as `/calls/report`. `npm run setup-agent` prefixes `NGROK_URL` and attaches the `CALLBACK_SECRET` bearer | Phone numbers, secrets |
 | `server/` root | `package.json`, docs (`AGENTS.md`, `CONTEXT.md`, `DESIGN.md`), and short dev commands such as wiping the local database or opening the ngrok tunnel | Feature logic |
 
 A reducer records a fact. The process in `server/src` is what may call Cartesia and then call that reducer. If a change only stores or validates a row, it belongs in `spacetimedb`. If it places a call, reads a result, or serves HTTP, it belongs in `src`.
