@@ -37,7 +37,7 @@
         },
         "facts_json": {
           "type": "string",
-          "description": "JSON object of changed reported facts only. Allowed: location_id (supplied scenario ID or null), needs_transport, party_size, wheelchair, pets, can_help, seats, wheelchair_space, pets_allowed. Unknown values null; omit unchanged fields. Use {} for check."
+          "description": "JSON object of changed reported facts only. Allowed: location_id (supplied scenario ID or null), needs_transport, has_vehicle (drives their own car), party_size, wheelchair, pets, can_help, seats, wheelchair_space, pets_allowed. Unknown values null; omit unchanged fields. Use {} for check."
         },
         "task_id": {
           "type": "string",

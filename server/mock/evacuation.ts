@@ -98,11 +98,11 @@ export const DRILL_STARTING_LOCATIONS: Scenario['locations'] = [
 
 /** Fictional access graph, not a claim about actual roads or people's whereabouts. */
 export const EVACUATION_DRILL: Scenario = {
-  title: 'Rockridge community evacuation drill', drill: true,
-  context: 'Wildfire evacuation rehearsal. Disclose the drill once at opening, then discuss the supplied scenario naturally. Starting positions and route times are exercise data, not the participants’ real whereabouts or live road guidance. Confirm the starting position, accept corrections, and use only supplied estimates.',
+  title: 'Rockridge community evacuation drill', drill: true, immersive: true,
+  context: 'A wildfire is moving toward the Rockridge neighborhood and is expected to reach it in about an hour. Residents are being asked to leave now for the community reception center at 100 Community Way. Speak about it as real and current, in one or two short sentences; never call it a drill, exercise or simulation. The person is at home.',
   evacuation_brief: {
-    summary: 'A wildfire is approaching the neighborhood. The exercise calls for residents to reach the community reception center within one hour of the drill starting.',
-    destination_address: '100 Community Way (exercise address)',
+    summary: 'A wildfire is moving toward the neighborhood and is expected to reach it in about an hour. Residents should leave now for the community reception center.',
+    destination_address: '100 Community Way',
     arrival_window_minutes: 60,
     source: 'Operator-supplied evacuation exercise v2; not a live warning, shelter address or traffic forecast',
     travel_estimates: [

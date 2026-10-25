@@ -58,6 +58,16 @@ export function routeEstimate(state: AssistanceState, recipientId: number, helpe
   }
 }
 
+/** Spoken clock time for the incident's area, e.g. "8:05 AM". Falls back to a fixed Pacific offset where Intl time zones are unavailable. */
+export function localTime(ms: number, timeZone = 'America/Los_Angeles'): string {
+  try {
+    return new Date(ms).toLocaleTimeString('en-US', { timeZone, hour: 'numeric', minute: '2-digit' })
+  } catch {
+    const d = new Date(ms - 7 * 3600_000), h = d.getUTCHours(), m = d.getUTCMinutes()
+    return ((h % 12) || 12) + ':' + String(m).padStart(2, '0') + (h < 12 ? ' AM' : ' PM')
+  }
+}
+
 /** Acceptance anchors a fictional departure assumption, never a report of movement. */
 export function arrangementRouteContext(state: AssistanceState, arrangement: Arrangement, now = Date.now()): ArrangementRouteContext {
   const current = routeEstimate(state, arrangement.recipient_id, arrangement.helper_id, now)
@@ -76,6 +86,6 @@ export function routeInstruction(state: AssistanceState, arrangement: Arrangemen
   const provenance = ' Supplied route source: ' + route.source.join('; ') + '.'
   const duration = ' The supplied route models about ' + Math.ceil(route.approach_seconds / 60) + ' minutes from the helper’s reported starting location to pickup.'
   const onRoute = route.pickup_on_route === true ? ' The pickup lies along a modeled shortest route to the destination; this does not establish that the helper has departed.' : ''
-  const eta = context.estimated_pickup_at !== null ? ' The supplied pickup estimate is ' + new Date(context.estimated_pickup_at).toISOString() + ', assuming departure when the helper accepted at ' + new Date(context.accepted_at!).toISOString() + '. Keep that original estimate; do not restart the travel clock in this callback.' : arrangement.helper_accepted ? ' There is no current pickup ETA. Do not restart the travel clock or infer arrival from elapsed time.' : ' This duration is an estimate assuming departure after acceptance, not a commitment or a report of movement.'
+  const eta = context.estimated_pickup_at !== null ? ' The pickup estimate is around ' + localTime(context.estimated_pickup_at) + ' local time, assuming departure when the helper accepted at ' + localTime(context.accepted_at!) + '. Keep that original estimate; do not restart the travel clock in this callback.' : arrangement.helper_accepted ? ' There is no current pickup ETA. Do not restart the travel clock or infer arrival from elapsed time.' : ' This duration is an estimate assuming departure after acceptance, not a commitment or a report of movement.'
   return duration + onRoute + eta + provenance
 }

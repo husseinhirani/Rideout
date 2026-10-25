@@ -2,20 +2,21 @@ import { person, matchReasons, requiresInformationReview, arrangementScopeResolv
 export { person, matchReasons, requiresInformationReview, arrangementScopeResolved } from './assistance-eligibility';
 import { spatialMatching } from './spatial';
 import { informationGaps } from './voice-mission';
-import { routeEstimate, routeInstruction, type RouteEdge, type RouteEstimate } from './assistance-routing';
+import { routeEstimate, routeInstruction, arrangementRouteContext, localTime, type RouteEdge, type RouteEstimate } from './assistance-routing';
 /** Shared incident coordination contract. People and locations are data, never role rules. */
 export type Facts = {
   location_id: string | null; needs_transport: boolean | null; party_size: number | null;
   wheelchair: boolean | null; pets: boolean | null; can_help: boolean | null;
   seats: number | null; wheelchair_space: boolean | null; pets_allowed: boolean | null;
+  has_vehicle: boolean | null;
 };
-export const emptyFacts = (): Facts => ({ location_id: null, needs_transport: null, party_size: null, wheelchair: null, pets: null, can_help: null, seats: null, wheelchair_space: null, pets_allowed: null });
+export const emptyFacts = (): Facts => ({ location_id: null, needs_transport: null, party_size: null, wheelchair: null, pets: null, can_help: null, seats: null, wheelchair_space: null, pets_allowed: null, has_vehicle: null });
 export type Location = { id: string; label: string; lat: number; lng: number; access: 'community' | 'specialist' | 'unknown'; zone_id?: string; source?: string };
 export type EvacuationBrief = {
   summary: string; destination_address: string; arrival_window_minutes: number; source: string;
   travel_estimates: { location_id: string; mode: string; minutes: number }[];
 };
-export type Scenario = { evacuation_brief?: EvacuationBrief; title: string; drill: boolean; context: string; locations: Location[]; community_routes: [string, string][]; destination: string; destination_location_id?: string; route_edges?: RouteEdge[]; handoff_mode?: 'callback' | 'in_call'; follow_through?: 'arrangement' | 'arrival'; follow_up_ms: number; max_tasks_per_person: number };
+export type Scenario = { evacuation_brief?: EvacuationBrief; title: string; drill: boolean; context: string; locations: Location[]; community_routes: [string, string][]; destination: string; destination_location_id?: string; route_edges?: RouteEdge[]; immersive?: boolean; handoff_mode?: 'callback' | 'in_call'; follow_through?: 'arrangement' | 'arrival'; follow_up_ms: number; max_tasks_per_person: number };
 export type Participant = { profile_id: number; name: string; mode: 'real' | 'simulated'; start_location_id?: string; facts: Facts; sources: Partial<Record<keyof Facts, string>>; consent: boolean; contact_blocked?: string | null; review_reason?: string; simulation?: Facts; unreachable: boolean };
 export type TaskKind = 'assess' | 'needs' | 'location' | 'capability' | 'helper_accept' | 'recipient_confirm' | 'pickup' | 'arrival';
 export type MissionUpdate = { task_id: string; objective: string; reason: string; evidence_ids: string[]; focus_fields: (keyof Facts)[] };
@@ -60,8 +61,10 @@ function objectValue(value: unknown): value is Record<string, unknown> {
 }
 function requiredMatchSources(s: AssistanceState, recipientId: number, helperId: number): string[] {
   const r = person(s,recipientId), h = person(s,helperId);
-  const recipientKeys: (keyof Facts)[] = ['location_id','needs_transport','party_size','wheelchair','pets'];
-  const helperKeys: (keyof Facts)[] = ['location_id','needs_transport','can_help','seats'];
+  // Only facts the person actually reported are cited; unasked optional facts are not required.
+  const reported = (p: Participant, keys: (keyof Facts)[]) => keys.filter(key => p.facts[key] !== null);
+  const recipientKeys: (keyof Facts)[] = ['location_id','needs_transport','party_size',...reported(r,['wheelchair','pets'])];
+  const helperKeys: (keyof Facts)[] = ['location_id','needs_transport',...reported(h,['has_vehicle','can_help','seats'])];
   if (r.facts.wheelchair) helperKeys.push('wheelchair_space');
   if (r.facts.pets) helperKeys.push('pets_allowed');
   const refs: string[] = [];
@@ -104,8 +107,8 @@ export function addTask(s: AssistanceState, profileId: number, kind: TaskKind, n
 export function taskInstruction(s: AssistanceState, task: Task, now = Date.now()): string {
   if (!activeTask(task) || !person(s,task.profile_id).consent || person(s,task.profile_id).contact_blocked || requiresInformationReview(s,task.profile_id)) throw new Error('Task is no longer available');
   if (!task.arrangement_id && arrangementScopeResolved(s,task.profile_id)) throw new Error('The participant has a confirmed arrangement; the session outcome is resolved');
-  const prefix = s.scenario.drill ? 'Drill context already disclosed at opening; do not repeat the disclaimer or direct real travel. ' : '';
-  if (task.kind === 'assess') return prefix + 'Understand how this person plans to evacuate and whether that plan provides available transport, then establish any assistance needs or willingness and capacity to help someone else. Gather enough attributed information for the coordinator to compare suitable assistance. Vague reassurance alone does not establish independent evacuation. Resolve relevant gaps naturally; the participant may decline or not know.';
+  const prefix = s.scenario.immersive ? 'Speak about the situation as real and current; never call it a drill, exercise or simulation. ' : s.scenario.drill ? 'Drill context already disclosed at opening; do not repeat the disclaimer or direct real travel. ' : '';
+  if (task.kind === 'assess') return prefix + 'Find out only two things: can this person get out on their own (do they have a car they can drive), and if not, do they need a ride and for how many people. Confirm they are at home. Do not ask about pets, wheelchairs, spare seats or whether they can help others unless they bring it up; the coordinator will call back if it needs more. Never re-ask something they already told you. Once you know, tell them briefly what happens next and end the call.';
   if (task.kind === 'location') return prefix + 'Establish a participant-reported scenario location for geographic comparison. Supplied starting points are unconfirmed scenario context. A different or unknown location is a valid answer; never substitute directory coordinates.';
   if (task.kind === 'needs') return prefix + 'Understand how the person plans to evacuate and whether they have available transport, so their current assistance needs can be evaluated. Vague reassurance alone does not establish independent evacuation. Follow changed circumstances rather than an assumed role, and preserve needs outside the structured fields in the account for human review.';
   if (task.kind === 'capability') return prefix + 'Determine whether this person is willing and able to help, and what assistance their available vehicle capacity could support. This gathers options; it does not commit them to an arrangement. If their circumstances changed, establish their current needs instead.';
@@ -113,8 +116,20 @@ export function taskInstruction(s: AssistanceState, task: Task, now = Date.now()
   const reasons = matchReasons(s,a.recipient_id,a.helper_id,a.id);
   if (reasons.length) throw new Error('Arrangement needs review: ' + reasons.join('; '));
   const location = s.scenario.locations.find(l => l.id === r.facts.location_id)?.label ?? 'unconfirmed location';
-  if (task.kind === 'helper_accept') return prefix + 'The human approved asking you about this proposed pickup: help ' + r.name + ' (' + r.facts.party_size + ' passenger(s)) at ' + location + ' reach ' + s.scenario.destination + '. Ask for explicit acceptance or refusal. It is not accepted until they agree. Requirements: wheelchair=' + r.facts.wheelchair + ', pets=' + r.facts.pets + '.' + routeInstruction(s,a,now);
-  if (task.kind === 'recipient_confirm') return prefix + h.name + ' accepted the proposed pickup at ' + location + ' for ' + s.scenario.destination + '. Confirm whether this arrangement works for the recipient. Do not invent an arrival time or say the helper has arrived.' + routeInstruction(s,a,now);
+  const route = routeEstimate(s,a.recipient_id,a.helper_id,now);
+  const first = r.name.split(' ')[0], helperFirst = h.name.split(' ')[0];
+  const passengers = (r.facts.party_size ?? 1) === 1 ? first : first + ' and ' + ((r.facts.party_size ?? 1) - 1) + ' other(s)';
+  const needs = [r.facts.wheelchair ? 'a wheelchair' : '', r.facts.pets ? 'pets' : ''].filter(Boolean).join(' and ');
+  if (task.kind === 'helper_accept') {
+    const onWay = route?.pickup_on_route ? 'Your way out to ' + s.scenario.destination + ' goes right past ' + first + '\u2019s place. ' : first + ' lives close to you. ';
+    const eta = route ? 'if they leave now they would reach ' + first + ' around ' + localTime(now + route.approach_seconds * 1000) + '.' : 'No travel estimate is available; do not invent one.';
+    return prefix + 'This is a short follow-up call with one purpose. Say it in a sentence or two: ' + onWay + first + ' does not have a car and needs a ride' + (needs ? ' (with ' + needs + ')' : '') + '. Ask if they can pick up ' + passengers + ' on the way. If yes: send confirmation=accepted, tell them ' + eta + ' Say you will let ' + first + ' know, thank them, and end the call. If no: send confirmation=declined, thank them and end. Do not re-ask anything from the earlier call, do not read location labels or position numbers aloud (say "' + first + '\u2019s place"), and do not mention routes, sources or estimates beyond the one pickup time. Internal reference only: pickup location ' + location + '.';
+  }
+  if (task.kind === 'recipient_confirm') {
+    const ctx = arrangementRouteContext(s,a,now);
+    const eta = ctx.estimated_pickup_at !== null ? 'around ' + localTime(ctx.estimated_pickup_at) : 'shortly';
+    return prefix + 'This is a short good-news follow-up. Say it in a few sentences: you found someone to help. ' + helperFirst + ' is heading out and will pick them up at their place ' + eta + '. Ask them to be ready by then. When they say okay or yes, send confirmation=accepted, wish them a safe trip, and end the call. If they cannot make it, send confirmation=declined and end. Do not re-explain the situation, do not re-ask earlier questions, and do not read location labels, route sources or estimates aloud. Internal reference only: pickup location ' + location + '.';
+  }
   if (task.kind === 'pickup') return prefix + 'Ask whether the agreed pickup involving ' + r.name + ' and ' + h.name + ' has actually happened in the scenario. Acceptance alone is not pickup. Accept uncertainty.';
   return prefix + 'Ask whether the agreed journey involving ' + r.name + ' and ' + h.name + ' has arrived at ' + s.scenario.destination + '. Pickup alone is not arrival. Accept uncertainty.';
 }
