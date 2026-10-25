@@ -15,7 +15,6 @@ import {
   mmss,
   PeopleList,
   seconds,
-  StatusSticks,
   Timeline,
   useFocus,
   type Bar,
@@ -98,7 +97,6 @@ export function LiveChecks({
       return { key: call.attempt.id, from: call.person?.name ?? "Unknown", to: person?.name ?? `case #${call.attempt.support_case_id}` };
     });
   const incident = state.incidents.find((item) => item.id === row?.incident_id) ?? sweep;
-  const elapsed = incident ? seconds(Date.parse(incident.created_at) || now, now) : 0;
   const status = pending.length + mockPending ? "Live" : row ? (row.status === "closed" ? "Case closed" : `Case #${row.id}`) : "Standing by";
   const coordination = row ? coordinationOf(state, row.id, now) : null;
   const latest = inbound[0];
@@ -142,17 +140,6 @@ export function LiveChecks({
             <h1>Checks</h1>
             <p>{incident?.type ? incident.type[0].toUpperCase() + incident.type.slice(1) : incident ? "Incident" : "No incident yet"} · live backend</p>
           </div>
-          <div className="dash-pills">
-            <span className={`dash-pill${pending.length + mockPending ? " live" : ""}`}>
-              <i />
-              {status}
-            </span>
-            <span className="dash-pill">
-              <Icon name="clock" />
-              {mmss(elapsed)}
-            </span>
-            <span className="dash-pill dark">{mockCalls.length ? "Real + simulated calls" : simulate ? "Simulated calls" : "Real calls"}</span>
-          </div>
         </header>
 
         <div className="dash-grid">
@@ -179,36 +166,11 @@ export function LiveChecks({
                 <span><i className="k-live" />Active</span>
                 <span><i className="k-ring" />Placing</span>
                 <span><i className="k-hold" />Unresolved</span>
+                <span><i className="k-miss" />Not reached</span>
                 <span><i className="k-done" />Ended</span>
               </span>
             </button>
 
-            <div className="dash-pair low">
-              <button type="button" className="tile lime" onClick={(event) => open("links", event)}>
-                <span className="tile-label">
-                  <em className="chip light">
-                    <Icon name="link" /> Accepted
-                  </em>
-                </span>
-                <span className="pager" aria-hidden="true">
-                  {Array.from({ length: Math.max(4, links.length) }, (_, index) => (
-                    <i key={index} className={index < links.length ? "on" : ""} />
-                  ))}
-                </span>
-                <span className="tile-unit">helpers accepted</span>
-                <strong className="huge">{links.length}</strong>
-                <span className="tile-foot">{links[0] ? `${links[0].from} → ${links[0].to}` : "No helper has accepted yet"}</span>
-              </button>
-
-              <button type="button" className="tile status" onClick={(event) => open("checkins", event)}>
-                <span className="tile-title">
-                  Check-in sweep
-                  <Icon name="expand" />
-                </span>
-                <StatusSticks houses={houses} waitingLabel="Waiting" />
-              </button>
-
-            </div>
           </div>
           <div className="dash-col agent-col">
             <FacilitatorTile
@@ -362,7 +324,7 @@ function callTone(call: LiveCall): BarTone {
   if (call.transport === "queued" || call.transport === "dispatching") return "ring";
   if (call.transport === "unknown") return "hold";
   if (call.transport === "cancelled" || call.attempt.outcome === "cancelled" || call.attempt.outcome === "superseded") return "off";
-  if (call.attempt.outcome === "no_answer") return "miss";
+  if (["no_answer", "not_reached"].includes(call.attempt.outcome ?? "")) return "miss";
   if (call.transport === undefined && call.attempt.outcome === null) return call.attempt.call_id ? "ring" : "off";
   return "done";
 }
@@ -451,7 +413,7 @@ function LiveCallRow({
         </span>
         <em className="call-state">
           <i />
-          {call.transportLabel.split(" · ")[0]}
+          {call.attempt.outcome === "not_reached" ? "Not reached" : call.transportLabel.split(" · ")[0]}
         </em>
         <span className="call-time">{length === null ? "—" : mmss(length)}</span>
         <Icon name="chevron" />

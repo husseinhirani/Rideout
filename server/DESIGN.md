@@ -22,8 +22,26 @@ introduces the AI assistant and confirms the recipient's name before disclosing
 situation details. A wrong/unconfirmed person is recorded as such, never attributed
 to the intended recipient. An outbound attempt ID takes priority over provider
 direction to prevent an outgoing call from entering inbound intake. Inbound intake
-has no predefined missing-child scenario. The final goodbye is spoken once;
-end_call has pre-tool speech disabled to avoid a second goodbye.
+has no predefined missing-child scenario. An explicit hang-up request overrides identification, questions and report saving
+on its first occurrence. The agent acknowledges briefly and ends immediately; if
+no report was saved, the transcript remains available but the UI must not claim a
+saved report. Explicit refusal of future contact is still reported to persist consent
+withdrawal, without further questions. Interrupted identification is completed briefly on the next turn,
+unless the person asked to stop. Questions are not restarted once finished. The
+final goodbye is spoken once; end_call has pre-tool speech disabled. Voicemail
+skips the identity flow and records not reached, without an invented identity concern.
+
+Report interpretation receives the call context so drill answers remain hypothetical.
+It preserves stated needs and unresolved questions without inferring comprehension,
+medical or language problems or prescribing follow-up that nobody requested.
+This affects new interpretations; existing saved accounts are not silently rewritten.
+
+The Checks board shows outgoing calls and the facilitator. Accepted/check-in summary
+cards and the case/timer/mode pills are removed in both live and offline layouts.
+Mock rows remain individually labeled. Not-reached outcomes use the missed-call color
+and label even when the phone transport ended normally. Notifications share one
+bottom-right portal stack above modal backdrops, with dismissible concern notices;
+queued-call confirmations expire after eight seconds.
 
 Use `npm --prefix server run setup-agent` to apply the tracked prompt and tool
 configuration to the hosted agent, preserving unrelated voice configuration.

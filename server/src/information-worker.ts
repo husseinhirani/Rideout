@@ -104,7 +104,7 @@ export function startInformationWorker(): () => void {
       const account = await interpretInformationAccount({
         objective: current.objective, question: attempt.ask,
         person_name: snapshot.profiles.find(p => p.id === attempt.profile_id)?.name ?? "Caller",
-        answer: attempt.answer, concern: progress.raw_concern,
+        answer: attempt.answer, concern: progress.raw_concern, context: progress.context,
       })
       await db.callReducer("finishInformationReport", [attempt.id, account.reached,
         JSON.stringify(account.notes), account.concern, account.do_not_call])

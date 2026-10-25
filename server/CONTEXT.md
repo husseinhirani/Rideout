@@ -11,7 +11,8 @@ The existing 12-neighbor mock wave and scripted follow-ups remain explicitly
 simulated. Only the saved real participants receive phone calls.
 
 Every outgoing conversation introduces Tom as an AI assistant and confirms the
-recipient's name before discussing the situation. A supplied outbound attempt ID
+recipient's name before discussing the situation, unless the person asks to stop.
+The first explicit hang-up request ends the conversation without further questions. A supplied outbound attempt ID
 takes priority over the provider direction branch. The hosted prompt must match
 `setup-tools.ts`; run setup-agent after intentional prompt changes. Live turns use
 provider webhooks, and recording playback appears after call completion.

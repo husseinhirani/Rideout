@@ -200,7 +200,7 @@ export type InformationAccount = {
 
 // Generic information collection has no incident-specific roles or completion rules.
 export async function interpretInformationAccount(input: {
-  objective: string; question: string; person_name: string; answer: string; concern: string
+  objective: string; question: string; person_name: string; answer: string; concern: string; context?: string
 }): Promise<InformationAccount> {
   const account = await askStrict<InformationAccount>({
     system: `Extract an attributed account from a phone conversation for an organizer.
@@ -211,7 +211,15 @@ Do not invent coordinates, identities, consent, commitments or completion of an 
 reached means a person provided an account; voicemail or silence is not an answer.
 do_not_call is true only for an explicit request not to be contacted again, not merely
 refusing a question or saying they cannot help. concern records relevant reported concerns
-without treating suspicion as proof. The organizer decides what happens next.`,
+without treating suspicion as proof. Record only stated needs, reported concerns and exact
+unresolved questions. Never infer a medical/cognitive condition, comprehension barrier,
+language difficulty or need for an interpreter from hesitation, unclear wording, corrections,
+or an inability to leave. Do not prescribe in-person follow-up, interpreter support or other
+actions that nobody requested. "Cannot leave; required help unclear" is enough when that is
+all the account supports. Preserve a drill/hypothetical frame from the supplied context;
+never convert a fictional evacuation answer into an actual emergency. For voicemail, report
+not reached and unknown needs; do not present routine non-answer as suspicious identity.
+The organizer decides what happens next.`,
     input,
     schema: objectSchema({
       notes: { type: "array", items: { type: "string" } },

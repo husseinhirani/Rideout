@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { api, presentationState, savedConversation, directoryEdges } from "./updated-ui-api";
 import { useBackend } from "./backend";
 import { BlockGraph } from "./BlockGraph";
@@ -57,6 +58,12 @@ export function App() {
   const [startingDrill, setStartingDrill] = useState(false);
   const drillLock = useRef(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [dismissedConcern, setDismissedConcern] = useState("");
+  useEffect(() => {
+    if (!notice?.startsWith("Calls are queued")) return;
+    const timer = window.setTimeout(() => setNotice(null), 8000);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
   const recordings = useRef(new Map<string, Blob>());
   const waiting = ride.calls.find((call) => call.phase === "holding");
   const child = ride.incident.kind === "missing_child" ? ride.incident.child : null;
@@ -346,6 +353,7 @@ export function App() {
         </div>
       </header>
 
+      {createPortal(<div className="notification-stack" aria-label="Notifications">
       {live && !backend.connected && <div className="live-notice" role="status"><p>Disconnected. Showing the last saved call state; reconnect before starting a call.</p></div>}
       {notice ? (
         <div className="live-notice" role="status">
@@ -355,6 +363,28 @@ export function App() {
           </button>
         </div>
       ) : null}
+          {live && concern && !outside && dismissedConcern !== `${concern.attempt.id}:${concern.attempt.concern}` ? (
+            <div className="handoff-banner" role="alert">
+              <p>
+                <b>{concern.person?.name ?? "A caller"} · review needed.</b> {concern.attempt.concern}
+              </p>
+              <button type="button" onClick={() => setDismissedConcern(`${concern.attempt.id}:${concern.attempt.concern}`)}>Dismiss</button>
+            </div>
+          ) : null}
+          {!live && waiting && !ride.operator ? (
+            <div className="handoff-banner" role="alert">
+              <p>
+                <b>{waiting.name} needs a person.</b> {waiting.escalation?.reason}
+              </p>
+              <button type="button" className="pick-up" onClick={() => ride.takeOver(waiting.id)}>
+                Pick up
+              </button>
+              <button type="button" onClick={() => ride.cancelCall(waiting.id)}>
+                Cancel call
+              </button>
+            </div>
+          ) : null}
+      </div>, document.body)}
 
       {live && state ? (
         <>
@@ -397,14 +427,6 @@ export function App() {
             actions={liveActions}
           />
 
-          {concern && !outside ? (
-            <div className="handoff-banner" role="alert">
-              <p>
-                <b>{concern.person?.name ?? "A helper"} raised a concern.</b> {concern.attempt.concern}
-              </p>
-              <span>Follow this call in Outgoing calls.</span>
-            </div>
-          ) : null}
 
           {outside ? (
             <OperatorPanel
@@ -508,19 +530,6 @@ export function App() {
             }}
           />
 
-          {waiting && !ride.operator ? (
-            <div className="handoff-banner" role="alert">
-              <p>
-                <b>{waiting.name} needs a person.</b> {waiting.escalation?.reason}
-              </p>
-              <button type="button" className="pick-up" onClick={() => ride.takeOver(waiting.id)}>
-                Pick up
-              </button>
-              <button type="button" onClick={() => ride.cancelCall(waiting.id)}>
-                Cancel call
-              </button>
-            </div>
-          ) : null}
 
           {ride.operator ? (
             <OperatorPanel
