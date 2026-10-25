@@ -17,6 +17,8 @@ compatibility; the current two-person demo disables them explicitly. Roles come 
 reported facts, never roster names. Supplied route durations may support a sourced drill
 pickup estimate anchored to helper acceptance; map distance cannot supply an ETA, and
 neither an estimate nor elapsed time confirms departure or pickup.
+With backend simulation disabled, the incident map still shows gray simulated neighbors
+as visual context only. They receive no calls or tasks and are not match candidates.
 See `docs/adr/0003-live-assistance-coordination.md` at the repository root and the current
 section of `DESIGN.md`. Historical statements below that exclude dispatch describe
 prior milestones; the approved demo now includes coordination with human approval.

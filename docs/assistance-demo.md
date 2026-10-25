@@ -62,7 +62,8 @@ correct the saved roster before starting. Refresh the browser so the Start menu 
 new selection. This selection persists for future drills until reconfigured.
 
 1. Select **Start → Wildfire drill** once. Only Tony and Vien receive initial calls, and
-   no simulated neighbors join this incident.
+   no simulated neighbors join this incident. Gray neighbor dots on the map are visual
+   context only; they receive no tasks and cannot be matched.
 2. Tom introduces himself, confirms each person's name, and explains the fictional drill.
    Speak naturally; important reported facts appear in the coordinator while calls continue.
 3. Confirm or correct the supplied fictional starting positions. To exercise a possible

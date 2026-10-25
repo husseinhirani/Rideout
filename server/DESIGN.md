@@ -64,6 +64,9 @@ message advances the scroll position. New sessions do not use the old scripted U
 When enabled by the saved roster configuration, new wildfire drills include 12 backend-simulated neighbors; their `mode=simulated` is checked
 before provider calls, and their non-dialable synthetic destinations also fail ordinary
 contact eligibility. Simulations follow the same task/report/milestone state transitions.
+When the two-person roster disables backend simulation, the incident map shows gray
+visual-only neighbor markers for neighborhood context. They are not case participants,
+do not receive tasks, and cannot enter matching or call attempts.
 
 Deployment: publish the module without deleting data, restart API and Vite, then run
 `npm --prefix server run setup-agent` to attach `coordinate_call` and its prompt. Do not

@@ -1,8 +1,9 @@
-import { useId, useState } from 'react';
+import { useId, useMemo, useState } from 'react';
 import type { Arrangement, AssistanceState } from '../server/shared/assistance';
 import { distanceMeters, participantLocation } from '../server/shared/spatial';
 import streets from './data/streets.json';
 import buildings from './data/buildings.json';
+import { assignHouses } from './telemetry';
 
 export function formatDistance(meters: number): string {
   return meters < 1000 ? Math.round(meters) + ' m' : (meters / 1000).toFixed(1) + ' km';
@@ -24,8 +25,10 @@ export function IncidentMap({ session, selectedId, onSelect, compact = false }: 
   const select = (id: number) => { setLocalSelected(id); onSelect?.(id); };
   const clipId = 'incident-' + useId().replace(/:/g, '');
   const located = session.people.map((person, index) => ({ person, index: index + 1, ...participantLocation(session, person) }));
+  const backgroundNeighbors = useMemo(() => assignHouses(), []);
+  const visualOnlyNeighbors = session.scenario.drill && session.people.every(person => person.mode === 'real') ? backgroundNeighbors : [];
   const participantPoints = located.flatMap(p => p.location ? [p.location] : []);
-  const points = (wholeIncident || !participantPoints.length ? [...session.scenario.locations, ...participantPoints] : participantPoints)
+  const points = (wholeIncident || !participantPoints.length ? [...session.scenario.locations, ...participantPoints, ...visualOnlyNeighbors] : [...participantPoints, ...visualOnlyNeighbors])
     .filter(p => Number.isFinite(p.lat) && Number.isFinite(p.lng));
   const north = points.length ? Math.max(...points.map(p => p.lat)) : 1;
   const south = points.length ? Math.min(...points.map(p => p.lat)) : 0;
@@ -64,6 +67,10 @@ export function IncidentMap({ session, selectedId, onSelect, compact = false }: 
           const a = project(from.location.lng, from.location.lat), b = project(to.location.lng, to.location.lat);
           return <line key={arrangement.id} x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={arrangement.status === 'proposed' ? '#bf6c30' : '#4c6d24'} strokeWidth="4" strokeDasharray={arrangement.status === 'proposed' ? '7 6' : undefined}><title>{from.person.name} → {to.person.name}: {arrangement.status.replace('_', ' ')} · {formatDistance(distanceMeters(from.location, to.location))} straight line</title></line>;
         })}
+        {visualOnlyNeighbors.map(neighbor => {
+          const point = project(neighbor.lng, neighbor.lat);
+          return <circle key={neighbor.id} cx={point.x} cy={point.y} r="5" fill="#aeb4aa" stroke="#fff" strokeWidth="1.5"><title>{neighbor.name} · simulated map context only; no call or coordination task</title></circle>;
+        })}
         {located.filter(p => p.location).map(p => {
           const point = project(p.location!.lng, p.location!.lat), isSelected = selected === p.person.profile_id;
           return <g key={p.person.profile_id} transform={`translate(${point.x} ${point.y})`} role="button" tabIndex={0} aria-label={p.person.name + ': ' + (p.confirmed ? 'reported location' : 'unconfirmed assigned drill position')} onClick={() => select(p.person.profile_id)} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); select(p.person.profile_id); } }} className="incident-person-marker">
@@ -76,7 +83,7 @@ export function IncidentMap({ session, selectedId, onSelect, compact = false }: 
       </g>
       <g transform={`translate(25 ${height - 20})`} stroke="#575e4a"><path d={`M0,-5 V0 H${scaleWidth} V-5`} fill="none" /><text x="0" y="-10" stroke="none" fill="#575e4a" fontSize="11">{formatDistance(scaleMeters)}</text></g>
     </svg>
-    <div className="incident-map-key"><span><i className="start" />Unconfirmed start</span><span><i className="reported" />Reported location</span><span><i className="proposal" />Proposed help</span><span><i className="agreed" />Approved arrangement</span></div>
+    <div className="incident-map-key"><span><i className="start" />Unconfirmed start</span><span><i className="reported" />Reported location</span><span><i className="proposal" />Proposed help</span><span><i className="agreed" />Approved arrangement</span>{visualOnlyNeighbors.length > 0 && <span>Gray dots: simulated neighbors, display only</span>}</div>
     <div className="incident-person-list">{located.map(p => <button type="button" key={p.person.profile_id} className={selected === p.person.profile_id ? 'selected' : ''} onClick={() => select(p.person.profile_id)}>
       <b>{p.index}</b><span><strong>{p.person.name}</strong><small>{p.location ? p.confirmed ? 'Reported: ' + p.location.label : 'Assigned drill position · awaiting confirmation' : 'Location unknown · not placed on map'}</small></span>
     </button>)}</div>
