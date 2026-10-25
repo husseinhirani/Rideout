@@ -51,7 +51,7 @@
             "declined",
             "unknown"
           ],
-          "description": "pending while gathering useful information; answered when you believe the mission has sufficient information (the response may retain the task with remaining gaps); unknown when the person cannot answer; declined when they refuse. Unknown or refusal must describe the unresolved gap in text."
+          "description": "pending while gathering useful information; answered only when both the base mission and the current coordinator brief objective are addressed, with the account supporting that outcome in text. The response may retain the task for remaining gaps or an unacknowledged newer brief. unknown when the person cannot answer; declined when they refuse; identify the unresolved issue in text."
         },
         "confirmation": {
           "type": "string",
@@ -71,6 +71,10 @@
         "human_review": {
           "type": "string",
           "description": "Optional concrete unresolved issue needing the human dispatcher, such as possible real danger during a drill or a need outside supported fields. Preserve the person's words and uncertainty. Empty or omitted when no such issue exists; maximum 2000 characters. Never delay an immediate hang-up to submit this."
+        },
+        "mission_revision": {
+          "type": "integer",
+          "description": "Revision of the latest coordinator_brief you have read and are responding to; 0 when none exists. For update/finish. Do not copy a newer revision and claim answered before actually addressing that objective."
         }
       },
       "required": [
