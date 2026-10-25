@@ -10,7 +10,7 @@
     "call": "tsx src/call.ts",
     "server": "tsx src/server.ts",
     "seed": "tsx src/seed.ts",
-    "test": "tsx tests/logic.ts && tsx tests/tools.ts && tsx --test tests/coordinator.ts tests/coordinator-fixtures.ts tests/planner-strict.ts tests/coordination-store.ts tests/coordinator-worker.ts tests/coordinator-report.ts tests/recording-model.ts tests/recording-demo.ts",
+    "test": "tsx tests/logic.ts && tsx tests/tools.ts && tsx --test tests/coordinator.ts tests/coordinator-fixtures.ts tests/planner-strict.ts tests/coordination-store.ts tests/coordinator-worker.ts tests/coordinator-report.ts tests/recording-model.ts tests/recording-demo.ts tests/intake.ts",
     "demo:coordinator": "tsx src/demo-coordinator.ts",
     "test:call": "tsx tests/call-number.ts",
     "inspect": "tsx src/inspect.ts",
