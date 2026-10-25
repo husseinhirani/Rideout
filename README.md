@@ -40,9 +40,9 @@ after changing `OPERATOR_ORIGINS`, then run:
 npm run dev
 ```
 
-Open **http://127.0.0.1:5173**. Without the backend, the UI shows disconnected
-status. It never substitutes the offline story. You can choose the explicitly
-labelled offline story yourself.
+Open **http://127.0.0.1:5173**. The mode badge distinguishes the connected
+backend from UpdatedUI's offline demo. The original UI shows the offline demo
+when disconnected; offline actions do not submit backend requests.
 
 For backend startup on an existing configured database:
 
@@ -60,34 +60,42 @@ Do not wipe or reseed an existing database. This UI change adds no database sche
 
 ## First UI checkpoint
 
-1. Confirm the mode and database in the connection strip. Existing investigations
-   should appear in the top selector, with the same reports as the HTML console.
-2. Click **Start → New investigation**. Enter an incident and information objective.
-   Choose contacts directly or use area, relationship or tag filters. Search never
-   calls anyone. Record consent only when the selected people agreed.
-3. Leave **Let Claude choose contacts and questions** off for the first UI check.
-   Click **Open investigation**. Expect one saved case and no new calls.
-4. Send a direction from the coordinator card, then refresh. It should
-   remain under **Evidence**. With automatic questions off, this does not dial.
-5. Open **Incoming reports**. Review an appropriate pending account; choose its
-   investigation and give a reason. Expect a persisted attachment or rejection.
-6. Open **Organizer controls** to change scope, consent, pause or close. A paused
-   case stays paused when evidence/settings change. Closure preserves history.
-7. Stop the API temporarily. The dashboard should retain its last real snapshot,
-   show its age and disable mutations. Restart it to reconnect.
+The product uses the original `UpdatedUI` screens and styles. Backend operations
+are translated by `src/updated-ui-api.ts`; the backend still stores generic
+investigations. Start retains the original Wildfire drill, Missing child and
+Register a neighbor entries. The coordinator also accepts a free-text incident
+when no open case is selected.
 
-When ready for one real call, either use **Calls → Call selected person** in manual
-mode, or enable automatic questions in organizer controls. With automatic questions
-enabled, creating/resuming an investigation may start calls. Confirm the saved
-report, provider binding and actual terminal outcome in **Calls**, then inspect the
-accepted decision in **Coordinator**. No repeated baseline call is required simply
-to review the UI.
+1. Confirm the badge says **Live**. Check the saved case, reports and notes on the
+   map and Checks views.
+2. Try Side, Aerial, Nodes and Simple. Select a directory node.
+3. Open **Start → Register a neighbor**. Registration saves a profile and its
+   contact relationships. It does not grant call consent.
+4. Send a coordinator direction on an existing case, then refresh. The saved
+   organizer input and coordinator decisions remain in the conversation.
+5. Use **Export log** to download the original ZIP with backend state and reports.
+6. Inspect a call's details. The original manual-call panel records an organizer's
+   separate phone conversation; it does not transfer a Cartesia call into the browser.
+
+Configure contact consent, default contact scope, approved disclosures and automatic
+coordination in the backend console at **http://127.0.0.1:8788** before a live call.
+New investigations use these defaults; the Wildfire drill entry supplies its map
+area as the contact scope. `AUTO_COORDINATE=1` and enabled default coordination are
+both required for automatic outreach. Only eligible consenting contacts can be called.
+The scenario intake form converts its fields into free-text incident context; it
+adds no scenario-specific backend schema or fixed helper count.
+
+The original UI's safety/check-in and helper-acceptance panels read their corresponding
+stored records. Generic caller evidence does not automatically populate those legacy
+classifications or create ride assignments. Scope changes, incoming association,
+pause/resume and the manual information-call form remain available in the backend
+console. No database migration or hosted-agent setup is needed for this UI update.
 
 The app opens on the teammate's 3D Side map. Side, Aerial, Nodes and the Simple
 toggle use the original map components and assets. Google photorealistic tiles
 require `VITE_GOOGLE_MAPS_KEY`; without it the original Esri/OSM view is used.
 The map retains the teammate's Rockridge basemap. It plots stored coordinates
-within that map's bounds; profiles elsewhere remain in the directory and Nodes view. Nodes use stored
+within that map's bounds; profiles elsewhere remain visible in Nodes. Nodes use stored
 contact relationships and actual attempt states, not invented ride matches. It does not
 invent current locations, safe areas or available helpers. Future timed follow-ups
 and assistance assignment are not part of this integration.

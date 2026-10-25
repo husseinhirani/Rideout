@@ -13,12 +13,11 @@ import type { House, Place, Sighting } from "./types";
 type Tip = {
   x: number;
   y: number;
-  buildingOnly?: boolean;
   kicker: string;
   owner: string;
   number: number;
   street: string;
-  people: number;
+  people: number | string;
   vehicles: string[];
   needs?: string;
   note: string;
@@ -34,6 +33,7 @@ type BuildingFeature = {
 };
 
 type Props = {
+  liveData?: boolean;
   place: Place;
   houses: House[];
   onSelect: (id: number) => void;
@@ -41,7 +41,6 @@ type Props = {
   simple?: boolean;
   showFire?: boolean;
   sightings?: Sighting[];
-  liveData?: boolean;
 };
 
 const STATUS: Record<House["status"], string> = {
@@ -87,6 +86,8 @@ const HOVER_LIFT = 2.2;
 export function NeighborhoodMap({ place, houses, onSelect, angle = "side", simple = false, showFire = true, sightings = [], liveData = false }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const housesRef = useRef(houses);
+  const liveRef = useRef(liveData);
+  liveRef.current = liveData;
   const sightingsRef = useRef(sightings);
   const fireRef = useRef<THREE.Mesh | null>(null);
   sightingsRef.current = sightings;
@@ -575,11 +576,7 @@ export function NeighborhoodMap({ place, houses, onSelect, angle = "side", simpl
         return;
       }
       const house = housesRef.current.find((item) => item.id === id);
-      if (liveData) {
-        setTip({ x: Math.min(Math.max(12, event.clientX - rect.left + 16), rect.width - 312), y: Math.min(Math.max(12, event.clientY - rect.top + 16), rect.height - 250), buildingOnly: true, kicker: "Map feature", owner: "Mapped building", number: id, street: "", people: 0, vehicles: [], note: "No resident, vehicle or safety information is associated with this building." });
-        return;
-      }
-      const home = householdFor(id, house?.name);
+      const home = liveRef.current ? { owner: house?.name ?? "Not recorded", number: id, address: "Stored map feature", people: "—", vehicles: ["Not recorded"], needs: undefined } : householdFor(id, house?.name);
       const x = Math.min(Math.max(12, event.clientX - rect.left + 16), rect.width - 312);
       const y = Math.min(Math.max(12, event.clientY - rect.top + 16), rect.height - 250);
       setTip({
@@ -592,7 +589,7 @@ export function NeighborhoodMap({ place, houses, onSelect, angle = "side", simpl
         people: home.people,
         vehicles: home.vehicles,
         needs: home.needs,
-        note: house ? house.note : "Not on the ride check-in list.",
+        note: house ? house.note : liveRef.current ? "No resident or safety report is associated with this building." : "Not on the ride check-in list.",
       });
     };
     const onPointerLeave = () => {
@@ -666,7 +663,7 @@ export function NeighborhoodMap({ place, houses, onSelect, angle = "side", simpl
       if (moved > 6 || turning) return;
       hoverAt(event);
       const id = pickAt(event);
-      if (!liveData && id && housesRef.current.some((house) => house.id === id)) onSelect(id);
+      if (id && housesRef.current.some((house) => house.id === id)) onSelect(id);
     };
     const onWheel = (event: WheelEvent) => {
       event.preventDefault();
@@ -798,7 +795,7 @@ export function NeighborhoodMap({ place, houses, onSelect, angle = "side", simpl
       for (const house of housesRef.current) {
         const pin = document.getElementById(`pin-${house.id}`);
         if (!pin) continue;
-        if (!liveData && (simpleRef.current || !PIN_STATUS.has(house.status))) {
+        if (!liveRef.current && (simpleRef.current || !PIN_STATUS.has(house.status))) {
           pin.style.visibility = "hidden";
           continue;
         }
@@ -815,7 +812,7 @@ export function NeighborhoodMap({ place, houses, onSelect, angle = "side", simpl
         const pin = document.getElementById(sighting.id);
         if (!pin) continue;
         const spot = toWorld(sighting.lng, sighting.lat);
-        if (simpleRef.current && !liveData) {
+        if (simpleRef.current) {
           pin.style.visibility = "hidden";
           continue;
         }
@@ -892,7 +889,7 @@ export function NeighborhoodMap({ place, houses, onSelect, angle = "side", simpl
       node.removeChild(renderer.domElement);
       node.removeChild(labelLayer);
     };
-  }, [onSelect, place, liveData]);
+  }, [onSelect, place]);
 
   return (
     <div className={simple ? "scene simple" : "scene"}>
@@ -920,9 +917,9 @@ export function NeighborhoodMap({ place, houses, onSelect, angle = "side", simpl
           <p>{tip.kicker}</p>
           <strong>{tip.owner}</strong>
           <span className="hover-address">
-            {tip.buildingOnly ? `Building #${tip.number}` : `House #${tip.number} · ${tip.street}`}
+            House #{tip.number} · {tip.street}
           </span>
-          {!tip.buildingOnly && <dl>
+          <dl>
             <div>
               <dt>People</dt>
               <dd>{tip.people}</dd>
@@ -937,7 +934,7 @@ export function NeighborhoodMap({ place, houses, onSelect, angle = "side", simpl
                 <dd>{tip.needs}</dd>
               </div>
             ) : null}
-          </dl>}
+          </dl>
           <span>{tip.note}</span>
         </aside>
       ) : null}

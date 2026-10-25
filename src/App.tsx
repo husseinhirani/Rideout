@@ -1,96 +1,548 @@
-import { useEffect, useMemo, useState } from "react";
-import { createPortal } from "react-dom";
-import { MissingChildForm } from "./MissingChildForm";
-import { SAMPLE_CHILD } from "./facilitator";
-import { downloadLog, downloadBackendLog } from "./exportLog";
-import { informationCases } from "./api";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { api, presentationState, savedConversation, directoryEdges } from "./updated-ui-api";
 import { useBackend } from "./backend";
 import { BlockGraph } from "./BlockGraph";
-import { LiveStats } from "./LiveStats";
 import { CaseCard } from "./CaseCard";
-import { MapStats } from "./MapStats";
 import { Checks } from "./Checks";
-import { FocusView } from "./Dashboard";
+import { SAMPLE_CHILD } from "./facilitator";
+import { IntakeForm } from "./IntakeForm";
+import { currentCase, demoLabel, graphCalls, housesFrom, callsFor, sightingsFrom, latestIncident, type LiveCall } from "./live";
 import { LiveChecks } from "./LiveChecks";
-import { housesFrom, sightingsFrom } from "./live";
+import { LiveStats } from "./LiveStats";
+import { MapStats } from "./MapStats";
+import { MissingChildForm } from "./MissingChildForm";
 import { NeighborhoodMap } from "./NeighborhoodMap";
-import { NewInvestigation, CaseSettings, IntakeSettings } from "./OrganizerForms";
 import { OperatorPanel } from "./OperatorPanel";
-import { useRideOut } from "./telemetry";
-import place from "./data/place.json";
+import { RegisterForm } from "./RegisterForm";
+import { downloadLog } from "./exportLog";
+import { householdFor } from "./households";
+import { assignHouses, footprints, GEO, useRideOut } from "./telemetry";
+import type { ChatMessage, HouseStatus, OperatorSession } from "./types";
+
+const STATUS: Record<HouseStatus, string> = {
+  waiting: "Queued",
+  out: "Out",
+  needs_ride: "Needs a ride",
+  unknown: "No answer",
+  no_ride: "No ride",
+  blocked: "Not offered",
+};
+
+// Live statuses come from the backend check-in, so they read differently.
+const LIVE_STATUS: Record<HouseStatus, string> = {
+  waiting: "Registered",
+  out: "Said they are safe",
+  needs_ride: "Needs a ride",
+  unknown: "No answer · not confirmed safe",
+  no_ride: "No ride",
+  blocked: "Not offered",
+};
 
 export function App() {
-  const [offline, setOffline] = useState(false);
-  const backend = useBackend(!offline);
-  const [tab, setTab] = useState<"checks" | "map">("map");
-  const [simple, setSimple] = useState(false);
-  const [scene, setScene] = useState<"side" | "aerial" | "nodes">("side");
-  const [create, setCreate] = useState(false);
-  const [menu, setMenu] = useState(false);
-  const [settingsPanel, setSettingsPanel] = useState<"settings" | "intake" | null>(null);
-  const [caseId, setCaseId] = useState<number | null>(null);
-  const [selected, setSelected] = useState<number | null>(null);
-  const [now, setNow] = useState(Date.now());
-  useEffect(() => { const timer = window.setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(timer); }, []);
-  const state = backend.state;
-  const cases = state ? informationCases(state).sort((a, b) => b.id - a.id) : [];
-  const row = cases.find(c => c.id === caseId) ?? cases.find(c => c.status !== "closed") ?? cases[0] ?? null;
-  useEffect(() => { if (caseId === null && row) setCaseId(row.id); }, [caseId, row?.id]);
-  const houses = useMemo(() => state ? housesFrom(state, [], [], place) : [], [state]);
-  const pins = useMemo(() => state ? sightingsFrom(state, row?.id ?? null) : [], [state, row?.id]);
-  const person = state?.profiles.find(p => p.id === selected);
-  return <main className={`stage${tab === "checks" ? " checks-on" : ""}${simple ? " simple-on" : ""}${scene === "nodes" && tab === "map" ? " nodes-on" : ""}`}>
-    {!offline && <NeighborhoodMap place={place} houses={houses} onSelect={setSelected} angle={scene === "aerial" ? "aerial" : "side"} simple={simple} showFire={false} sightings={pins} liveData />}
-    {!offline && state && tab === "map" && scene === "nodes" && <BlockGraph houses={state.profiles.map(p => ({ id: p.id, name: p.name, lat: p.lat, lng: p.lng, status: "waiting", note: "Stored directory profile; current whereabouts unverified." }))} calls={[]} selectedId={selected} onSelect={setSelected} liveState={state} caseId={row?.id ?? null} />}
-    <header className="top">
-      <div className="brand"><strong>RideOut</strong><button type="button" className="mode-pill" onClick={() => { setOffline(!offline); setCreate(false); setMenu(false); setSettingsPanel(null); }}>{offline ? "Offline story → live" : "Live → offline story"}</button></div>
-      <nav aria-label="Views"><button type="button" className={tab === "checks" ? "on" : ""} onClick={() => setTab("checks")}>Checks</button><button type="button" className={tab === "map" ? "on" : ""} onClick={() => setTab("map")}>Map</button></nav>
-      <div className="top-end" id="top-actions">
-        <div className="map-controls">
-          <div className="view-toggle" role="group" aria-label="Map style">{(["side", "aerial", "nodes"] as const).map(view => <button key={view} type="button" className={scene === view ? "on" : ""} aria-pressed={scene === view} onClick={() => setScene(view)}>{view[0].toUpperCase() + view.slice(1)}</button>)}</div>
-          <button type="button" className={simple ? "simple-switch on" : "simple-switch"} aria-pressed={simple} onClick={() => setSimple(!simple)}>Simple<i /></button>
-        </div>
-        {!offline && <>
-          {tab === "checks" && <select aria-label="Investigation" value={row?.id ?? ""} onChange={e => setCaseId(Number(e.target.value))}><option value="" disabled>Choose investigation</option>{cases.map(c => <option key={c.id} value={c.id}>#{c.id} · {c.objective.slice(0, 60)} · {c.status}</option>)}</select>}
-          <time>{new Date(now).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time>
-          <button type="button" className="ghost" disabled={!state} onClick={() => { if (state) downloadBackendLog(state); }}>Export log</button>
-          <div className="start-menu"><button type="button" disabled={!backend.connected} aria-expanded={menu} onClick={() => setMenu(!menu)}>Start ▾</button>{menu && <div className="start-options" role="menu">
-            <button type="button" role="menuitem" onClick={() => { setMenu(false); setCreate(true); }}><b>New investigation</b><small>Describe the incident, objective and permitted contacts</small></button>
-            <button type="button" role="menuitem" disabled={!row} onClick={() => { setMenu(false); setSettingsPanel("settings"); }}><b>Organizer settings</b><small>Directory filters, contact scope and consent</small></button>
-            <button type="button" role="menuitem" onClick={() => { setMenu(false); setSettingsPanel("intake"); }}><b>Phone intake</b><small>Choose who may open investigations by phone</small></button>
-          </div>}</div>
-        </>}
-      </div>
-    </header>
-    {!offline && <div className={`connection-strip${backend.connected ? "" : " disconnected"}`} role="status">
-      {backend.connected ? `${state?.demo_mode.simulate ? "Simulated phones" : "Real calls"} · Real Claude · ${state?.demo_mode.database}` : `Disconnected · ${backend.error ?? "Connecting…"}`}
-      {!backend.connected && <span>{backend.updatedAt ? ` Last confirmed state ${Math.floor((now - backend.updatedAt) / 1000)}s ago. Changes disabled.` : " Waiting for the first backend snapshot."}</span>}
-    </div>}
-    {offline ? <OfflineStory tab={tab} simple={simple} scene={scene} now={now} /> : state ? <>
-      <LiveChecks key={row?.id ?? "none"} visible={tab === "checks"} state={state} row={row} now={now} disabled={!backend.connected} run={backend.run} />
-      {tab === "map" && <><LiveStats state={state} caseId={row?.id ?? null} /><aside className="right"><CaseCard state={state} chosenId={row?.id ?? null} now={now} onChoose={setCaseId} onClose={() => setTab("checks")} /><article className="glass person"><p className="kicker">Stored directory locations</p><h3>{person?.name ?? "Map reference"}</h3><p>{person ? `${person.lat}, ${person.lng}. Current whereabouts are unverified.` : `This map covers ${place.name}. ${houses.length} directory profiles are within its bounds; others remain in the directory.`}</p>{row && <><h3>Investigation #{row.id}</h3><p>{row.objective}</p><p>{row.status}{row.policy.paused ? " · paused" : ""}</p></>}<button type="button" onClick={() => setTab("checks")}>Open checks</button></article></aside></>}
-      {settingsPanel && <div className="product-modal"><FocusView focus={{ id: settingsPanel, origin: { x: 0, y: 0, s: .9 } }} title={settingsPanel === "intake" ? "Phone intake" : "Organizer settings"} kicker="Organizer" icon="grid" onClose={() => setSettingsPanel(null)}>{settingsPanel === "intake" ? <IntakeSettings state={state} run={backend.run} disabled={!backend.connected} /> : row && <CaseSettings state={state} row={row} run={backend.run} disabled={!backend.connected} />}</FocusView></div>}
-      {create && <div className="product-modal"><FocusView focus={{ id: "create", origin: { x: 0, y: 0, s: 0.9 } }} title="New investigation" kicker="Organizer" icon="spark" onClose={() => setCreate(false)}><NewInvestigation state={state} run={backend.run} disabled={!backend.connected} onCreated={id => { setCaseId(id); setCreate(false); setTab("checks"); }} /></FocusView></div>}
-    </> : <div className="connection-empty"><h1>Connect your backend</h1><p>The dashboard will display saved investigations when the API is reachable. It will not substitute an offline story.</p><button type="button" onClick={() => void backend.refresh()}>Retry connection</button></div>}
-  </main>;
-}
-
-function OfflineStory({ tab, simple, scene, now }: { tab: string; simple: boolean; scene: "side" | "aerial" | "nodes"; now: number }) {
   const ride = useRideOut();
+  const backend = useBackend();
+  const [preferOffline, setPreferOffline] = useState(false);
+  const [tab, setTab] = useState<"map" | "checks">("map");
+  const [scene, setScene] = useState<"side" | "aerial" | "nodes">("side");
+  const [simple, setSimple] = useState(false);
+  const [now, setNow] = useState(() => new Date());
   const [menu, setMenu] = useState(false);
-  const [childForm, setChildForm] = useState(false);
-  const waiting = ride.calls.find(c => c.phase === "holding");
-  const child = ride.incident.child;
-  const toolbar = document.getElementById("top-actions");
-  return <>
-    {toolbar && createPortal(<><time>{new Date(now).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time><button type="button" className="ghost" onClick={() => downloadLog({ place: ride.place, houses: ride.houses, calls: ride.calls, inbound: ride.inbound, inboundLog: ride.inboundLog, incident: ride.incident, chat: ride.chat, tasks: ride.tasks, started: ride.started, running: ride.running, recordingFor: ride.recordingFor })}>Export log</button><div className="start-menu"><button type="button" disabled={ride.running} aria-expanded={menu} onClick={() => setMenu(!menu)}>{ride.running ? "Live" : "Start ▾"}</button>{menu && <div className="start-options" role="menu"><button type="button" role="menuitem" onClick={() => { setMenu(false); ride.start(); }}><b>Wildfire drill</b><small>Offline scripted check-ins and ride matches</small></button><button type="button" role="menuitem" onClick={() => { setMenu(false); setChildForm(true); }}><b>Missing child</b><small>Offline scripted search scenario</small></button></div>}</div></>, toolbar)}
-    <NeighborhoodMap place={ride.place} houses={ride.houses} onSelect={ride.select} angle={scene === "aerial" ? "aerial" : "side"} simple={simple} showFire={ride.incident.kind === "wildfire"} sightings={ride.incident.sightings} />
-    {tab === "map" && scene === "nodes" && <BlockGraph houses={ride.houses} calls={ride.calls} selectedId={ride.selected?.id ?? null} onSelect={ride.select} />}
-    {tab === "map" && <><MapStats calls={ride.calls} houses={ride.houses} incident={ride.incident} callBacks={ride.inboundLog.length} homes={ride.homesOnBlock} started={ride.started} now={now} />{(ride.selected || child) && <aside className="right">{child && <article className="glass child-card"><p className={ride.incident.foundAt ? "kicker found" : "kicker hot"}>{ride.incident.foundAt ? "Found" : "Missing child"}</p><h3>{child.name}, {child.age}</h3><p>{child.clothing}</p><p>Last seen: {child.lastSeen}</p><p>Call-back: {child.callback}</p>{!ride.incident.foundAt && <button type="button" className="mark-found" onClick={ride.markFound}>Mark found</button>}</article>}{ride.selected && <article className="glass person"><h3>{ride.selected.name}</h3><p>{ride.selected.note}</p></article>}</aside>}</>}
-    <div className="connection-strip">Offline scripted story · no backend data or real calls</div>
-    <Checks visible={tab === "checks"} houses={ride.houses} calls={ride.calls} inbound={ride.inbound} incident={ride.incident} started={ride.started} running={ride.running} now={now} chat={ride.chat} busy={ride.tasks.some(t => t.state === "running")} onAsk={ride.ask} onCall={{ busy: !!ride.operator, cancel: ride.cancelCall, takeOver: ride.takeOver, callDirect: ride.callDirect, listen: ride.listen, listeningId: ride.listeningId }} />
-    {childForm && <MissingChildForm initial={SAMPLE_CHILD} homes={ride.homesOnBlock} onClose={() => setChildForm(false)} onStart={details => { setChildForm(false); ride.startMissingChild(details); }} />}
-    {waiting && !ride.operator && <div className="handoff-banner" role="alert"><p><b>{waiting.name} needs a person.</b> {waiting.escalation?.reason}</p><button type="button" className="pick-up" onClick={() => ride.takeOver(waiting.id)}>Pick up</button><button type="button" onClick={() => ride.cancelCall(waiting.id)}>Cancel call</button></div>}
-    {ride.operator && <OperatorPanel key={ride.operator.callId} session={ride.operator} call={ride.calls.find(c => c.id === ride.operator?.callId)} house={ride.houses.find(h => h.id === ride.operator?.householdId)} now={now} onSaid={ride.operatorSaid} onHangUp={ride.hangUp} />}
-  </>;
+  const [form, setForm] = useState(false);
+  const [register, setRegister] = useState(false);
+  const [caseId, setCaseId] = useState<number | null>(null);
+  const [liveChat, setLiveChat] = useState<ChatMessage[]>([]);
+  const [chatBusy, setChatBusy] = useState(false);
+  const [liveSelected, setLiveSelected] = useState<number | null>(null);
+  const [outside, setOutside] = useState<{ session: OperatorSession; call: LiveCall } | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const recordings = useRef(new Map<string, Blob>());
+  const waiting = ride.calls.find((call) => call.phase === "holding");
+  const child = ride.incident.kind === "missing_child" ? ride.incident.child : null;
+  const selected = ride.selected;
+  const clock = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const state = useMemo(() => backend.state ? presentationState(backend.state) : null, [backend.state]);
+  const live = Boolean(backend.connected && state && !preferOffline);
+
+  const residents = useMemo(() => assignHouses(), []);
+  const spots = useMemo(
+    () =>
+      footprints.features.map((feature) => {
+        const ring = (feature.geometry as { coordinates: number[][][] }).coordinates[0];
+        const count = Math.max(ring.length - 1, 1);
+        let lng = 0;
+        let lat = 0;
+        for (let i = 0; i < count; i += 1) {
+          lng += ring[i][0];
+          lat += ring[i][1];
+        }
+        return { id: feature.id as number, lng: lng / count, lat: lat / count };
+      }),
+    [],
+  );
+  const liveCase = state ? currentCase(state, caseId) : null;
+  const savedChat = savedConversation(state, liveCase?.id ?? null);
+  const conversation = [...savedChat, ...liveChat.filter(message => !savedChat.some(saved => saved.from === message.from && saved.text === message.text))].sort((a,b) => a.at - b.at);
+  useEffect(() => { setLiveChat([]); }, [liveCase?.id]);
+  const liveHouses = useMemo(() => (state ? housesFrom(state, residents, spots, GEO) : []), [state, residents, spots]);
+  const liveCalls = useMemo(() => (state ? callsFor(state, liveCase?.id ?? null) : []), [state, liveCase?.id]);
+  const liveSightings = useMemo(() => (state ? sightingsFrom(state, liveCase?.id ?? null) : []), [state, liveCase?.id]);
+  const liveGraph = useMemo(() => graphCalls(liveCalls, liveHouses), [liveCalls, liveHouses]);
+  const selectedProfile = state?.profiles.find(p => p.id === liveSelected);
+  const livePerson = liveHouses.find((house) => house.id === liveSelected) ?? (selectedProfile ? { ...selectedProfile, status: "waiting" as const, note: "Stored directory profile; current whereabouts unverified." } : null);
+  const concern = live ? liveCalls.find((call) => call.attempt.concern && call.transport !== "ended" && call.transport !== "cancelled") : undefined;
+
+  // A newly opened case takes over the view; choosing one by hand holds until the next opens.
+  const newestCase = state?.cases.reduce((max, row) => Math.max(max, row.id), 0) ?? 0;
+  useEffect(() => {
+    setCaseId(null);
+  }, [newestCase]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const say = (from: ChatMessage["from"], text: string) =>
+    setLiveChat((current) => [...current, { id: `${from}-${Date.now()}-${current.length}`, from, text, at: Date.now() }]);
+
+  const fail = (error: unknown) => setNotice(error instanceof Error ? error.message : "The backend refused that");
+
+  const liveActions = {
+    cancel: async (attemptId: number) => {
+      try {
+        const result = await backend.run(() => api.cancel(attemptId));
+        return result.reason;
+      } catch (error) {
+        return error instanceof Error ? error.message : "Not cancelled";
+      }
+    },
+    report: async (attemptId: number, answer: string, concernText: string) => {
+      await backend.run(() => api.report(attemptId, answer, concernText));
+    },
+    callYourself: (call: LiveCall) => {
+      const house = liveHouses.find((item) => item.name === call.person?.name);
+      setOutside({
+        call,
+        session: { callId: `attempt-${call.attempt.id}`, name: call.person?.name ?? "Unknown", householdId: house?.id ?? null, mode: "direct", startedAt: Date.now() },
+      });
+    },
+    checkIn: async (incidentId: number, profileId: number, result: "safe" | "victim") => {
+      try {
+        await backend.run(() => api.checkIn(incidentId, profileId, result));
+      } catch (error) {
+        fail(error);
+      }
+    },
+    inbound: async (fromPhone: string, text: string, providerCallId: string) => {
+      const result = await backend.run(() => api.inbound(fromPhone, text, providerCallId));
+      return `${result.reply} (${result.status})`;
+    },
+    ask: async (text: string) => {
+      if (!state) return;
+      say("lead", text);
+      setChatBusy(true);
+      try {
+        if (liveCase && liveCase.status !== "closed") {
+          const result = await backend.run(() => api.caseInput(liveCase.id, text));
+          say("facilitator", `Saved to case #${liveCase.id} as dispatcher input, not verified. ${result.reason}`);
+        } else if (state.demo_mode.scripted) {
+          say("facilitator", "This backend runs a scripted model, so it cannot read a free-text incident. Use Start → Missing child.");
+        } else {
+          const result = await backend.run(() => api.incident({ text }));
+          say("facilitator", `Opened incident #${result.incident_id}. ${result.reason}`);
+        }
+      } catch (error) {
+        say("facilitator", error instanceof Error ? `Not saved: ${error.message}` : "Not saved.");
+      } finally {
+        setChatBusy(false);
+      }
+    },
+  };
+
+  const startWildfire = async () => {
+    try {
+      const radius_m = 400;
+      const result = await backend.run(() =>
+        api.incident({ type: "wildfire evacuation drill", lat: (GEO.south + GEO.north) / 2, lng: (GEO.west + GEO.east) / 2, radius_m }),
+      );
+      setNotice(`Incident #${result.incident_id} opened. ${result.reason}`);
+      setTab("checks");
+    } catch (error) {
+      fail(error);
+    }
+  };
+
+  const exportLive = () => {
+    if (!state) return;
+    void downloadLog({
+      place: ride.place,
+      houses: liveHouses,
+      calls: liveGraph,
+      inbound: null,
+      inboundLog: [],
+      incident: { kind: liveCase?.kind === "information" ? "information" : latestIncident(state, true) ? "wildfire" : "missing_child", startedAt: 0, child: null, sightings: liveSightings, foundAt: null },
+      chat: conversation,
+      tasks: [],
+      started: state.cases.length > 0 || state.incidents.length > 0,
+      running: false,
+      recordingFor: (id) => recordings.current.get(id) ?? null,
+      backend: state,
+    });
+  };
+
+  const exportOffline = () =>
+    downloadLog({
+      place: ride.place,
+      houses: ride.houses,
+      calls: ride.calls,
+      inbound: ride.inbound,
+      inboundLog: ride.inboundLog,
+      incident: ride.incident,
+      chat: ride.chat,
+      tasks: ride.tasks,
+      started: ride.started,
+      running: ride.running,
+      recordingFor: ride.recordingFor,
+    });
+
+  return (
+    <main className={`${tab === "checks" ? "stage checks-on" : "stage"}${scene === "nodes" ? " nodes-on" : ""}${simple ? " simple-on" : ""}`}>
+      <NeighborhoodMap
+        liveData={live}
+        place={ride.place}
+        houses={live ? liveHouses : ride.houses}
+        onSelect={live ? setLiveSelected : ride.select}
+        angle={scene === "aerial" ? "aerial" : "side"}
+        simple={simple}
+        showFire={live ? false : ride.incident.kind === "wildfire"}
+        sightings={live ? liveSightings : ride.incident.sightings}
+      />
+      {scene === "nodes" ? (
+        live ? (
+          <BlockGraph houses={state!.profiles.map(p => ({ id: p.id, name: p.name, lat: p.lat, lng: p.lng, status: "waiting", note: "Stored directory profile; current whereabouts unverified." }))} liveEdges={directoryEdges(state!, liveCase?.id ?? null)} calls={liveGraph} selectedId={liveSelected} onSelect={setLiveSelected} />
+        ) : (
+          <BlockGraph houses={ride.houses} calls={ride.calls} selectedId={selected?.id ?? null} onSelect={ride.select} />
+        )
+      ) : null}
+
+      <header className="top">
+        <div className="brand">
+          <strong>RideOut</strong>
+          {state && backend.connected ? (
+            <button
+              type="button"
+              className={live ? "mode-pill live" : "mode-pill"}
+              onClick={() => setPreferOffline((value) => !value)}
+              title={live ? "Switch to the offline demo" : "Switch back to the live backend"}
+            >
+              {live ? `Live · ${demoLabel(state)}` : "Offline demo · switch to live"}
+            </button>
+          ) : (
+            <span className="mode-pill offline" title={backend.error ?? undefined}>
+              Offline demo · not connected
+            </span>
+          )}
+        </div>
+        <nav aria-label="Views">
+          <button type="button" className={tab === "checks" ? "on" : ""} aria-pressed={tab === "checks"} onClick={() => setTab("checks")}>
+            Checks
+          </button>
+          <button type="button" className={tab === "map" ? "on" : ""} aria-pressed={tab === "map"} onClick={() => setTab("map")}>
+            Map
+          </button>
+        </nav>
+        <div className="top-end">
+          <div className="map-controls">
+            <div className="view-toggle" role="group" aria-label="Map style">
+              <button type="button" className={scene === "side" ? "on" : ""} aria-pressed={scene === "side"} onClick={() => setScene("side")}>Side</button>
+              <button type="button" className={scene === "aerial" ? "on" : ""} aria-pressed={scene === "aerial"} onClick={() => setScene("aerial")}>Aerial</button>
+              <button type="button" className={scene === "nodes" ? "on" : ""} aria-pressed={scene === "nodes"} onClick={() => setScene("nodes")}>Nodes</button>
+            </div>
+            <button
+              type="button"
+              className={simple ? "simple-switch on" : "simple-switch"}
+              aria-pressed={simple}
+              onClick={() => setSimple((value) => !value)}
+            >
+              Simple
+              <i />
+            </button>
+          </div>
+          <time>{clock}</time>
+          <button type="button" className="ghost" onClick={live ? exportLive : exportOffline}>
+            Export log
+          </button>
+          <div className="start-menu">
+            <button type="button" onClick={() => setMenu((open) => !open)} disabled={!live && ride.running} aria-expanded={menu}>
+              {live ? "Start ▾" : ride.running ? "Live" : ride.started ? "New incident ▾" : "Start ▾"}
+            </button>
+            {menu && live && state ? (
+              <div className="start-options" role="menu">
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setMenu(false);
+                    void startWildfire();
+                  }}
+                >
+                  <b>Wildfire drill</b>
+                  <small>{state.demo_mode.simulate ? "Simulated check-in calls to every registered neighbor" : "Places real check-in calls to every registered neighbor"}</small>
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setMenu(false);
+                    setForm(true);
+                  }}
+                >
+                  <b>Missing child</b>
+                  <small>Open a case; the backend calls the two helpers</small>
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setMenu(false);
+                    setRegister(true);
+                  }}
+                >
+                  <b>Register a neighbor</b>
+                  <small>Add someone to the backend's directory</small>
+                </button>
+              </div>
+            ) : null}
+            {menu && !live && !ride.running ? (
+              <div className="start-options" role="menu">
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setMenu(false);
+                    ride.start();
+                  }}
+                >
+                  <b>Wildfire drill</b>
+                  <small>Check every registered neighbor and match rides</small>
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setMenu(false);
+                    setForm(true);
+                  }}
+                >
+                  <b>Missing child</b>
+                  <small>Call every home with the child's description</small>
+                </button>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      </header>
+
+      {notice ? (
+        <div className="live-notice" role="status">
+          <p>{notice}</p>
+          <button type="button" onClick={() => setNotice(null)}>
+            Dismiss
+          </button>
+        </div>
+      ) : null}
+
+      {live && state ? (
+        <>
+          {tab === "map" ? (
+            <>
+              <LiveStats state={state} caseId={liveCase?.id ?? null} />
+              <aside className="right">
+                <CaseCard
+                  state={state}
+                  chosenId={caseId}
+                  now={now.getTime()}
+                  onChoose={setCaseId}
+                  onClose={(id) => {
+                    void backend.run(() => api.closeCase(id)).catch(fail);
+                  }}
+                />
+                {livePerson ? (
+                  <article className="glass person">
+                    <p className="kicker">{LIVE_STATUS[livePerson.status]}</p>
+                    <h3>{livePerson.name}</h3>
+                    <p>{`Stored coordinates: ${livePerson.lat}, ${livePerson.lng}`}</p>
+                    <p>{livePerson.note}</p>
+                  </article>
+                ) : null}
+              </aside>
+            </>
+          ) : null}
+
+          <LiveChecks
+            visible={tab === "checks"}
+            state={state}
+            caseId={liveCase?.id ?? null}
+            houses={liveHouses}
+            chat={conversation}
+            busy={chatBusy}
+            operatorBusy={Boolean(outside)}
+            now={now.getTime()}
+            actions={liveActions}
+          />
+
+          {concern && !outside ? (
+            <div className="handoff-banner" role="alert">
+              <p>
+                <b>{concern.person?.name ?? "A helper"} raised a concern.</b> {concern.attempt.concern}
+              </p>
+              <button type="button" className="pick-up" onClick={() => liveActions.callYourself(concern)}>
+                Call them yourself
+              </button>
+            </div>
+          ) : null}
+
+          {outside ? (
+            <OperatorPanel
+              key={outside.session.callId}
+              session={outside.session}
+              call={undefined}
+              house={liveHouses.find((house) => house.id === outside.session.householdId)}
+              now={now.getTime()}
+              outside
+              onSaid={() => {}}
+              onHangUp={(outcome) => {
+                if (outcome.audio) recordings.current.set(outside.session.callId, outcome.audio);
+                const caseRef = outside.call.attempt.support_case_id;
+                const text = outcome.note.trim();
+                setOutside(null);
+                if (text) {
+                  void backend
+                    .run(() => api.caseInput(caseRef, `Dispatcher called ${outside.session.name} outside RideOut: ${text}`))
+                    .catch(fail);
+                }
+              }}
+            />
+          ) : null}
+
+          {form ? <IntakeForm state={state} onSubmit={(body) => backend.run(() => api.intake(body))} onClose={() => setForm(false)} /> : null}
+          {register ? <RegisterForm state={state} spots={spots} onRegister={(body) => backend.run(() => api.register(body))} onClose={() => setRegister(false)} /> : null}
+        </>
+      ) : (
+        <>
+          {tab === "map" ? (
+            <>
+              <MapStats
+                calls={ride.calls}
+                houses={ride.houses}
+                incident={ride.incident}
+                callBacks={ride.inboundLog.length}
+                homes={ride.homesOnBlock}
+                started={ride.started}
+                now={now.getTime()}
+              />
+
+              <aside className="right">
+                {child ? (
+                  <article className="glass child-card">
+                    <p className={ride.incident.foundAt ? "kicker found" : "kicker hot"}>{ride.incident.foundAt ? "Found" : "Missing child"}</p>
+                    <h3>
+                      {child.name}, {child.age}
+                    </h3>
+                    <dl>
+                      <div>
+                        <dt>Wearing</dt>
+                        <dd>{child.clothing}</dd>
+                      </div>
+                      <div>
+                        <dt>Last seen</dt>
+                        <dd>{child.lastSeen}</dd>
+                      </div>
+                      <div>
+                        <dt>Call-back</dt>
+                        <dd>{child.callback}</dd>
+                      </div>
+                    </dl>
+                    {ride.incident.foundAt ? null : (
+                      <button type="button" className="mark-found" onClick={ride.markFound}>
+                        Mark found
+                      </button>
+                    )}
+                  </article>
+                ) : null}
+                {selected ? (
+                  <article className="glass person">
+                    <p className="kicker">{STATUS[selected.status]}</p>
+                    <h3>{selected.name}</h3>
+                    <p>{householdFor(selected.id, selected.name).address}</p>
+                    <p>{selected.note}</p>
+                  </article>
+                ) : null}
+              </aside>
+            </>
+          ) : null}
+
+          <Checks
+            visible={tab === "checks"}
+            houses={ride.houses}
+            calls={ride.calls}
+            inbound={ride.inbound}
+            incident={ride.incident}
+            started={ride.started}
+            running={ride.running}
+            now={now.getTime()}
+            chat={ride.chat}
+            busy={ride.tasks.some((task) => task.state === "running")}
+            onAsk={ride.ask}
+            onCall={{
+              busy: Boolean(ride.operator),
+              cancel: ride.cancelCall,
+              takeOver: ride.takeOver,
+              callDirect: ride.callDirect,
+              listen: ride.listen,
+              listeningId: ride.listeningId,
+            }}
+          />
+
+          {waiting && !ride.operator ? (
+            <div className="handoff-banner" role="alert">
+              <p>
+                <b>{waiting.name} needs a person.</b> {waiting.escalation?.reason}
+              </p>
+              <button type="button" className="pick-up" onClick={() => ride.takeOver(waiting.id)}>
+                Pick up
+              </button>
+              <button type="button" onClick={() => ride.cancelCall(waiting.id)}>
+                Cancel call
+              </button>
+            </div>
+          ) : null}
+
+          {ride.operator ? (
+            <OperatorPanel
+              key={ride.operator.callId}
+              session={ride.operator}
+              call={ride.calls.find((call) => call.id === ride.operator?.callId)}
+              house={ride.houses.find((house) => house.id === ride.operator?.householdId)}
+              now={now.getTime()}
+              onSaid={ride.operatorSaid}
+              onHangUp={ride.hangUp}
+            />
+          ) : null}
+
+          {form ? (
+            <MissingChildForm
+              initial={SAMPLE_CHILD}
+              homes={ride.homesOnBlock}
+              onClose={() => setForm(false)}
+              onStart={(details) => {
+                setForm(false);
+                ride.startMissingChild(details);
+              }}
+            />
+          ) : null}
+        </>
+      )}
+    </main>
+  );
 }

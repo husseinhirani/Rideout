@@ -1,4 +1,3 @@
-import type { BackendState } from "./api";
 import { householdFor } from "./households";
 import type { CallCard, CallTask, ChatMessage, House, InboundReport, Incident, Place } from "./types";
 
@@ -13,7 +12,7 @@ type Snapshot = {
   calls: CallCard[];
   inbound: InboundReport | null;
   inboundLog: InboundReport[];
-  incident: Incident;
+  incident: Omit<Incident, "kind"> & { kind: Incident["kind"] | "information" };
   chat: ChatMessage[];
   tasks: CallTask[];
   started: boolean;
@@ -41,27 +40,18 @@ export async function downloadLog(snapshot: Snapshot) {
   const log = buildLog(snapshot, exportedAt, audio);
   files.unshift({ name: "log.json", data: encode(JSON.stringify(log, null, 2)) });
   if (snapshot.backend) files.push({ name: "backend/state.json", data: encode(JSON.stringify(snapshot.backend, null, 2)) });
+  const blob = new Blob([zip(files)], { type: "application/zip" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
   const pad = (value: number) => String(value).padStart(2, "0");
   const stamp = `${exportedAt.getFullYear()}-${pad(exportedAt.getMonth() + 1)}-${pad(exportedAt.getDate())}-${pad(exportedAt.getHours())}${pad(exportedAt.getMinutes())}`;
-  downloadFiles(files, `rideout-log-${snapshot.place.name.toLowerCase()}-${stamp}.zip`);
-}
-
-export function downloadBackendLog(state: BackendState) {
-  const encode = (text: string) => new TextEncoder().encode(text);
-  const files = [{ name: "backend/state.json", data: encode(JSON.stringify(state, null, 2)) }];
-  for (const attempt of state.attempts) if (attempt.answer) {
-    files.push({ name: `reports/attempt-${attempt.id}.txt`, data: encode(`Case #${attempt.support_case_id} · Attempt #${attempt.id}\nQuestion: ${attempt.ask}\nSaved caller account: ${attempt.answer}\nConcern: ${attempt.concern}\nThis is a saved report, not a verbatim transcript.`) });
-  }
-  downloadFiles(files, `rideout-log-${new Date().toISOString().replace(/[:.]/g, "-")}.zip`);
-}
-
-function downloadFiles(files: { name: string; data: Uint8Array }[], filename: string) {
-  const url = URL.createObjectURL(new Blob([zip(files)], { type: "application/zip" }));
-  const link = document.createElement("a"); link.href = url; link.download = filename; link.click();
+  link.href = url;
+  link.download = `rideout-log-${snapshot.place.name.toLowerCase()}-${stamp}.zip`;
+  link.click();
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-function buildLog({ place, houses, calls, inbound, inboundLog, incident, chat, tasks, started, running }: Snapshot, exportedAt: Date, audio: Map<string, string>) {
+function buildLog({ place, houses, calls, inbound, inboundLog, incident, chat, tasks, started, running, backend }: Snapshot, exportedAt: Date, audio: Map<string, string>) {
   const iso = (ms: number | null) => (ms ? new Date(ms).toISOString() : null);
   const callsFor = (id: number) => calls.filter((call) => call.householdId === id);
 
@@ -107,7 +97,7 @@ function buildLog({ place, houses, calls, inbound, inboundLog, incident, chat, t
       leadRequests: tasks.length,
     },
     households: houses.map((house) => {
-      const home = householdFor(house.id, house.name);
+      const home = backend ? { owner: house.name, address: null, people: null, vehicles: null, needs: null } : householdFor(house.id, house.name);
       return {
         householdId: house.id,
         owner: home.owner,
@@ -125,7 +115,7 @@ function buildLog({ place, houses, calls, inbound, inboundLog, incident, chat, t
       id: call.id,
       householdId: call.householdId ?? null,
       name: call.name,
-      requestedBy: call.id.startsWith("lead-") ? "lead_direct" : call.taskId ? "lead_via_facilitator" : call.purpose === "alert" ? "missing_child_alert" : "drill",
+      requestedBy: backend ? "backend" : call.id.startsWith("lead-") ? "lead_direct" : call.taskId ? "lead_via_facilitator" : call.purpose === "alert" ? "missing_child_alert" : "drill",
       voicemail: Boolean(call.voicemail),
       taskId: call.taskId ?? null,
       handledBy: call.handledBy ?? "agent",

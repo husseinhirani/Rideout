@@ -53,6 +53,17 @@ Optional `case_id` intersects the query with that case's authorized scope;
 intersect. Results contain masked phone suffixes, eligibility reasons and a
 pagination cursor. No match is an empty result; search never dials.
 
+`POST /profiles` registers `{name, phone, lat, lng, contact_profile_ids}` for the
+original UI registration form and returns `{profile_id}`. It validates coordinates,
+phone format and contact references. Registration does not record call consent or
+add the person to an investigation's scope.
+
+`POST /simulation/incoming` is an operator-only route enabled only with `SIMULATE=1`.
+It accepts incoming report metadata; `profile_id` may substitute for a phone number
+so the UI can select a masked directory profile. The server resolves the number
+and uses the existing incoming report pipeline. Live provider callbacks still use
+`/requests` with callback authentication.
+
 `POST /cases/:id/calls`:
 
 ```json

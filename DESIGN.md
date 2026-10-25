@@ -2,23 +2,22 @@
 
 ## Connected product
 
-The live dashboard uses generic investigations and the current operator API.
-The UpdatedUI layout keeps the call chart, Matches card and Neighbors chart
-on the left, with the coordinator history and composer on the right. Sidebar
-previews lead to evidence, organizer controls, incoming reports, the directory
-and phone intake. Organizer messages submit directly through the existing
-idempotent command API. Saved organizer notes and accepted decisions populate
-the conversation history. Missing ride/safety classifications, ride matches and
-connected-call duration display as unavailable, never as inferred counts. The teammate's map components are reused.
-Scenario-specific stories are available only through explicit offline selection.
-Live disconnect retains real state; stored directory coordinates never become
-fictional household facts. See `README.md` for local startup and the first UI check.
+The product restores the original `UpdatedUI` screens, styles, menus, map controls,
+forms, call details, export and offline scenario interactions. Do not replace or
+simplify these screens while connecting backend features.
 
-The map restores UpdatedUI's Side/Aerial/Nodes controls, Simple toggle, statistics,
-case and profile panels, hover cards and Start menu. Live building hover shows
-geometry only unless actual profile data is associated; Nodes uses stored contact
-relationships. The explicit offline story retains its scenario forms, map stats,
-export, call controls and takeover panel.
+`src/updated-ui-api.ts` translates the original UI actions into generic investigation
+commands with command IDs and input revisions. Saved organizer notes and coordinator
+decisions feed the original conversation component. Registration uses the operator
+API. Live map coordinates and graph relationships come from stored profiles;
+unrecorded household facts are not populated with demo residents or vehicles.
+
+The original scenario forms are presentation inputs, translated into free-text
+context. They do not introduce scenario-specific backend state. The original
+helper-acceptance/check-in displays still require their corresponding records;
+information collection does not manufacture rescue assignments or safety states.
+Generic scope, consent, association and pause controls remain in the backend console.
+See `README.md` for the exact connection boundaries and local checkpoint.
 
 The visual notes below describe the original map/dashboard direction.
 

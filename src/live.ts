@@ -272,8 +272,8 @@ export function graphCalls(calls: LiveCall[], houses: House[]): CallCard[] {
     const house = houses.find((row) => row.name === call.person?.name);
     const at = Date.parse(call.attempt.created_at) || 0;
     const phase: CallCard["phase"] =
-      call.transport === "active" ? "live" : call.transport === "ended" ? "done" : call.transport === "cancelled" ? "canceled" : call.transport === undefined && call.attempt.outcome !== null ? "done" : "calling";
-    return { id: `attempt-${call.attempt.id}`, name: call.person?.name ?? "Unknown", phase, transcript: call.attempt.answer, at, startedAt: at, answeredAt: null, endedAt: null, householdId: house?.id };
+      call.transport === "active" ? "live" : call.attempt.outcome === "no_answer" ? "missed" : call.transport === "ended" ? "done" : call.transport === "cancelled" ? "canceled" : call.transport === undefined && call.attempt.outcome !== null ? "done" : "calling";
+    return { id: `attempt-${call.attempt.id}`, name: call.person?.name ?? "Unknown", phase, transcript: call.attempt.answer ? `Saved caller report (not a verbatim transcript): ${call.attempt.answer}` : "", at, startedAt: at, answeredAt: null, endedAt: null, householdId: house?.id };
   });
 }
 

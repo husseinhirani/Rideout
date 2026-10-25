@@ -429,7 +429,7 @@ export async function registerProfile(input: {
   if (missing !== undefined) throw new ServiceError(400, "Contact profile " + String(missing) + " not found")
   const before = new Set(known.map(row => row.id))
   await callReducer("insertProfile", [name, phone, input.lat, input.lng, []])
-  const created = (await profiles()).find(row => !before.has(row.id))
+  const created = (await profiles()).find(row => !before.has(row.id) && row.name === name && row.phone === phone && row.lat === input.lat && row.lng === input.lng)
   if (!created) throw new Error("insertProfile did not insert a profile")
   if (input.contact_profile_ids.length) await callReducer("setContacts", [created.id, input.contact_profile_ids])
   return { profile_id: created.id }

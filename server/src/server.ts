@@ -3,12 +3,12 @@ import { resolve } from "node:path"
 import { loadEnv } from "./env"
 import { authorizeRequest, readAccessConfig } from "./operator-auth"
 import { createLocalConsole } from "./local-console"
-import { getState } from "./loop"
-import { attempts, callReducer, incomingRequests, type ProfileRow, type AttemptProgressRow } from "./db"
+import { getState, registerProfile } from "./loop"
+import { profiles, attempts, callReducer, incomingRequests, type ProfileRow, type AttemptProgressRow } from "./db"
 import { configureInformationCase, createInformationCase, directory, readInformationState, readInformationPlanning, receiveInformationReport, requestInformationCall, inputInformationCase, retryInformationReport, readInformationIncomingState, configureInformationIntake, reviewInformationIncoming, closeInformationCase, cancelInformationAttempt } from "./information"
 import { receiveInformationRequest } from "./information-incoming"
 import { startInformationWorker } from "./information-worker"
-import { asId, ServiceError } from "./service"
+import { asId, asNumber, asString, ServiceError } from "./service"
 import { contactScope } from "../shared/information"
 
 const BODY_LIMIT = 1_000_000
@@ -85,6 +85,23 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
   }
   if (req.method !== "POST") { send(res, 404, {error: "not found"}); return }
   const body = await readJson(req)
+  if (path === "/profiles") {
+    const lat = asNumber(body.lat, "lat"), lng = asNumber(body.lng, "lng")
+    if (Math.abs(lat) > 90 || Math.abs(lng) > 180) throw new ServiceError(400, "Invalid profile coordinates")
+    if (!Array.isArray(body.contact_profile_ids)) throw new ServiceError(400, "contact_profile_ids must be an array")
+    send(res, 200, await registerProfile({ name: asString(body.name, "name"), phone: asString(body.phone, "phone"), lat, lng,
+      contact_profile_ids: [...new Set(body.contact_profile_ids.map(value => asId(value, "contact_profile_id")))],
+    })); return
+  }
+  if (path === "/simulation/incoming") {
+    if (process.env.INBOUND_REQUESTS !== "1") throw new ServiceError(503, "Inbound receipt is not enabled")
+    if (body.profile_id !== undefined) {
+      const profile = (await profiles()).find(p => p.id === asId(body.profile_id, "profile_id"))
+      if (!profile) throw new ServiceError(404, "Profile not found")
+      body.from_phone = profile.phone
+    }
+    send(res, 200, await receiveInformationRequest(body)); return
+  }
   if (path === "/incidents") { send(res, 200, await createInformationCase(body, actor)); return }
   if (path === "/intake-configuration") { send(res, 200, await configureInformationIntake(body, actor)); return }
   const review = /^\/incoming-requests\/(\d+)\/review$/.exec(path)

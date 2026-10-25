@@ -200,21 +200,17 @@ export function FacilitatorTile({
   lead,
   live,
   busy,
-  disabled = false,
   chat,
   suggestions,
   placeholder,
   onOpen,
   onAsk,
-  composer,
 }: {
   name: string;
   kicker: string;
   lead: string;
   live: boolean;
   busy: boolean;
-  disabled?: boolean;
-  composer?: ReactNode;
   chat: ChatMessage[];
   suggestions: string[];
   placeholder: string;
@@ -239,8 +235,9 @@ export function FacilitatorTile({
         <Icon name="expand" />
       </button>
       <p className="agent-lead">{lead}</p>
+      {/* Only shows once the card is dragged tall enough to read a conversation. */}
       <div className="agent-feed" ref={feed} aria-live="polite">
-        {chat.length === 0 ? <p className="agent-feed-empty">Open the coordinator for details, or add a direction below.</p> : null}
+        {chat.length === 0 ? <p className="agent-feed-empty">Nothing asked yet. Ask below, or tap a suggestion.</p> : null}
         {chat.map((message) => (
           <p key={message.id} className={`agent-msg ${message.from}`}>
             <small>{message.from === "lead" ? "You" : name.split(" ")[0]}</small>
@@ -258,22 +255,22 @@ export function FacilitatorTile({
           ))}
         </div>
       ) : null}
-      {composer ?? <form
+      <form
         className="agent-ask"
         onSubmit={(event) => {
           event.preventDefault();
           const text = draft.trim();
-          if (!text || busy || disabled) return;
+          if (!text) return;
           setDraft("");
           onAsk(text, event);
         }}
       >
         <Icon name="spark" />
-        <input disabled={disabled} value={draft} onChange={(event) => setDraft(event.target.value)} placeholder={placeholder} aria-label="Ask the facilitator" />
-        <button type="submit" disabled={busy || disabled || !draft.trim()} aria-label="Send to the facilitator">
+        <input value={draft} onChange={(event) => setDraft(event.target.value)} placeholder={placeholder} aria-label="Ask the facilitator" />
+        <button type="submit" disabled={!draft.trim()} aria-label="Send to the facilitator">
           <Icon name="arrow" />
         </button>
-      </form>}
+      </form>
     </article>
   );
 }

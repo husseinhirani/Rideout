@@ -1,14 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
-import type { BackendState } from "./api";
-import { callsFor } from "./live";
 import type { CallCard, House } from "./types";
 
-type Signal = "idle" | "ringing" | "connected" | "failed" | "ended" | "unresolved";
+type Signal = "idle" | "ringing" | "connected" | "failed" | "ended";
 
 const FILL: Record<Signal, string> = {
-  ended: "#9aa1ad",
-  unresolved: "#f0c14a",
+  ended: "#5b6272",
   idle: "#5b6272",
   ringing: "#f0c14a",
   connected: "#3ddc97",
@@ -17,7 +14,6 @@ const FILL: Record<Signal, string> = {
 
 const LABEL: Record<Signal, string> = {
   ended: "Ended",
-  unresolved: "Unresolved",
   idle: "Not called yet",
   ringing: "Ringing",
   connected: "Connected",
@@ -35,14 +31,13 @@ type Props = {
   calls: CallCard[];
   selectedId: number | null;
   onSelect: (id: number) => void;
-  liveState?: BackendState;
-  caseId?: number | null;
+  liveEdges?: Edge[];
 };
 
 type Body = { x: number; y: number; vx: number; vy: number };
 type Edge = { a: number; b: number; kind: "call" | "near" | "match" };
 
-export function BlockGraph({ houses, calls, selectedId, onSelect, liveState, caseId = null }: Props) {
+export function BlockGraph({ houses, calls, selectedId, onSelect, liveEdges }: Props) {
   const svg = useRef<SVGSVGElement>(null);
   const bodies = useRef(new Map<number, Body>());
   const drag = useRef<{ id: number; moved: boolean } | null>(null);
@@ -50,15 +45,8 @@ export function BlockGraph({ houses, calls, selectedId, onSelect, liveState, cas
   const [, setTick] = useState(0);
   const [hoverId, setHoverId] = useState<number | null>(null);
 
-  const liveCalls = liveState ? callsFor(liveState, caseId) : [];
-  const signals = new Map(houses.map((house): [number, Signal] => {
-    if (!liveState) return [house.id, signalFor(house, calls)];
-    const call = liveCalls.filter(c => c.attempt.profile_id === house.id).at(-1);
-    const signal: Signal = !call || call.transport === "cancelled" ? "idle" : call.transport === "unknown" ? "unresolved" : call.transport === "active" ? "connected" : call.transport === "queued" || call.transport === "dispatching" ? "ringing" : call.attempt.outcome === "no_answer" ? "failed" : "ended";
-    return [house.id, signal];
-  }));
-  const edges = liveState ? liveEdges(liveState, liveCalls.map(c => c.attempt.profile_id)) : buildEdges(houses);
-  const labels = liveState ? { ...LABEL, connected: "Active", ringing: "Queued / placing", idle: "No active call" } : LABEL;
+  const signals = new Map(houses.map((house) => [house.id, signalFor(house, calls, liveEdges !== undefined)]));
+  const edges = liveEdges ?? buildEdges(houses);
   const links = useRef(edges);
   links.current = edges;
   const ids = [HUB, ...houses.map((house) => house.id)];
@@ -131,7 +119,7 @@ export function BlockGraph({ houses, calls, selectedId, onSelect, liveState, cas
   const pos = (id: number) => bodies.current.get(id) ?? { x: CX, y: CY };
 
   const selected = houses.find((house) => house.id === selectedId) ?? null;
-  const counts: Record<Signal, number> = { ringing: 0, connected: 0, failed: 0, idle: 0, ended: 0, unresolved: 0 };
+  const counts = { ringing: 0, connected: 0, failed: 0, idle: 0, ended: 0 };
   for (const signal of signals.values()) counts[signal] += 1;
 
   return (
@@ -186,11 +174,14 @@ export function BlockGraph({ houses, calls, selectedId, onSelect, liveState, cas
         })}
       </svg>
       <div className="graph-legend">
-        {(Object.keys(counts) as Signal[]).filter(signal => liveState || !["ended", "unresolved"].includes(signal)).map(signal => <span key={signal}><i style={{ background: FILL[signal] }} />{labels[signal]} {counts[signal]}</span>)}
+        <span><i style={{ background: FILL.ringing }} /> Ringing {counts.ringing}</span>
+        <span><i style={{ background: FILL.connected }} /> Connected {counts.connected}</span>
+        <span><i style={{ background: FILL.failed }} /> No answer {counts.failed}</span>
+        <span><i style={{ background: FILL.idle }} /> Not called {counts.idle}</span>
       </div>
       {selected ? (
         <aside className="graph-card">
-          <p style={{ color: FILL[signals.get(selected.id) ?? "idle"] }}>{labels[signals.get(selected.id) ?? "idle"]}</p>
+          <p style={{ color: FILL[signals.get(selected.id) ?? "idle"] }}>{LABEL[signals.get(selected.id) ?? "idle"]}</p>
           <strong>{selected.name}</strong>
           <span>{selected.note}</span>
         </aside>
@@ -198,29 +189,18 @@ export function BlockGraph({ houses, calls, selectedId, onSelect, liveState, cas
         <aside className="graph-card">
           <p>Nodes</p>
           <strong>The block as a graph</strong>
-          <span>{liveState ? "Lines from Dispatch show recorded call attempts. Gray lines show stored contact relationships, not proximity or rescue assignments. Drag a node to move it." : "Dispatch calls every house. Gray lines join next-door neighbors. Orange is a matched ride. Drag a node to move it."}</span>
+          <span>{liveEdges ? "Lines show recorded call attempts and stored contact relationships. Drag a node to move it." : "Dispatch calls every house. Gray lines join next-door neighbors. Orange is a matched ride. Drag a node to move it."}</span>
         </aside>
       )}
     </section>
   );
 }
 
-function liveEdges(state: BackendState, called: number[]): Edge[] {
-  const known = new Set(state.profiles.map(p => p.id));
-  const edges: Edge[] = [...new Set(called)].filter(id => known.has(id)).map(id => ({ a: HUB, b: id, kind: "call" }));
-  const seen = new Set<string>();
-  for (const profile of state.profiles) for (const id of profile.contact_profile_ids) {
-    const pair = [profile.id, id].sort((a, b) => a - b).join(":");
-    if (id === profile.id || !known.has(id) || seen.has(pair)) continue;
-    seen.add(pair); edges.push({ a: profile.id, b: id, kind: "near" });
-  }
-  return edges;
-}
-
-function signalFor(house: House, calls: CallCard[]): Signal {
+function signalFor(house: House, calls: CallCard[], live = false): Signal {
   let latest: CallCard | undefined;
   for (const call of calls) if (call.name === house.name) latest = call;
   if (!latest) return "idle";
+  if (live && latest.phase === "done") return "ended";
   if (latest.phase === "calling" || latest.phase === "holding") return "ringing";
   if (latest.phase === "missed" || latest.phase === "declined") return "failed";
   if (latest.phase === "canceled") return "idle";

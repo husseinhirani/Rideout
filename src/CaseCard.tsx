@@ -26,21 +26,9 @@ export function CaseCard({
     return (
       <article className="glass case-card">
         <p className="kicker">No case yet</p>
-        <p className="case-goal">Use Start to describe an incident and what you need to learn.</p>
+        <p className="case-goal">Start → Missing child opens one from the dispatcher form. Inbound calls open one too.</p>
       </article>
     );
-  }
-  if (row.kind === "information") {
-    const decision = [...(state.information_decisions ?? [])].filter(d => d.support_case_id === row.id).sort((a, b) => b.based_on_revision - a.based_on_revision)[0];
-    const calls = callsFor(state, row.id);
-    return <article className="glass case-card">
-      <div className="case-head"><p className="kicker">Investigation #{row.id} · {row.status}{row.policy?.paused ? " · paused" : ""}</p><select aria-label="Choose a case" value={row.id} onChange={e => onChoose(Number(e.target.value))}>{state.cases.filter(c => c.kind === "information").map(c => <option key={c.id} value={c.id}>#{c.id} · {c.goal.slice(0, 30)}</option>)}</select></div>
-      <h3>Information coordination</h3><p className="case-goal">{row.objective}</p>
-      <p className="case-note">{coordinationOf(state, row.id, now).text}</p>
-      {decision && <><p className="case-note">{row.status === "closed" ? "Historical" : decision.based_on_revision === row.input_revision ? "Current" : "Earlier"} decision · revision {decision.based_on_revision}</p><p className="case-brief">{decision.plan.summary}</p></>}
-      {calls.length > 0 && <div className="case-calls"><h4>Contact attempts</h4>{calls.map(c => <div className="case-call" key={c.attempt.id}><p><b>{c.person?.name ?? "Unknown"}</b><span className={`badge t-${c.transport}`}>{c.transportLabel}</span><span className="badge">{c.reportLabel}</span></p></div>)}</div>}
-      <p className="case-note">Manage scope, pause and closure from Checks.</p>
-    </article>;
   }
   const intake = intakeOf(state, row.id);
   const status = caseStatus(row, intake);
