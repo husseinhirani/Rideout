@@ -234,7 +234,7 @@ export function housesFrom(state: BackendState, residents: House[], footprints: 
   const used = new Set<number>();
   const houses: House[] = [];
   for (const profile of state.profiles) {
-    // A profile with no phone is someone Sealert never calls, such as the missing child.
+    // A profile with no phone is someone RideOut never calls, such as the missing child.
     if (!profile.phone) continue;
     const resident = residents.find((row) => row.name === profile.name);
     const spot = resident && !used.has(resident.id) ? resident : nearest(footprints, profile, used, bounds);

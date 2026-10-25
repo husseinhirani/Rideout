@@ -22,21 +22,21 @@ Do not reset Vien's database or rewrite the shared hosted agent.
 From `server/`, publish the module and seed only the new recording database:
 
 ```bash
-spacetime publish --server http://127.0.0.1:3303 --module-path spacetimedb sealert-recording-demo
-SPACETIMEDB_URL=http://127.0.0.1:3303 SPACETIMEDB_DATABASE=sealert-recording-demo npm run seed:recording
+spacetime publish --server http://127.0.0.1:3303 --module-path spacetimedb rideout-recording-demo
+SPACETIMEDB_URL=http://127.0.0.1:3303 SPACETIMEDB_DATABASE=rideout-recording-demo npm run seed:recording
 ```
 
 The seed prints the two helper IDs. Substitute those IDs below (a fresh database
 normally starts at 1 and 2):
 
 ```bash
-PORT=8788 SPACETIMEDB_URL=http://127.0.0.1:3303 SPACETIMEDB_DATABASE=sealert-recording-demo COORDINATOR_HELPER_IDS=1,2 npm run server:recording
+PORT=8788 SPACETIMEDB_URL=http://127.0.0.1:3303 SPACETIMEDB_DATABASE=rideout-recording-demo COORDINATOR_HELPER_IDS=1,2 npm run server:recording
 ```
 
 Keep that server running. In another terminal:
 
 ```bash
-RECORDING_DATABASE=sealert-recording-demo RECORDING_URL=http://127.0.0.1:8788 npm run demo:recording
+RECORDING_DATABASE=rideout-recording-demo RECORDING_URL=http://127.0.0.1:8788 npm run demo:recording
 ```
 
 The runner emits JSON stage events. Redirect stdout to a local file to save a
@@ -137,7 +137,7 @@ separate fresh recording database; do not reset a shared database.
 Start server:recording as above with the two helper IDs, then run:
 
 ```bash
-SPACETIMEDB_URL=http://127.0.0.1:3303 SPACETIMEDB_DATABASE=sealert-recording-demo RECORDING_DATABASE=sealert-recording-demo RECORDING_URL=http://127.0.0.1:8788 npm run demo:case-inputs
+SPACETIMEDB_URL=http://127.0.0.1:3303 SPACETIMEDB_DATABASE=rideout-recording-demo RECORDING_DATABASE=rideout-recording-demo RECORDING_URL=http://127.0.0.1:8788 npm run demo:case-inputs
 ```
 
 This runner directly calls the internal application service for complete intake,

@@ -7,7 +7,7 @@ type Spot = { id: number; lng: number; lat: number };
 /**
  * Registers a neighbor in the backend (POST /profiles). The home is picked from
  * the block's footprints so the new profile lands on the map. A phone left
- * empty means Sealert never calls them.
+ * empty means RideOut never calls them.
  */
 export function RegisterForm({
   state,

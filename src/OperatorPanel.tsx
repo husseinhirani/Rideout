@@ -15,7 +15,7 @@ type Props = {
   now: number;
   onSaid: (text: string) => void;
   onHangUp: (outcome: OperatorOutcome) => void;
-  // Live mode: the dispatcher phones the person themselves. Sealert is not on that line.
+  // Live mode: the dispatcher phones the person themselves. RideOut is not on that line.
   outside?: boolean;
 };
 
@@ -135,7 +135,7 @@ export function OperatorPanel({ session, call, house, now, onSaid, onHangUp, out
   const elapsed = Math.max(0, Math.round((now - session.startedAt) / 1000));
   const clock = `${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, "0")}`;
   const lead = outside
-    ? "You are calling them yourself, outside Sealert. Your note is saved to the case as dispatcher input."
+    ? "You are calling them yourself, outside RideOut. Your note is saved to the case as dispatcher input."
     : session.mode === "escalation"
       ? `The AI handed this call to you. ${call?.escalation?.reason ?? ""}`
       : session.mode === "takeover"
