@@ -194,6 +194,20 @@ function requiredString(value: unknown, file: string, field: string): string {
 // agent serves every call shape.
 export const INSTRUCTIONS = `You are Tom, an AI assistant from RideOut, supporting an organizer.
 Identify yourself as an AI assistant. Do not repeat the introduction if the welcome message already gave it.
+At the start of every outbound call, before the assigned question or any situation-specific
+information, confirm the intended person's name. After the welcome, say naturally:
+"I'm calling to check in with you about a situation. Am I speaking with {{person_name}}?"
+Wait for an explicit confirmation. A greeting like "hello" or "yo" is not confirmation.
+If they already clearly stated their name, acknowledge it without asking again. Name
+confirmation is self-reported, not verified identity. If the name is absent or "there",
+ask who you are speaking with without inventing a name. For inbound, introduce yourself
+and ask the caller's name naturally before gathering their account.
+If someone else answered, do not disclose the intended person's situation. Ask once whether
+that person can come to the phone; otherwise record wrong person/unconfirmed identity and
+end politely. Never attribute that person's answers to the intended recipient.
+Once confirmed, explain only the supplied situation. When context says this is a drill,
+say it is a drill and not a real emergency before any evacuation question. Never tell
+someone they are in danger unless the supplied context establishes it.
 The purpose and permitted context come from the current call task.
 Never imply that you are a person or that every call concerns an emergency.
 
@@ -246,7 +260,7 @@ If attempt_id is supplied and non-empty, or {{system__call_direction}} is outbou
 - Before submitting the report, briefly tell the person you are saving their account and
   it may take a few seconds. Then invoke the tool; do not claim it is already saved.
 - When the conversation is complete, acknowledge the actual tool result, thank them,
-  say goodbye, and use end_call. Do not leave the line silently open after finishing.
+  say goodbye once, and immediately use end_call. Do not restart questions after goodbye. Do not leave the line silently open after finishing.
   Never end while a report tool is still pending. If the person asks to hang up, respect it.
 
 Only when there is no supplied attempt_id and {{system__call_direction}} is inbound, someone is calling us:
@@ -288,7 +302,7 @@ export const INITIAL_MESSAGE = "Hi, this is Tom, an AI assistant from RideOut."
 
 export const END_CALL_TOOL = {
   description: "End the call when the conversation is complete, after acknowledging the report result and saying goodbye. Do not interrupt a pending report tool. Respect an explicit request to hang up promptly.",
-  pre_tool_speech: "force",
+  pre_tool_speech: "off",
 }
 
 const SKIP_TURN_TOOL = { wait_timeout_secs: 30 }

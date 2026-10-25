@@ -1,21 +1,23 @@
 # Context
 
-## Wildfire drill with one real participant
+## Wildfire drill with real participants
 
-The current user-directed slice connects the existing Wildfire drill button to one
-real call for a consenting demo participant. First-run name/phone configuration
-stays server-only; later drills reuse the participant saved by the previous drill
-when the phone environment variable is absent. The incident/location are fictional; the
-phone conversation and saved report use the real provider path when `SIMULATE=0`.
-This serves RideOut's community rescue mission. It is a calling milestone, with
-one call per click and no automatic follow-up calls in this slice.
-The outgoing screen also runs the existing 12-neighbor mock wave and scripted
-follow-ups, explicitly labeled simulated, with the real participant first. Live
-conversation turns come from provider webhooks; recording playback is available
-after the real call ends. A running HTTPS tunnel is needed for turns and reports.
-See `DESIGN.md` for command, transcript and audio behavior. The older information-only
-product framing below is superseded by the user's rescue-coordination direction
-recorded in GitHub #15.
+The Start menu offers the wildfire drill and neighbor registration. The hardcoded
+missing-child shortcut is removed. The drill uses a saved private participant
+roster, configured separately from dispatch; initial single-person environment
+configuration and prior drill records remain fallback sources for migration.
+One click queues one call per participant, with capacity for overlapping calls.
+The existing 12-neighbor mock wave and scripted follow-ups remain explicitly
+simulated. Only the saved real participants receive phone calls.
+
+Every outgoing conversation introduces Tom as an AI assistant and confirms the
+recipient's name before discussing the situation. A supplied outbound attempt ID
+takes priority over the provider direction branch. The hosted prompt must match
+`setup-tools.ts`; run setup-agent after intentional prompt changes. Live turns use
+provider webhooks, and recording playback appears after call completion.
+See `DESIGN.md` for roster, dispatch, transcript and audio behavior. The older
+information-only framing below is superseded by the user's rescue-coordination
+direction recorded in GitHub #15.
 
 ## Current product — GitHub #15
 

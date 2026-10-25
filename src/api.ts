@@ -121,7 +121,7 @@ export type InformationCase = SupportCaseRow & { kind: "information"; objective:
 export function informationCases(state: BackendState): InformationCase[] { return state.cases.filter((row): row is InformationCase => row.kind === "information"); }
 export type DirectoryResult = { profiles: (ProfileRow & { eligible: boolean; eligibility_reasons: string[]; call_consent: boolean; availability: string })[]; next_after_id: number | null };
 export type BackendState = {
-  wildfire_demo?: { name: string; ready: boolean };
+  wildfire_demo?: { name: string; names?: string[]; count?: number; ready: boolean };
   wildfire_drills?: { case_id: number; profile_id: number; started_at: string }[];
   read_model_version?: number;
   server_time_ms?: number;

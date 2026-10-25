@@ -10,7 +10,7 @@ import { receiveInformationRequest } from "./information-incoming"
 import { startInformationWorker } from "./information-worker"
 import { asId, asNumber, asString, ServiceError } from "./service"
 import { contactScope } from "../shared/information"
-import { startWildfireDrill, wildfireDemo, wildfireDrills } from "./wildfire-drill"
+import { startWildfireDrill, wildfireDemo, wildfireDrills, configureDrillParticipants } from "./wildfire-drill"
 import { attemptAudio } from "./call-audio"
 import { attemptTranscript, receiveCallEvent } from "./call-transcript"
 
@@ -120,6 +120,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     send(res, 200, await receiveInformationRequest(body)); return
   }
   if (path === "/incidents") { send(res, 200, await createInformationCase(body, actor)); return }
+  if (path === "/drills/participants") { send(res, 200, await configureDrillParticipants(body, actor)); return }
   if (path === "/drills/wildfire") { send(res, 200, await startWildfireDrill(body, actor)); return }
   if (path === "/intake-configuration") { send(res, 200, await configureInformationIntake(body, actor)); return }
   const review = /^\/incoming-requests\/(\d+)\/review$/.exec(path)

@@ -158,7 +158,7 @@ export function App() {
           const result = await backend.run(() => api.caseInput(liveCase.id, text));
           say("facilitator", `Saved to case #${liveCase.id} as dispatcher input, not verified. ${result.reason}`);
         } else if (state.demo_mode.scripted) {
-          say("facilitator", "This backend runs a scripted model, so it cannot read a free-text incident. Use Start → Missing child.");
+          say("facilitator", "This backend runs a scripted model, so it cannot read a free-text incident. Use Start → Wildfire drill.");
         } else {
           const result = await backend.run(() => api.incident({ text }));
           say("facilitator", `Opened incident #${result.incident_id}. ${result.reason}`);
@@ -182,7 +182,7 @@ export function App() {
       const result = await backend.run(() => api.wildfireDrill(commandId));
       sessionStorage.removeItem(key);
       setCaseId(result.support_case_id);
-      setNotice(`${state?.wildfire_demo?.name ?? "Demo participant"}'s call is queued. Open Outgoing calls to follow it.`);
+      setNotice(`Calls are queued for ${(state?.wildfire_demo?.names ?? [state?.wildfire_demo?.name ?? "Demo participant"]).join(", ")}. Open Outgoing calls to follow them.`);
       setTab("checks");
     } catch (error) {
       fail(error);
@@ -312,18 +312,7 @@ export function App() {
                   }}
                 >
                   <b>{startingDrill ? "Starting call…" : "Wildfire drill"}</b>
-                  <small>{state.wildfire_demo?.ready ? `${state.demo_mode.simulate ? "Simulated call" : "Call"} to ${state.wildfire_demo.name}` : "Configure the demo participant on the backend"}</small>
-                </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    setMenu(false);
-                    setForm(true);
-                  }}
-                >
-                  <b>Missing child</b>
-                  <small>Open a case; the backend calls the two helpers</small>
+                  <small>{state.wildfire_demo?.ready ? `${state.demo_mode.simulate ? "Simulated calls" : "Call"} ${(state.wildfire_demo.names ?? [state.wildfire_demo.name]).join(", ")}` : "Configure the demo participant on the backend"}</small>
                 </button>
                 <button
                   type="button"
@@ -350,17 +339,6 @@ export function App() {
                 >
                   <b>Wildfire drill</b>
                   <small>Check every registered neighbor and match rides</small>
-                </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    setMenu(false);
-                    setForm(true);
-                  }}
-                >
-                  <b>Missing child</b>
-                  <small>Call every home with the child's description</small>
                 </button>
               </div>
             ) : null}

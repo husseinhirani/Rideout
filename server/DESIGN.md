@@ -1,27 +1,38 @@
 # design.md
 
-## One-participant wildfire calling
+## Wildfire drill calling
 
-`POST /drills/wildfire` accepts an operator command ID. The Node handler supplies
-the participant name and phone from `WILDFIRE_DEMO_NAME` / `WILDFIRE_DEMO_PHONE`
-for initial setup. Without a configured phone it resolves the latest saved drill
-participant by profile ID from the operator command log, never by a hardcoded
-name or by choosing an arbitrary directory entry;
-the browser sends neither a destination nor credentials. The `startWildfireDrill`
-reducer atomically finds/creates the profile, records initial consent when there
-is no preference, creates one case and queues one explicit information call.
-Existing withdrawn consent remains blocked. An existing queued/active/unknown
-call to that destination blocks another start. An exact command retry returns
-the original result, including after the first call has ended.
+`POST /drills/participants` accepts an authenticated operator command ID and
+`participants: [{ name, phone }]`. The reducer upserts by normalized phone, updates
+names, preserves existing consent, rejects duplicate destinations and records a
+private roster of profile IDs in the command log. Configuration places no calls.
+It supports 1–10 participants; real phone numbers are not committed as fixtures.
 
-The case permits only this participant and one call. Automatic planning is off
-for this first calling slice; the existing worker executes the explicit call,
-reconciles transport and interprets the report. The fictional drill context is
-provided to the real hosted agent. Profile and case creation do not dial inside
-the database transaction. Publishing the updated database module is required;
-no tables or schema changes are introduced.
+`POST /drills/wildfire` accepts only an operator command ID. The backend resolves
+the saved roster, with the earlier environment/prior-drill participant fallback
+for existing installations. The reducer atomically creates one case with the roster
+as its permitted scope, and queues one call for each person. Concurrent and total
+call limits match the roster size. Existing destination locks, withdrawn consent
+and exact command replay remain enforced. The worker staggers provider requests
+without waiting for other conversations to end; the calls can run concurrently.
+Automatic follow-up planning remains off for this drill slice.
 
-`GET /state` includes only the demo name/readiness. The UI keeps an uncertain
+Each call receives a fictional wildfire drill context. The hosted Tom prompt
+introduces the AI assistant and confirms the recipient's name before disclosing
+situation details. A wrong/unconfirmed person is recorded as such, never attributed
+to the intended recipient. An outbound attempt ID takes priority over provider
+direction to prevent an outgoing call from entering inbound intake. Inbound intake
+has no predefined missing-child scenario. The final goodbye is spoken once;
+end_call has pre-tool speech disabled to avoid a second goodbye.
+
+Use `npm --prefix server run setup-agent` to apply the tracked prompt and tool
+configuration to the hosted agent, preserving unrelated voice configuration.
+The latest investigated call used an older hosted missing-child prompt despite a
+correct wildfire task. Hosted settings must be read back after setup, not inferred
+from local source. Database module publication is required for roster and multi-call
+reducers; no table/schema changes are introduced.
+
+`GET /state` includes the participant names, count and readiness, with no phone numbers. The UI keeps an uncertain
 start command in session storage so retry/refresh cannot create a second case.
 The outgoing row uses the existing backend profile/attempt join. Readiness uses
 that same participant resolver. If initial setup is missing, clicking the menu
@@ -37,9 +48,9 @@ without deleting any database records.
 `GET /state` also returns saved wildfire drill case/profile IDs and start times
 from the existing operator command log. The UI reconstructs the existing 12-person
 mock wave (plus its three scripted follow-ups) from that time, below the real
-participant. Refreshing preserves the script's elapsed time. Mock rows and the
+participants. Refreshing preserves the script's elapsed time. Mock rows and the
 combined counts are explicitly labeled; they never enter the directory, evidence,
-reports, or dispatch worker. Only the configured participant receives a phone call.
+reports, or dispatch worker. Only the configured participants receive phone calls.
 
 Before any real outbound call or batch is sent, the shared provider client ensures
 the configured Cartesia agent has an event webhook at `NGROK_URL` + `/calls/events`. It creates and attaches
