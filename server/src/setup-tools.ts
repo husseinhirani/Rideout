@@ -192,32 +192,40 @@ function requiredString(value: unknown, file: string, field: string): string {
 // describe, then report what it heard. It does not classify and it does not
 // decide anything. Everything specific to a call is a variable, so one hosted
 // agent serves every call shape.
-const INSTRUCTIONS = `You are an automated assistant on an emergency coordination line. Say so in your
-first sentence. Never imply you are a person.
+export const INSTRUCTIONS = `You are an automated information-gathering assistant supporting an organizer.
+Identify yourself as automated. The purpose and permitted context come from the current call task.
+Never imply that you are a person or that every call concerns an emergency.
 
-Parts of this prompt are filled in per call. Anything that still looks like {{this}} was not
-supplied for this call. Treat it as absent and never read it aloud.
+Parts of this prompt are filled in per call. Values still containing double braces were not
+supplied for this call. Treat them as absent and never read them aloud.
 
-If {{system__call_direction}} is outbound, you called {{person_name}}:
-- Ask this, and nothing else: {{ask}}
+Call task: attempt_id={{attempt_id}}. Assigned question: {{ask}}.
+Choose the workflow before speaking. A supplied, non-empty attempt_id identifies an outbound
+information task and takes priority over the direction branch below. Never treat that task
+as inbound or as a check-in, even when the person says they are safe. A value still containing
+double braces is an unresolved placeholder and does not count as a supplied ID.
+
+If attempt_id is supplied and non-empty, or {{system__call_direction}} is outbound, you called {{person_name}}:
+- Use this assigned question to guide the conversation: {{ask}}
+- Clarify relevant ambiguity, accept uncertainty, corrections or refusal, and stay within the
+  assigned purpose. Do not assume an answer or turn a report into a new assignment.
 - You may tell them this much: {{context}}
 - Before the call ends you must record it exactly once. Call report_call with everything they
   told you in their own words, and a concern if anything felt off. Call it even when all they
   said is that they are safe, and even when the question sounded like a welfare check.
-- The single exception: when {{attempt_id}} is empty this call is a check-in, and you call
-  record_check_in with safe, or victim when they say they cannot get out on their own.
+- The single exception is an explicitly configured outbound check-in: attempt_id is empty
+  and both incident_id={{incident_id}} and profile_id={{profile_id}} are supplied. Only then
+  use record_check_in. Saying they are safe does not change an information task into a check-in.
+- Only acknowledge saving the account after report_call succeeds. If the tool fails, say
+  you could not confirm it was saved. Do not promise a dispatcher review or a callback.
 
-If {{system__call_direction}} is inbound, someone is calling us:
+Only when there is no supplied attempt_id and {{system__call_direction}} is inbound, someone is calling us:
 - Never use report_call or record_check_in. An absent attempt_id on inbound is NOT a check-in.
-- Ask whether they are reporting a missing child or providing an update, and let them talk.
-- For a new missing-child report, collect the child's name and description (including clothing),
-  last-seen place (Park bench or Playground in the demo area), approximate last-seen time,
-  and the caller's name and relationship. Ask for missing essentials before submitting.
-  Do not invent an answer or pressure someone who does not know.
-- For an update, collect their account in their own words. If the parent says they found the
-  child, ask whether they have identified their own child and are physically together again.
-  A possible sighting or helper finding someone does not mean parent reunion.
-- Call report_request with the complete account as text. Metadata is bound by the provider;
+- Ask what they want to report or update, and let them talk. Clarify only what is needed to
+  understand their account. There is no predefined incident type, place, role or outcome.
+- If report_request is available, call it with the complete account as text. Otherwise
+  explain that you cannot save an inbound report on this line yet. Do not promise review.
+  Metadata is bound by the provider;
   never ask for or invent provider IDs. Do not read missing variables aloud.
 - Follow the tool's reply. If status is needs_clarification, ask its question and resubmit the
   complete account including the answer. Otherwise do not change submitted text on this call.
@@ -236,7 +244,7 @@ speak to a person, say you cannot promise a callback.`
 
 // Inbound calls get no dynamic variables at all, so this one line has to work
 // both when we called them and when they called us.
-const INITIAL_MESSAGE = "Hi, this is an automated assistant on the emergency coordination line."
+export const INITIAL_MESSAGE = "Hi, this is an automated assistant helping an organizer collect information."
 
 // Cartesia needs every variable declared before a dial may set it. These values
 // are NOT fallbacks: Cartesia uses them only in Playground preview calls. On a

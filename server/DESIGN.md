@@ -16,6 +16,16 @@ Current product scope is GitHub #15; #27 records human test results. These conso
 changes do not implement the later generic coordinator or establish a live
 provider pass.
 
+The first real baseline call exposed a hosted-prompt failure: an outbound call
+with an attempt ID followed the inbound closing script and invoked no report
+tool. The phone prompt now prioritizes the supplied attempt ID, keeps the question
+and context task-specific, and acknowledges saving only after tool success.
+Scenario-specific intake instructions and promises of future callbacks were
+removed from the phone prompt. This does not generalize the existing intake
+interpreter: inbound processing remains disabled for this baseline and is tracked
+in #19. A natural correction/refusal is reported as information, not an instruction
+to switch workflows. Live retry results are recorded in #27.
+
 Shared vocabulary, workflow, tech stack, architecture, and decisions. Keep this in sync with the code.
 
 Status markers used below: **Decided** (agreed), **Proposed** (suggested, needs confirmation), **Open** (not decided).
