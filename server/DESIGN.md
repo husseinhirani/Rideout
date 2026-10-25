@@ -35,8 +35,9 @@ This opt-in behavior supersedes the legacy dispatcher-only replanning rules belo
 for enrolled demo cases. `AUTO_COORDINATE=1` and `COORDINATOR_HELPER_IDS=1,2`
 enroll newly opened cases with exactly two known helpers. The worker scans every
 second and on startup. Existing cases with attempts are not automatically enrolled.
-The predefined locations are Park bench and Playground; structured initial intake
-and parent identity are still pending issue #6. Original incident text is retained;
+The predefined locations are Park bench and Playground. Structured intake now
+comes from the internal case-input operation; phone binding remains pending #6.
+Legacy cases retain their original incident text;
 incident creation time is not presented as last-seen time.
 
 `case_progress` stores input/evaluated revisions, helper IDs and bounded retry
@@ -69,7 +70,9 @@ Publish the additive module before starting this server, even in legacy mode.
 Disabling `AUTO_COORDINATE` pauses enrolled cases rather than letting the old
 planner take them over. Closing a case prevents new outreach; already active
 phone conversations are not terminated. The current manual close route does not
-verify parent identity: phone-confirmed closure belongs to #6.
+verify parent identity. The internal confirmation operation below records an
+original-reporter association and explicit reported reunion; real phone binding
+still belongs to #6.
 
 Tests execute the actual reducers in a transactional in-memory host and restart
 worker instances over retained rows. They do not prove SpacetimeDB deployment,
@@ -93,18 +96,50 @@ hosted tools. Replays preserve prior closed cases and create a fresh incident.
 `GET /state.demo_mode` contains simulate/scripted/auto_coordinate booleans,
 database name and helper_ids. The runner refuses to write unless these match its
 explicit dedicated database and the helpers have fictional phone numbers.
-`seed:recording` inserts two fictional helpers and Ava with an empty phone only
+`seed:recording` inserts two fictional helpers, Morgan as the separate reporter,
+and Ava with an empty phone only
 into an empty database named rideout-recording-<name>.
 
-## Intake validation preparation (issue #6)
+## Durable internal case inputs (issue #6)
 
-`src/intake.ts` checks the agreed missing-child intake essentials independently
-of provider delivery. It returns normalized complete details or fixed questions
-for missing/unknown fields, retains approximate time as reported (trimming surrounding whitespace) and labels reporter
-claims self-reported. It does not create cases, authenticate callers, match a
-case, authorize outreach or close a case. It is not wired to any route yet.
-`INBOUND-PROPOSAL.md` supplies concrete proposed examples for Vien to confirm;
-these are not a frozen Cartesia contract. Existing routes remain unchanged.
+`shared/intake.ts` is the shared pure completeness check, re-exported by
+`src/intake.ts` for callers. It preserves approximate time and self-reported
+caller details. `src/case-inputs.ts` now exposes internal intake, update and
+reunion operations; no phone route or hosted payload has been wired.
+
+`recordCaseIntake` atomically creates the thin child profile, point incident,
+case, original reporter association, initial note, coordinator progress and input
+receipt. `case_intake` retains structured details and the original reporter's
+configured profile ID separately from the two helpers. `case_input` uses an
+opaque application event key to deduplicate delivery; identical canonical input
+is inert, and conflicting reuse rejects without writes. Complete intake plus
+three distinct configured participant destinations is required before enrollment.
+
+`recordCaseUpdate` accepts the original reporter or a configured helper, adds an
+attributed unverified note and advances the revision without making an outbound
+attempt. An explicit case reference may identify a closed case for a late report;
+without one, association must have exactly one open eligible case. An existing
+event receipt preserves the original association on retries even after closure.
+No newest-case guessing occurs.
+
+`recordReunionConfirmation` requires the original reporter profile and explicit
+child-identity/reunion booleans. Both true closes the case, records reported
+confirmation and cancels queued work. Partial confirmation remains evidence only.
+Late updates stay recorded without reopening. The existing manual operator close
+route remains an override; manual closure does not set reunion_confirmed.
+
+These operations enforce participant association, not authentication. Profile IDs
+and event keys must come from a trusted application adapter, not model-produced
+arguments. The recording uses explicit fictional profile bindings. Current public
+reducers retain the baseline database access model; no authentication is added
+here, and no real caller identity has been verified. Provider binding/auth and
+live routes still await Vien's evidence.
+
+The worker uses case_intake child/time/reporter details in its context, preserving
+self-reported attribution. GET /state adds case_intakes; raw receipt payloads are
+not added to that response. Deploy the new additive module before running this
+server. `demo:case-inputs` exercises the internal operations and existing worker
+with simulated calls; `demo:recording` keeps its earlier manual-close flow.
 
 ## 1. Glossary
 

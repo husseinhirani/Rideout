@@ -101,3 +101,39 @@ and restarted it. The overdue follow-ups resumed with the clue, and the replay
 completed. An interrupted test run also confirmed that closing a case alone
 does not release outstanding simulated calls; the runner now checks this before
 creating another case.
+
+## Internal intake, updates and reported reunion
+
+`demo:case-inputs` exercises the new application operations without choosing a
+Cartesia contract. Publish the latest additive module to a new dedicated database
+and run seed:recording. The seed now includes Morgan, a fictional original
+reporter separate from both helpers. Older databases without Morgan require a
+separate fresh recording database; do not reset a shared database.
+
+Start server:recording as above with the two helper IDs, then run:
+
+```bash
+SPACETIMEDB_URL=http://127.0.0.1:3303 SPACETIMEDB_DATABASE=rideout-recording-demo RECORDING_DATABASE=rideout-recording-demo RECORDING_URL=http://127.0.0.1:8788 npm run demo:case-inputs
+```
+
+This runner directly calls the internal application service for complete intake,
+replays the same intake event to verify one case, submits an attributed helper
+update, and finally submits both explicit identity/reunion confirmations from
+the configured original reporter. Helper calls/reports still use the same worker
+and HTTP backend. Closing requires the persisted case_intakes.reunion_confirmed
+flag in this scenario; it does not use the manual close route.
+
+The profile binding and conversation are simulated. This proves application
+association and reported-confirmation rules, not phone authentication or caller
+identity. The existing demo:recording command retains its manual-close flow.
+Frontend can distinguish reported reunion with case_intakes.reunion_confirmed
+and confirmed_at; a closed case alone does not establish reunion.
+
+The internal-intake recording was also verified against real SpacetimeDB 2.13 on
+2026-10-25: exact intake replay returned the same case, the helper clue changed
+the follow-up, the possible match stayed open, and the simulated original
+reporter's explicit confirmation recorded reunion and closed the case. Additional
+live database checks rejected conflicting intake and helper confirmation, replayed
+confirmation after closure, and retained a late update without further calls.
+Expected validation failures use SpacetimeDB SenderError so their rejection reason
+survives the database boundary instead of becoming a generic runtime failure.

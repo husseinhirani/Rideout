@@ -15,6 +15,7 @@ import {
   attempts,
   attemptProgress,
   caseProgress,
+  caseIntakes,
   callReducer,
   incidentPeople,
   incidents,
@@ -53,10 +54,10 @@ const EMPTY_BRIEF: Brief = { summary: "", suggestions: [] }
 const automatic = () => process.env.AUTO_COORDINATE === "1"
 async function readCoordinationState(): Promise<CoordinationState> {
   return readStableCoordinationState(caseProgress, async () => {
-    const [cases, allIncidents, allProfiles, allAttempts, allNotes, attempt_progress] = await Promise.all([
-      supportCases(), incidents(), profiles(), attempts(), notes(), attemptProgress(),
+    const [cases, allIncidents, allProfiles, allAttempts, allNotes, attempt_progress, case_intakes] = await Promise.all([
+      supportCases(), incidents(), profiles(), attempts(), notes(), attemptProgress(), caseIntakes(),
     ])
-    return {cases,incidents:allIncidents,profiles:allProfiles,attempts:allAttempts,notes:allNotes,attempt_progress}
+    return {cases,incidents:allIncidents,profiles:allProfiles,attempts:allAttempts,notes:allNotes,attempt_progress,case_intakes}
   })
 }
 const coordinationWorker = createCoordinatorWorker({
@@ -85,7 +86,7 @@ function configuredHelperIds(): number[] {
 // ------------------------------------------------------------------ reading
 
 export async function getState(): Promise<Record<string, unknown>> {
-  const [allProfiles, allIncidents, people, cases, allAttempts, allNotes, coordination, attempt_progress] = await Promise.all([
+  const [allProfiles, allIncidents, people, cases, allAttempts, allNotes, coordination, attempt_progress, case_intakes] = await Promise.all([
     profiles(),
     incidents(),
     incidentPeople(),
@@ -94,6 +95,7 @@ export async function getState(): Promise<Record<string, unknown>> {
     notes(),
     caseProgress(),
     attemptProgress(),
+    caseIntakes(),
   ])
   return {
     simulate: process.env.SIMULATE === "1",
@@ -110,6 +112,7 @@ export async function getState(): Promise<Record<string, unknown>> {
     notes: allNotes,
     coordination,
     attempt_progress,
+    case_intakes,
   }
 }
 

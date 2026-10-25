@@ -91,3 +91,28 @@ test("recording rejects unresolved calls left on closed cases before creating an
   await assert.rejects(runRecordingDemo({database:"rideout-recording-test",fetch:fake.fetcher,timeoutMs:1,pollMs:0}),/outstanding simulated calls/)
   assert.equal(fake.mutations.length,0)
 })
+
+test("internal adapter skips child seed and verifies persisted reunion", async () => {
+  const fake = backend()
+  fake.state.profiles.pop()
+  const invoked: string[] = []
+  const events = await runRecordingDemo({ database: "rideout-recording-test", fetch: fake.fetcher, pollMs: 0,
+    caseInputs: {
+      async open() { invoked.push("open"); await fake.fetcher("http://127.0.0.1/cases", { method: "POST", body: "{}" }); return { support_case_id: 1, incident_id: 1 } },
+      async update(id, text) { invoked.push("update"); assert.match(text, /backpack/); await fake.fetcher(`http://127.0.0.1/cases/${id}/input`, { method: "POST", body: "{}" }) },
+      async confirm(id) { invoked.push("confirm"); fake.state.cases[0].status = "closed"; fake.state.case_intakes = [{ support_case_id: id, reunion_confirmed: true }] },
+    },
+  })
+  assert.deepEqual(invoked, ["open", "update", "confirm"])
+  assert.equal(events.at(-1)?.stage, "simulated-reporter-confirmation")
+  assert.ok(!fake.mutations.some(path => path.endsWith("/close") || path === "/incidents"))
+})
+test("internal adapter is never called before safety guards", async () => {
+  const fake = backend()
+  fake.state.demo_mode.simulate = false
+  let calls = 0
+  await assert.rejects(runRecordingDemo({ database: "rideout-recording-test", fetch: fake.fetcher,
+    caseInputs: { async open() { calls++; return { support_case_id: 1, incident_id: 1 } }, async update() { calls++ }, async confirm() { calls++ } },
+  }), /Backend must report/)
+  assert.equal(calls, 0)
+})

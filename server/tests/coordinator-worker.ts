@@ -162,3 +162,20 @@ test("snapshot reads retry if input changes between reading progress and notes",
   assert.equal(state.notes[0]?.text,"New sighting")
   assert.equal(reads,2)
 })
+
+test("planner uses persisted intake and attributed original reporter instead of placeholder identity", async () => {
+  const f=fixture()
+  const read=f.ports.read
+  f.ports.read=async()=>({...await read(),case_intakes:[{
+    support_case_id:1,reporter_profile_id:4,child_description:"Age 7, red jacket",
+    last_seen_location_id:"park-bench",last_seen_time:"about 3 pm",
+    reporter_name:"Morgan",reporter_relationship:"mother",reunion_confirmed:false,confirmed_at:null,
+  }]})
+  f.ports.plan=async context=>{
+    assert.deepEqual(context.child,{name:"Ava",description:"Age 7, red jacket",last_seen_location_id:"park-bench",last_seen_at:"about 3 pm"})
+    assert.deepEqual(context.reporter,{name:"Morgan",relationship:"mother",attribution:"self_reported"})
+    return {calls:[],reason:"Wait"}
+  }
+  await createCoordinatorWorker(f.ports).tick()
+  assert.equal(f.read().coordination[0].failure_count,0)
+})
