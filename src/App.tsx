@@ -44,6 +44,7 @@ export function App() {
   const [preferOffline, setPreferOffline] = useState(false);
   const [tab, setTab] = useState<"map" | "checks">("map");
   const [scene, setScene] = useState<"side" | "aerial" | "nodes">("side");
+  const [simple, setSimple] = useState(false);
   const [now, setNow] = useState(() => new Date());
   const [menu, setMenu] = useState(false);
   const [form, setForm] = useState(false);
@@ -201,12 +202,13 @@ export function App() {
     });
 
   return (
-    <main className={`${tab === "checks" ? "stage checks-on" : "stage"}${scene === "nodes" ? " nodes-on" : ""}`}>
+    <main className={`${tab === "checks" ? "stage checks-on" : "stage"}${scene === "nodes" ? " nodes-on" : ""}${simple ? " simple-on" : ""}`}>
       <NeighborhoodMap
         place={ride.place}
         houses={live ? liveHouses : ride.houses}
         onSelect={live ? setLiveSelected : ride.select}
         angle={scene === "aerial" ? "aerial" : "side"}
+        simple={simple}
         showFire={live ? false : ride.incident.kind === "wildfire"}
         sightings={live ? liveSightings : ride.incident.sightings}
       />
@@ -245,10 +247,21 @@ export function App() {
           </button>
         </nav>
         <div className="top-end">
-          <div className="view-toggle" role="group" aria-label="Map style">
-            <button type="button" className={scene === "side" ? "on" : ""} aria-pressed={scene === "side"} onClick={() => setScene("side")}>Side</button>
-            <button type="button" className={scene === "aerial" ? "on" : ""} aria-pressed={scene === "aerial"} onClick={() => setScene("aerial")}>Aerial</button>
-            <button type="button" className={scene === "nodes" ? "on" : ""} aria-pressed={scene === "nodes"} onClick={() => setScene("nodes")}>Nodes</button>
+          <div className="map-controls">
+            <div className="view-toggle" role="group" aria-label="Map style">
+              <button type="button" className={scene === "side" ? "on" : ""} aria-pressed={scene === "side"} onClick={() => setScene("side")}>Side</button>
+              <button type="button" className={scene === "aerial" ? "on" : ""} aria-pressed={scene === "aerial"} onClick={() => setScene("aerial")}>Aerial</button>
+              <button type="button" className={scene === "nodes" ? "on" : ""} aria-pressed={scene === "nodes"} onClick={() => setScene("nodes")}>Nodes</button>
+            </div>
+            <button
+              type="button"
+              className={simple ? "simple-switch on" : "simple-switch"}
+              aria-pressed={simple}
+              onClick={() => setSimple((value) => !value)}
+            >
+              Simple
+              <i />
+            </button>
           </div>
           <time>{clock}</time>
           <button type="button" className="ghost" onClick={live ? exportLive : exportOffline}>
