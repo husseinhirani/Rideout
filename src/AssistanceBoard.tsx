@@ -54,11 +54,12 @@ export function AssistanceBoard({ session, disabled, closed, now, compact = fals
   const shown = compact ? (proposals.length ? proposals : active).slice(0, 1) : [...active, ...session.arrangements.filter(a => ["cancelled", "completed"].includes(a.status)).reverse()];
   const liveTasks = session.tasks.filter(task => ["pending", "delivered", "blocked"].includes(task.status));
   const needs = session.people.filter(p => p.facts.needs_transport === true && !session.arrangements.some(a => a.recipient_id === p.profile_id && a.status === "completed"));
-  const planning = !closed && !session.paused && session.revision !== session.planned_revision && session.failure_count < 3;
+  const planningBlocked = Boolean(session.planning_error?.blocked) || session.failure_count >= 3;
+  const planning = !closed && !session.paused && !planningBlocked && session.revision !== session.planned_revision;
 
   return <section className={compact ? "tile assistance-board compact" : "assistance-board"} aria-label="Assistance coordination">
     <div className="assistance-heading">
-      <div><h2>{compact ? "Coordinate help" : session.scenario.title}</h2><p>{closed ? "Case closed" : session.paused ? "New outreach paused" : planning ? "Considering new information…" : "Following the incident"}{session.scenario.drill ? " · Fictional drill" : ""}</p></div>
+      <div><h2>{compact ? "Coordinate help" : session.scenario.title}</h2><p>{closed ? "Case closed" : session.paused ? "New outreach paused" : planningBlocked ? "Planning needs attention" : planning ? "Considering new information…" : "Following the incident"}{session.scenario.drill ? " · Fictional drill" : ""}</p></div>
       {onOpen && <button className="assistance-expand" type="button" aria-label="Open assistance coordination" onClick={onOpen}><Icon name="expand" /></button>}
     </div>
     <div className="assistance-summary">
@@ -68,10 +69,11 @@ export function AssistanceBoard({ session, disabled, closed, now, compact = fals
     </div>
     <div className="call-actions">
       <button type="button" disabled={unavailable} onClick={() => void act("pause", { action: session.paused ? "resume" : "pause" })}>{working === "pause" ? "Saving…" : session.paused ? "Resume outreach" : "Pause outreach"}</button>
-      {session.failure_count >= 3 && <button type="button" disabled={unavailable} onClick={() => void act("retry", { action: "retry_planning" })}>Retry planning</button>}
+      {planningBlocked && <button type="button" disabled={unavailable} onClick={() => void act("retry", { action: "retry_planning" })}>Retry planning</button>}
     </div>
     {error && <p className="assistance-review" role="alert">{error}</p>}
-    {session.review && <p className="assistance-review" role="status"><b>Needs your attention</b>{session.review}</p>}
+    {session.planning_error && <p className="assistance-review" role="status"><b>Planning issue</b>{session.planning_error.message}</p>}
+    {session.review && session.review !== session.planning_error?.message && <p className="assistance-review" role="status"><b>Needs your attention</b>{session.review}</p>}
     {!compact && session.error && <details className="assistance-evidence"><summary>Planning issue</summary><p>{session.error}</p></details>}
 
     {shown.length ? <div className="arrangement-list">{shown.map(arrangement => <article key={arrangement.id} className={"arrangement " + arrangement.status}>
@@ -97,7 +99,7 @@ export function AssistanceBoard({ session, disabled, closed, now, compact = fals
           return <blockquote key={id}><b>{finding ? name(finding.profile_id) : "Earlier report"}</b><p>{finding?.text || "Report text is unavailable."}</p>{finding && <small>{new Date(finding.at).toLocaleTimeString()} · {session.people.find(p => p.profile_id === finding.profile_id)?.mode === "simulated" ? "Drill report" : "Participant report"}</small>}</blockquote>;
         })}
       </details>
-    </article>)}</div> : <p className="assistance-note">{session.people.some(p => p.facts.needs_transport === true) ? "The coordinator is checking needs and suitable help. No arrangement is confirmed." : "Conversations will reveal who needs assistance and who can help."}</p>}
+    </article>)}</div> : <p className="assistance-note">{planningBlocked ? "Saved findings are available for review. Planning must resume before the coordinator can propose new help." : session.people.some(p => p.facts.needs_transport === true) ? "The coordinator is checking needs and suitable help. No arrangement is confirmed." : "Conversations will reveal who needs assistance and who can help."}</p>}
     {compact && <>
       <p className="assistance-note">{liveTasks.filter(t => t.status !== "blocked").length} agent tasks pending or in progress{liveTasks.some(t => t.status === "blocked") ? " · " + liveTasks.filter(t => t.status === "blocked").length + " need review" : ""}</p>
       {onOpen && <button className="assistance-more" type="button" onClick={onOpen}>View people, tasks and incident details <Icon name="chevron" /></button>}

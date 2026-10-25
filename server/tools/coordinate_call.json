@@ -1,6 +1,6 @@
 {
   "name": "coordinate_call",
-  "description": "For outbound calls whose context explicitly enables coordination. Check the latest coordinator task after identity confirmation and before finishing. Report important discoveries during the conversation, without ending it. The response may contain a new task; ask at a natural pause. Respect an immediate hang-up request over this tool. Never use on inbound calls.",
+  "description": "For outbound calls with coordination enabled, retrieve a mission after identity confirmation, then report discoveries as they arrive. The response supplies an outcome, sourced facts, information gaps and completion state. Choose useful questions naturally within its boundaries. A completed question or lack of a queued task does not mean the mission is resolved. Respect immediate hang-up over this tool. Never use on inbound calls.",
   "pre_tool_speech": "off",
   "execution_mode": "immediate",
   "response_timeout_secs": 45,
@@ -10,18 +10,80 @@
     "request_body_schema": {
       "type": "object",
       "properties": {
-        "attempt_id": {"type":"string","dynamic_variable":"attempt_id"},
-        "provider_call_id": {"type":"string","dynamic_variable":"system__conversation_id"},
-        "operation": {"type":"string","enum":["check","update","finish"],"description":"check retrieves current instructions without reporting anything; update records new discoveries; finish records a final update before the separate report_call."},
-        "sequence": {"type":"integer","description":"For updates, increment from 1 per call. Keep the same number and content for an exact retry. Use 0 for check."},
-        "text": {"type":"string","description":"Faithful account of what the confirmed recipient just said. Empty for check."},
-        "facts_json": {"type":"string","description":"JSON object of changed reported facts only. Allowed: location_id (supplied scenario ID or null), needs_transport, party_size, wheelchair, pets, can_help, seats, wheelchair_space, pets_allowed. Unknown values null; omit unchanged fields. Use {} for check."},
-        "task_id": {"type":"string","description":"Current task ID returned by coordinator; empty before first check."},
-        "result": {"type":"string","enum":["pending","answered","declined","unknown"],"description":"pending while still clarifying or checking; answered only when current task is answered."},
-        "confirmation": {"type":"string","enum":["none","accepted","declined","picked_up","arrived"],"description":"none for information updates. Other values only for an explicit answer to the corresponding authorized arrangement task."},
-        "do_not_call": {"type":"boolean","description":"true only for explicit withdrawal of future contact, not merely asking to end this call."}
+        "attempt_id": {
+          "type": "string",
+          "dynamic_variable": "attempt_id"
+        },
+        "provider_call_id": {
+          "type": "string",
+          "dynamic_variable": "system__conversation_id"
+        },
+        "operation": {
+          "type": "string",
+          "enum": [
+            "check",
+            "update",
+            "finish"
+          ],
+          "description": "check retrieves the current mission without a new report; update records discoveries during conversation; finish records a final update when the person is done, preserving unresolved gaps for review before the separate report_call. Do not repeatedly check after a current response."
+        },
+        "sequence": {
+          "type": "integer",
+          "description": "For updates, increment from 1 per call. Keep the same number and content for an exact retry. Use 0 for check."
+        },
+        "text": {
+          "type": "string",
+          "description": "Faithful account of what the confirmed recipient just said, including uncertainty, corrections, refusal, and important needs outside the structured fields. Identify any unanswered or declined gap. Do not turn an assumption into a reported fact. Empty for check."
+        },
+        "facts_json": {
+          "type": "string",
+          "description": "JSON object of changed reported facts only. Allowed: location_id (supplied scenario ID or null), needs_transport, party_size, wheelchair, pets, can_help, seats, wheelchair_space, pets_allowed. Unknown values null; omit unchanged fields. Use {} for check."
+        },
+        "task_id": {
+          "type": "string",
+          "description": "Current task ID returned by coordinator; empty before first check."
+        },
+        "result": {
+          "type": "string",
+          "enum": [
+            "pending",
+            "answered",
+            "declined",
+            "unknown"
+          ],
+          "description": "pending while gathering useful information; answered when you believe the mission has sufficient information (the response may retain the task with remaining gaps); unknown when the person cannot answer; declined when they refuse. Unknown or refusal must describe the unresolved gap in text."
+        },
+        "confirmation": {
+          "type": "string",
+          "enum": [
+            "none",
+            "accepted",
+            "declined",
+            "picked_up",
+            "arrived"
+          ],
+          "description": "none for information updates. Other values only for an explicit answer to the corresponding authorized arrangement task."
+        },
+        "do_not_call": {
+          "type": "boolean",
+          "description": "true only for explicit withdrawal of future contact, not merely asking to end this call."
+        },
+        "human_review": {
+          "type": "string",
+          "description": "Optional concrete unresolved issue needing the human dispatcher, such as possible real danger during a drill or a need outside supported fields. Preserve the person's words and uncertainty. Empty or omitted when no such issue exists; maximum 2000 characters. Never delay an immediate hang-up to submit this.",
+          "default": ""
+        }
       },
-      "required": ["operation","sequence","text","facts_json","task_id","result","confirmation","do_not_call"]
+      "required": [
+        "operation",
+        "sequence",
+        "text",
+        "facts_json",
+        "task_id",
+        "result",
+        "confirmation",
+        "do_not_call"
+      ]
     }
   }
 }

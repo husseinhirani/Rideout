@@ -1,6 +1,7 @@
 import { person, matchReasons, requiresInformationReview } from './assistance-eligibility';
 export { person, matchReasons, requiresInformationReview } from './assistance-eligibility';
 import { spatialMatching } from './spatial';
+import { informationGaps } from './voice-mission';
 /** Shared incident coordination contract. People and locations are data, never role rules. */
 export type Facts = {
   location_id: string | null; needs_transport: boolean | null; party_size: number | null;
@@ -10,15 +11,15 @@ export type Facts = {
 export const emptyFacts = (): Facts => ({ location_id: null, needs_transport: null, party_size: null, wheelchair: null, pets: null, can_help: null, seats: null, wheelchair_space: null, pets_allowed: null });
 export type Location = { id: string; label: string; lat: number; lng: number; access: 'community' | 'specialist' | 'unknown'; zone_id?: string; source?: string };
 export type Scenario = { title: string; drill: boolean; context: string; locations: Location[]; community_routes: [string, string][]; destination: string; follow_up_ms: number; max_tasks_per_person: number };
-export type Participant = { profile_id: number; name: string; mode: 'real' | 'simulated'; start_location_id?: string; facts: Facts; sources: Partial<Record<keyof Facts, string>>; consent: boolean; contact_blocked?: string | null; simulation?: Facts; unreachable: boolean };
+export type Participant = { profile_id: number; name: string; mode: 'real' | 'simulated'; start_location_id?: string; facts: Facts; sources: Partial<Record<keyof Facts, string>>; consent: boolean; contact_blocked?: string | null; review_reason?: string; simulation?: Facts; unreachable: boolean };
 export type TaskKind = 'assess' | 'needs' | 'location' | 'capability' | 'helper_accept' | 'recipient_confirm' | 'pickup' | 'arrival';
 export type Task = { id: string; profile_id: number; kind: TaskKind; arrangement_id: string | null; reason: string; status: 'pending' | 'delivered' | 'completed' | 'cancelled' | 'blocked'; attempt_id: number | null; created_at: number; delivered_at: number | null; call_count: number; completed_revision?: number; due_at: number; result: string; };
 export type Arrangement = { id: string; recipient_id: number; helper_id: number; evidence_ids: string[]; reason: string; status: 'proposed' | 'approved' | 'accepted' | 'confirmed' | 'picked_up' | 'completed' | 'cancelled'; helper_accepted: boolean; recipient_confirmed: boolean; pickup_confirmations: number[]; arrival_confirmations: number[]; reconsiderable?: boolean; created_at: number; updated_at: number; };
-export type Finding = { id: string; profile_id: number; attempt_id: number; text: string; changes: Partial<Facts>; at: number };
+export type Finding = { id: string; profile_id: number; attempt_id: number; text: string; changes: Partial<Facts>; human_review?: string; at: number };
 export type CoordinatorMessage = { id: string; from: 'lead' | 'facilitator'; text: string; at: number; kind: 'update' | 'decision' | 'review' | 'chat' };
-export type AssistanceState = { case_id: number; revision: number; planned_revision: number; paused: boolean; scenario: Scenario; people: Participant[]; findings: Finding[]; tasks: Task[]; arrangements: Arrangement[]; messages: CoordinatorMessage[]; review: string | null; failure_count: number; retry_at: number; error: string; processed_reports: number[]; missing_report_attempts?: number[]; closing_attempts?: number[]; };
+export type AssistanceState = { case_id: number; revision: number; planned_revision: number; paused: boolean; scenario: Scenario; people: Participant[]; findings: Finding[]; tasks: Task[]; arrangements: Arrangement[]; messages: CoordinatorMessage[]; review: string | null; planning_error?: { kind: 'billing' | 'authentication' | 'rate_limit' | 'network' | 'invalid_plan' | 'service' | 'unknown'; message: string; blocked: boolean }; failure_count: number; retry_at: number; error: string; processed_reports: number[]; missing_report_attempts?: number[]; closing_attempts?: number[]; };
 export type AssistancePlan = { summary: string; questions: { profile_id: number; kind: 'needs' | 'location' | 'capability'; reason: string; evidence_ids: string[] }[]; proposals: { recipient_id: number; helper_id: number; reason: string; evidence_ids: string[] }[]; cancel_task_ids: string[]; review: string | null };
-export type VoiceUpdate = { sequence: number; text: string; facts: Partial<Facts>; task_id?: string; result?: 'answered' | 'declined' | 'unknown'; confirmation?: 'accepted' | 'declined' | 'picked_up' | 'arrived'; finished?: boolean; do_not_call?: boolean };
+export type VoiceUpdate = { sequence: number; text: string; facts: Partial<Facts>; task_id?: string; result?: 'answered' | 'declined' | 'unknown'; confirmation?: 'accepted' | 'declined' | 'picked_up' | 'arrived'; finished?: boolean; do_not_call?: boolean; human_review?: string };
 
 export function parseFacts(value: unknown, scenario: Scenario): Partial<Facts> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Facts must be an object');
@@ -38,7 +39,7 @@ export function addMessage(s: AssistanceState, text: string, now: number, kind: 
   const id = 'message:' + s.case_id + ':' + (s.messages.length + 1);
   s.messages.push({ id, from, text, at: now, kind });
 }
-export function touch(s: AssistanceState) { s.revision++; s.failure_count = 0; s.retry_at = 0; s.error = ''; }
+export function touch(s: AssistanceState) { s.revision++; if (!s.planning_error?.blocked) { s.failure_count = 0; s.retry_at = 0; s.error = ''; } }
 const reserved = (a: Arrangement) => ['proposed','approved','accepted','confirmed','picked_up'].includes(a.status);
 const taskKinds: TaskKind[] = ['assess','needs','location','capability','helper_accept','recipient_confirm','pickup','arrival'];
 const activeTask = (t: Task) => t.status === 'pending' || t.status === 'delivered';
@@ -92,14 +93,11 @@ export function addTask(s: AssistanceState, profileId: number, kind: TaskKind, n
 }
 export function taskInstruction(s: AssistanceState, task: Task): string {
   if (!activeTask(task) || !person(s,task.profile_id).consent || person(s,task.profile_id).contact_blocked || requiresInformationReview(s,task.profile_id)) throw new Error('Task is no longer available');
-  const places = s.scenario.locations.map(l => l.label + ' (' + l.id + ')').join(', ');
   const prefix = s.scenario.drill ? 'This is a fictional drill; do not instruct actual travel. ' : '';
-  const suggested=s.scenario.locations.find(l=>l.id===person(s,task.profile_id).start_location_id);
-  const locationCheck=suggested && !person(s,task.profile_id).sources.location_id ? 'First ask whether their fictional starting point, '+suggested.label+', is correct. Only after an explicit yes report location_id='+suggested.id+'. A different point or unknown answer must be recorded accurately; never treat the starting point as confirmed. ' : '';
-  if (task.kind === 'assess') return prefix + locationCheck + 'Ask whether this person could evacuate independently. Clarify relevant transport needs. If independent, ask whether they would be willing and able to help others. Report discoveries as they arise.';
-  if (task.kind === 'location') return prefix + locationCheck + 'Ask which scenario location they are at: ' + places + '. Accept unknown or a different location; do not guess or use directory coordinates.';
-  if (task.kind === 'needs') return prefix + 'Clarify whether transport is needed, passenger count, and wheelchair or pet requirements. Ask one relevant unanswered question at a time.';
-  if (task.kind === 'capability') return prefix + 'Confirm whether they can leave independently and would be willing to help someone nearby. If willing, ask available passenger seats, wheelchair space and whether pets can travel. No arrangement is confirmed yet.';
+  if (task.kind === 'assess') return prefix + 'Understand whether this person needs evacuation assistance or could help someone else, and gather enough attributed information for the coordinator to compare suitable assistance. Resolve relevant gaps naturally; the participant may decline or not know.';
+  if (task.kind === 'location') return prefix + 'Establish a participant-reported scenario location for geographic comparison. Supplied starting points are unconfirmed scenario context. A different or unknown location is a valid answer; never substitute directory coordinates.';
+  if (task.kind === 'needs') return prefix + 'Understand the person’s current assistance needs well enough to evaluate suitable help. Follow changed circumstances rather than an assumed role, and preserve needs outside the structured fields in the account for human review.';
+  if (task.kind === 'capability') return prefix + 'Determine whether this person is willing and able to help, and what assistance their available vehicle capacity could support. This gathers options; it does not commit them to an arrangement. If their circumstances changed, establish their current needs instead.';
   const a = milestone(s,task), r = person(s,a.recipient_id), h = person(s,a.helper_id);
   const reasons = matchReasons(s,a.recipient_id,a.helper_id,a.id);
   if (reasons.length) throw new Error('Arrangement needs review: ' + reasons.join('; '));
@@ -116,13 +114,6 @@ export function cancelArrangement(s: AssistanceState, a: Arrangement, reason: st
   s.review = 'Arrangement for ' + person(s,a.recipient_id).name + ' was withdrawn: ' + reason + '. No replacement is confirmed.';
   addMessage(s,s.review,now,'review');
 }
-function missingAnswer(kind: TaskKind, facts: Facts): string | null {
-  if (kind === 'location') return facts.location_id === null ? 'Current location remains unknown' : null;
-  if (kind === 'assess') return facts.needs_transport === null ? 'Ability to leave independently remains unknown' : null;
-  if (kind === 'needs') return facts.needs_transport === null || (facts.needs_transport && [facts.party_size,facts.wheelchair,facts.pets].some(v => v === null)) ? 'Transport requirements remain incomplete' : null;
-  if (kind === 'capability') return facts.needs_transport === null || (facts.needs_transport === false && (facts.can_help === null || (facts.can_help && [facts.seats,facts.wheelchair_space,facts.pets_allowed].some(v => v === null)))) ? 'Ability to help remains incomplete' : null;
-  return null;
-}
 export function applyFinding(s: AssistanceState, profileId: number, attemptId: number, updateId: string, update: VoiceUpdate, now: number) {
   // Keep malformed updates atomic even for consumers outside a database reducer.
   const draft = JSON.parse(JSON.stringify(s)) as AssistanceState;
@@ -138,16 +129,17 @@ function applyFindingToDraft(s: AssistanceState, profileId: number, attemptId: n
   if (update.confirmation !== undefined && !['accepted','declined','picked_up','arrived'].includes(update.confirmation)) throw new Error('Invalid confirmation');
   if (update.do_not_call !== undefined && typeof update.do_not_call !== 'boolean') throw new Error('Invalid consent update');
   if (update.finished !== undefined && typeof update.finished !== 'boolean') throw new Error('Invalid finish flag');
+  if (update.human_review !== undefined) boundedText(update.human_review,'human review reason',2000,true);
   const p = person(s,profileId), facts = parseFacts(update.facts ?? {},s.scenario);
   const duplicate = s.findings.find(f => f.id === updateId);
   if (duplicate) {
-    if (duplicate.profile_id !== profileId || duplicate.attempt_id !== attemptId || duplicate.text !== update.text || JSON.stringify(duplicate.changes) !== JSON.stringify(facts)) throw new Error('Update ID conflicts with another finding');
+    if (duplicate.profile_id !== profileId || duplicate.attempt_id !== attemptId || duplicate.text !== update.text || JSON.stringify(duplicate.changes) !== JSON.stringify(facts) || (duplicate.human_review ?? '') !== (update.human_review?.trim() ?? '')) throw new Error('Update ID conflicts with another finding');
     return;
   }
-  const task = update.task_id ? s.tasks.find(t => t.id === update.task_id) : undefined;
+  const task = update.task_id ? s.tasks.find(t => t.id === update.task_id) : update.finished ? (s.tasks.find(t=>t.profile_id===profileId && t.attempt_id===attemptId && t.status==='delivered') ?? s.tasks.filter(t=>t.profile_id===profileId && t.attempt_id===attemptId && t.status==='completed').slice(-1)[0]) : undefined;
   if (update.task_id && (!task || task.profile_id !== profileId || task.attempt_id !== attemptId)) throw new Error('Task belongs to another call or is no longer bound; fetch current instructions');
   if ((update.result || update.confirmation) && !task) throw new Error('A task result requires an assigned task');
-  const stale = task && task.status !== 'delivered';
+  let stale = task && task.status !== 'delivered';
   let arrangement: Arrangement | undefined;
   if (task && !stale && task.arrangement_id) arrangement = milestone(s,task);
   if (update.confirmation && !stale) {
@@ -158,8 +150,15 @@ function applyFindingToDraft(s: AssistanceState, profileId: number, attemptId: n
   }
   if ((Object.keys(facts).length || update.result || update.confirmation) && !update.text.trim()) throw new Error('A finding needs the participant account supporting it');
   const previousFacts = { ...p.facts };
-  s.findings.push({id:updateId,profile_id:profileId,attempt_id:attemptId,text:update.text,changes:facts,at:now});
+  s.findings.push({id:updateId,profile_id:profileId,attempt_id:attemptId,text:update.text,changes:facts,...(update.human_review?.trim()?{human_review:update.human_review.trim()}:{}),at:now});
   Object.assign(p.facts,facts); for (const key of Object.keys(facts) as (keyof Facts)[]) p.sources[key] = updateId;
+  // A correction during this same open conversation can change what the mission needs.
+  // Never revive a blocked/refused task, a milestone, or a call already finishing.
+  if (task?.status === 'completed' && !task.arrangement_id && Object.keys(facts).some(key=>!Object.is(previousFacts[key as keyof Facts],p.facts[key as keyof Facts]))
+    && informationGaps(task.kind,p.facts).length && !s.paused && p.consent && !p.contact_blocked && !update.do_not_call && !update.finished && !s.closing_attempts?.includes(attemptId)) {
+    task.status='delivered'; task.result=''; delete task.completed_revision; stale=false;
+  }
+  if (update.human_review?.trim()) p.review_reason=update.human_review.trim();
   if (update.do_not_call || update.confirmation==='declined' || Object.keys(facts).some(key=>!Object.is(previousFacts[key as keyof Facts],p.facts[key as keyof Facts]))) {
     for(const proposal of s.arrangements.filter(a=>a.status==='proposed')) cancelArrangement(s,proposal,'New participant information requires a fresh comparison',now,true);
   }
@@ -187,14 +186,21 @@ function applyFindingToDraft(s: AssistanceState, profileId: number, attemptId: n
     const reasons = matchReasons(s,a.recipient_id,a.helper_id,a.id);
     if (reasons.length) cancelArrangement(s,a,reasons.join('; '),now);
   }
-  if (task && task.status === 'delivered' && (update.result || update.confirmation)) {
+  if (task && task.status === 'delivered' && (update.result || update.confirmation || update.finished || update.human_review?.trim())) {
     const a = arrangement;
     if (!a) {
-      const missing = missingAnswer(task.kind,p.facts);
-      task.result = update.result ?? '';
-      task.status = update.result === 'answered' && !missing ? 'completed' : 'blocked';
+      const gaps = informationGaps(task.kind,p.facts);
+      const humanReview = update.human_review?.trim();
+      const unresolved = update.result === 'declined' || update.result === 'unknown' || Boolean(humanReview) || (update.finished && gaps.length > 0);
+      // A premature "answered" preserves discoveries and the active mission. It must not
+      // turn a useful live conversation into either a callback or a permanent review hold.
+      task.status = unresolved ? 'blocked' : gaps.length === 0 ? 'completed' : 'delivered';
+      task.result = task.status === 'delivered' ? '' : update.result ?? (unresolved ? 'unknown' : 'answered');
       if (task.status === 'completed') task.completed_revision = s.revision + 1;
-      if (task.status === 'blocked') { s.review = p.name + ': ' + (missing ?? 'The requested information was declined or remains unknown') + '. Human review is needed.'; addMessage(s,s.review,now,'review'); }
+      if (task.status === 'blocked') {
+        s.review = p.name + ': ' + (humanReview || (update.result === 'declined' ? 'The participant declined further information gathering' : gaps.length ? 'Information remains unresolved: ' + gaps.map(g=>g.field).join(', ') : 'The participant could not resolve the requested information')) + '. Findings are saved; human review is needed.';
+        addMessage(s,s.review,now,'review');
+      }
     } else if (update.confirmation === 'declined' || update.result === 'declined') {
       task.status = 'completed'; task.completed_revision = s.revision + 1; task.result = 'declined'; cancelArrangement(s,a,p.name + ' declined or can no longer continue',now);
     } else if (!update.confirmation) {
@@ -220,6 +226,16 @@ function applyFindingToDraft(s: AssistanceState, profileId: number, attemptId: n
       a.updated_at = now;
       addMessage(s,'Arrangement for ' + person(s,a.recipient_id).name + ': ' + a.status.replace('_',' ') + '.',now);
     }
+  }
+  if (update.finished && task?.status === 'completed' && !task.arrangement_id && informationGaps(task.kind,p.facts).length) {
+    task.status='blocked'; task.result='Final findings leave unresolved information'; delete task.completed_revision;
+    s.review=p.name+': final findings are saved, but assistance information remains unresolved. Human review is needed; no automatic callback is authorized.';
+    addMessage(s,s.review,now,'review');
+  }
+  if (update.human_review?.trim() && (!task || task.arrangement_id || task.status !== 'blocked')) {
+    if (task && !task.arrangement_id && ['pending','delivered','completed'].includes(task.status)) {task.status='blocked';task.result='Human review requested';delete task.completed_revision}
+    s.review = p.name + ': ' + update.human_review.trim() + '. Human review is needed.';
+    addMessage(s,s.review,now,'review');
   }
   if (update.text.trim()) addMessage(s,p.name + ' reports: ' + update.text,now);
   touch(s);
@@ -254,11 +270,12 @@ function applyPlanToDraft(s: AssistanceState, plan: AssistancePlan, now: number)
     seenQuestions.add(key);
     const p = person(s,q.profile_id);
     if (p.unreachable || !p.consent || p.contact_blocked || requiresInformationReview(s,p.profile_id)) continue;
+    if (s.tasks.some(t=>t.profile_id===q.profile_id && !t.arrangement_id && activeTask(t))) continue;
     // Unknown/refused answers require review. A later correction can reopen an
     // answered question only when its relevant facts have become incomplete.
     if (s.tasks.some(t => t.profile_id === q.profile_id && t.kind === q.kind && (
       ['pending','delivered','blocked'].includes(t.status)
-      || (t.status === 'completed' && (s.revision <= (t.completed_revision ?? s.revision) || !missingAnswer(q.kind,p.facts)))
+      || (t.status === 'completed' && (s.revision <= (t.completed_revision ?? s.revision) || informationGaps(q.kind,p.facts).length === 0))
     ))) continue;
     addTask(s,q.profile_id,q.kind,now,q.reason);
   }

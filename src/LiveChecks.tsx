@@ -234,7 +234,7 @@ export function LiveChecks({
                 <span><strong>{reported}</strong>reports in</span>
                 <span><strong>{calls.filter((call) => call.transport === "unknown").length}</strong>unresolved</span>
               </div>
-              <p className="focus-note">{mockCalls.length ? "Drill activity. Only saved reports contribute to coordination." : "Call progress and saved reports are tracked separately."}</p>
+              <p className="focus-note">{mockCalls.length ? "Drill activity. Saved findings and reports inform coordination." : "Call progress, saved findings, and final reports are tracked separately."}</p>
               {total === 0 ? (
                 <p className="focus-empty">{row ? "No calls planned for this case yet." : "Calls appear once a case opens."}</p>
               ) : (
@@ -422,6 +422,12 @@ function LiveCallRow({
 
   const lines: TimelineLine[] = [{ at: "0:00", who: "Assigned question", text: call.attempt.ask, kind: "system" }];
   if (placed) lines.push({ at: stamp(placed), who: "", text: call.simulated ? "Drill call started." : "Call placed.", kind: "system" });
+  if (!call.attempt.answer) {
+    for (const finding of call.savedFindings) {
+      if (finding.text.trim()) lines.push({ at: stamp(finding.at), who: `Saved finding · ${first}`, text: finding.text, kind: "them" });
+      if (finding.human_review?.trim()) lines.push({ at: stamp(finding.at), who: "Needs dispatcher review", text: finding.human_review, kind: "warn" });
+    }
+  }
   if (call.attempt.answer) lines.push({ at: stamp(reportedAt), who: `Call report · ${first}`, text: call.attempt.answer, kind: "them" });
   if (call.attempt.concern) lines.push({ at: stamp(reportedAt), who: "Concern", text: call.attempt.concern, kind: "warn" });
   if (call.progress?.dispatch_error) lines.push({ at: "", who: "Dispatch", text: call.progress.dispatch_error, kind: "warn" });
