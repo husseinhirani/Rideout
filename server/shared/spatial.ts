@@ -1,4 +1,4 @@
-import { matchReasons, requiresInformationReview } from './assistance-eligibility'
+import { matchReasons, requiresInformationReview, arrangementScopeResolved } from './assistance-eligibility'
 import { informationGaps } from './voice-mission'
 import type { AssistanceState, Location, Participant } from './assistance'
 
@@ -77,6 +77,7 @@ function assign(candidates: SpatialCandidate[]): SpatialMatch[] {
 export function spatialMatching(state: AssistanceState): SpatialMatching {
   const pendingInformation = state.tasks.filter(task => ['assess','needs','location','capability'].includes(task.kind)
     && ['pending','delivered'].includes(task.status)
+    && !arrangementScopeResolved(state,task.profile_id)
     && state.people.some(person => person.profile_id === task.profile_id && person.consent && !person.contact_blocked && !person.unreachable && !requiresInformationReview(state,person.profile_id)))
   const candidates: SpatialCandidate[] = state.people.filter(person => person.facts.needs_transport === true).flatMap(recipient =>
     state.people.filter(helper => helper.profile_id !== recipient.profile_id).map(helper => {

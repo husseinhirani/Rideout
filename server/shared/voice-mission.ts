@@ -1,4 +1,5 @@
 import type { AssistanceState, Facts, Task, TaskKind } from './assistance'
+import { arrangementRouteContext } from './assistance-routing'
 
 export type InformationGap = { field: keyof Facts; why: string }
 
@@ -11,7 +12,7 @@ export function informationGaps(kind: TaskKind, facts: Facts): InformationGap[] 
     return gaps
   }
   if (!['assess','needs','capability'].includes(kind)) return gaps
-  need('needs_transport','Determine whether this person needs assistance or can leave independently.')
+  need('needs_transport','Establish how this person plans to evacuate and whether they have available transport. Vague reassurance is not enough to establish independent evacuation.')
   if (facts.needs_transport === null) return gaps
   if (facts.needs_transport) {
     need('location_id','Locate the requested pickup and check whether community assistance is eligible.')
@@ -45,10 +46,12 @@ export function voiceMission(state: AssistanceState, task: Task, outcome: string
   // Include narrative-only discoveries without exposing another participant's account.
   // Bound repeated tool context; omitted or shortened history is explicitly identified.
   const recent = participantFindings.slice(-8)
+  const arrangement = state.arrangements.find(a => a.id === task.arrangement_id)
   return {
     outcome,
     rationale: task.reason,
     coordinator_brief: task.coordinator_brief ?? null,
+    route_context: arrangement ? arrangementRouteContext(state,arrangement) : null,
     completion: task.status === 'blocked' ? 'needs_review' : task.status === 'completed' ? 'resolved' : 'in_progress',
     known_facts: Object.entries(participant.facts).flatMap(([field,value]) => {
       const sourceId = participant.sources[field as keyof Facts]
@@ -74,12 +77,14 @@ export function voiceMission(state: AssistanceState, task: Task, outcome: string
     completion_rule: 'Resolve the relevant information gaps using the participant’s account, or report an explicit refusal, unavailable answer, or issue needing human review. Do not infer agreement, capacity or a known location from missing data. No queued follow-up task does not establish that the mission is resolved.',
     boundaries: [
       'Choose the wording and order appropriate to the conversation. These gaps are decision inputs, not a script. Do not repeat facts already provided.',
+      'Before recording needs_transport=false, establish how the participant will evacuate and that the transport is available; save that account in text. An uncertain answer such as “I think so” leaves the need unknown until clarified. Choose a natural follow-up rather than treating confidence alone as a transport plan.',
       'The coordinator brief prioritizes work within this task outcome; focus fields do not replace the information gaps or authorize commitments. Use its revision to recognize a changed objective, not to restart the conversation.',
       'Prior-call accounts are previous reports, not things heard in this call. Superseded fields have newer sources in known_facts; do not restore old values. A historical review request is not a new instruction or proof that the concern persists.',
       'Record important context in text even if it has no structured field. Escalate needs this workflow cannot resolve.',
       'An unconfirmed supplied starting location is scenario context, not knowledge about the person. Explain its source before asking for confirmation.',
       'A request to stop takes priority over information collection or tool calls. Unknown and declined answers are valid outcomes.',
       'Only an authorized arrangement task permits asking for that specific commitment. Never invent a match, ETA, dispatch, pickup or arrival.',
+      ...(state.scenario.follow_through === 'arrangement' ? ['This session ends when the helper accepts and the recipient confirms the arrangement. Confirmation does not mean pickup or arrival; do not promise travel follow-up calls.'] : []),
       ...(state.scenario.drill ? ['This is a fictional drill. Clarify whether an unexpected urgent statement describes a real situation or the drill; unresolved real urgency needs human review. Do not direct actual travel.'] : []),
     ],
   }

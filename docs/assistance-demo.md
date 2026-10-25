@@ -46,32 +46,58 @@ resume when the API restarts. The coordinator requires `ANTHROPIC_API_KEY`, and 
 require the existing Cartesia and callback configuration. Do not set `SIMULATE=1` for the
 real-phone run. Never place provider keys in frontend variables.
 
-## First run: saved phone participants and 12 simulated neighbors
+## First run: Tony and Vien only
 
-1. Refresh the browser and select **Start → Wildfire drill** once. Each saved participant
-   receives an initial call. Twelve drill neighbors join the same incident
-   automatically; their conversations do not dial real phones.
+After deployment and agent setup, save the two-person roster from the existing saved
+participants, with simulated neighbors disabled:
+
+```bash
+npm --prefix server run configure-drill -- --only 'Tony Nguyen,Vien Nguyen' --no-neighbors
+```
+
+The command resolves those names against the saved roster and retains their saved phone
+numbers. It places no calls and needs no private JSON file. It should report two saved
+participants and **Simulated neighbors: disabled**. If either name is missing or ambiguous,
+correct the saved roster before starting. Refresh the browser so the Start menu shows the
+new selection. This selection persists for future drills until reconfigured.
+
+1. Select **Start → Wildfire drill** once. Only Tony and Vien receive initial calls, and
+   no simulated neighbors join this incident.
 2. Tom introduces himself, confirms each person's name, and explains the fictional drill.
    Speak naturally; important reported facts appear in the coordinator while calls continue.
-3. To exercise a possible match, one participant can report needing a ride for one person,
-   no wheelchair or pet, at the **West community pickup point**. Another can report being
-   able to leave independently from West, willingness to help, and two passenger seats.
-   The names can be swapped. The coordinator asks about missing information.
+3. Confirm or correct the supplied fictional starting positions. To exercise a possible
+   match, one participant can report needing a ride for one person, no wheelchair or pet.
+   The other can report being able to leave independently, willingness to help, and two
+   passenger seats. Either person can take either role. The coordinator asks about missing
+   information; names do not determine the pairing.
 4. Read the proposed match and its source reports. Click **Approve proposal**. Approval
-   authorizes asking the helper; it does not mean the helper has accepted.
-5. The helper's agent receives the acceptance question at a natural tool check during an
-   ongoing call. If that call has ended, the system queues a bounded follow-up after the
-   cooldown. The recipient is asked to confirm only after the helper accepts.
-6. Separate follow-ups ask both parties about pickup, then arrival, using a one-minute
-   interval in this drill. Confirm imagined milestones only. Both reports are required
-   before advancing. Nobody needs to travel.
+   authorizes asking the helper; it does not mean the helper has accepted. There is one
+   approval gate for the proposal, with no second dispatcher approval after acceptance.
+5. New drills use separate callbacks (`handoff_mode: callback`). Assessment calls finish
+   before a bounded helper-acceptance callback is queued after the cooldown. After the
+   helper accepts, the recipient receives a separate confirmation callback. An active
+   assessment call is not repurposed into an acceptance or confirmation call.
+6. When the helper accepts and the recipient confirms, the board shows **Ride arranged**
+   and adds one to **rides arranged**. That is the endpoint for a new drill. No pickup or
+   arrival calls follow, and neither pickup nor arrival is confirmed. Nobody needs to travel.
 7. Ask the coordinator chat, **“What is agreed, and who still needs attention?”** Its answer
    uses the saved incident state. Use the explicit buttons for approval, withdrawal and
    pausing; chat alone does not execute those actions.
 
 Do not keep someone on the phone waiting for the planning model. The follow-up path is
 part of the demonstration. Timing depends on provider/model latency and the person's
-conversation. Missed calls and unanswered milestones remain in human review.
+conversation. Missed calls and unanswered acceptance or confirmation requests remain in
+human review. Existing incidents that track pickup and arrival retain their original scope;
+start a new drill to demonstrate the arrangement endpoint.
+
+Before acceptance, the board can show a supplied **Drill route estimate**. After acceptance,
+the **Drill pickup estimate** stays anchored to that acceptance time, including during the
+recipient callback. It never restarts at the callback. The supplied route between the first
+two drill positions assumes 13 minutes, including fictional congestion and preparation;
+it is not calculated from straight-line distance or live traffic. The source is available
+under **Route estimate source**. A pickup described as on the modeled route does not mean
+the helper has departed. Missing, changed or expired route information produces no current
+pickup estimate, and elapsed time never confirms pickup.
 
 ## Demonstrate adaptation
 
@@ -84,10 +110,12 @@ conversation. Missed calls and unanswered milestones remain in human review.
   services or claim a specialist team was dispatched.
 - Pause outreach: no new tasks or calls are authorized; already active calls may finish
   reporting what they learned.
-- The 12 simulated neighbors produce reports through the same backend workflow,
+- For an optional larger run, the 12 simulated neighbors produce reports through the same backend workflow,
   retain their simulated mode internally, and never dial phone numbers. The interface uses
   one drill roster without per-person mode badges. Their reported needs and capabilities
-  also affect matching, so the coordinator may propose a suitable simulated helper.
+  also affect matching, so the coordinator may propose a suitable simulated helper. They
+  are disabled for the two-person run above. To include them again with the selected roster,
+  run `npm --prefix server run configure-drill -- --only 'Tony Nguyen,Vien Nguyen'`.
 
 ## What has been validated locally
 
@@ -97,27 +125,33 @@ retries; eligibility, stale-plan and callback races; separate approval/acceptanc
 arrival gates. Hosted phone conversations with the new tool require the deployment and
 first live run above. No new automated test files were added at the user's request.
 
-## Location-based two-pair run
+## Optional larger location-based run
 
-The four saved real participants use four distinct starting positions sampled from the
+To restore a larger roster, configure it from the local private roster file, for example
+`npm --prefix server run configure-drill -- /absolute/path/to/drill-participants.json`.
+The file contains `participants` with names and phone numbers; `include_simulated` is
+optional and defaults to `true`. This only changes future drills and does not place calls.
+
+The selected real participants use distinct starting positions sampled from the
 bundled mapped building footprints. These are explicitly simulated positions, not their
 actual addresses. Tom first asks each participant to confirm or correct the starting point.
 Confirming it supplies the exact coordinate-backed location to the matching calculation;
 simply displaying the initial marker does not authorize a match.
 
-To exercise the four real participants, Tony and Shehryar can each report a ride needed for one person, no
-wheelchair or pets. Vien and Hussein can each report independent evacuation, willingness
+To exercise two possible matches, two participants can each report needing a ride for one
+person, no wheelchair or pets. Two others can report independent evacuation, willingness
 to help and one passenger seat (answer the wheelchair/pet capability questions too).
-The configured starting points put Tony about 42 m from Vien, and Shehryar about 24 m from
-Hussein. Cross-pair separations are about 247–275 m. These are straight-line distances,
+Any participant can take either role. Use the actual confirmed positions and reported needs
+to review the resulting proposals. Displayed separations are straight-line distances,
 not driving distances or arrival estimates.
 
-The 12 simulated neighbors participate too, so those two nearby pairs are examples, not
-guaranteed assignments. Review the actual proposals, then approve the ones you want to
+The 12 simulated neighbors participate too, so no pairing is guaranteed.
+Review the actual proposals, then approve the ones you want to
 exercise. The coordinator waits for outstanding
 relevant information so an early report does not reserve the only suitable helper before
 comparing the group. The map shows the same reported positions used in this comparison.
 A location correction changes the matching inputs; swapping names alone does not.
+Finish each demonstration when its helper accepts and its recipient confirms the ride.
 
 ## Validate the conversation mission update
 

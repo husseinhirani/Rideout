@@ -30,7 +30,7 @@ export function startAssistanceWorker():()=>void {
     const current=snapshot.information.cases.find(c=>c.id===s.case_id)
     if(!current||current.status!=='open'||current.policy.paused)return
     const pending=snapshot.attempts.some(a=>a.profile_id===task.profile_id && ['queued','dispatching','active','unknown'].includes(snapshot.progress.find(p=>p.attempt_id===a.id)?.transport??'unknown'))
-    if(pending)return // The ongoing call can fetch the new task itself.
+    if(pending)return // In-call tasks can be fetched; callback missions wait for the earlier call to end.
     try{await callReducer('queueAssistanceTask',[s.case_id,task.id])}
     catch(error){const message=error instanceof Error?error.message:'Could not queue follow-up'
       if(/budget|consent|outside authorized|unavailable|not found/i.test(message))await callReducer('blockAssistanceTask',[s.case_id,task.id,message])

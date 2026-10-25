@@ -5,10 +5,18 @@
 The approved next slice turns call discoveries into proposed assistance arrangements.
 New wildfire drills create an assistance session and run a coordinator that selects
 information tasks and proposes suitable pairings. Humans approve proposals, voice
-agents obtain explicit commitments, and follow-ups separately confirm pickup and
-arrival. All physical situations and routes remain fictional drill data. Real phone
+agents obtain explicit helper acceptance and recipient confirmation, and new drills end
+with a ride arranged (`follow_through: arrangement`). They do not place pickup or arrival
+follow-ups or claim travel occurred. Existing sessions without that scope retain arrival
+tracking. New drills use separate commitment callbacks after assessment calls finish
+(`handoff_mode: callback`). All physical situations and routes remain fictional drill data. Real phone
 participants' needs and capabilities come from their answers; no named roles are fixed.
-Every new drill includes 12 simulated neighbors using backend attempts and findings, not visual-only calls.
+The saved roster also controls whether 12 simulated neighbors participate, using backend
+attempts and findings rather than visual-only calls. The default remains enabled for
+compatibility; the current two-person demo disables them explicitly. Roles come from
+reported facts, never roster names. Supplied route durations may support a sourced drill
+pickup estimate anchored to helper acceptance; map distance cannot supply an ETA, and
+neither an estimate nor elapsed time confirms departure or pickup.
 See `docs/adr/0003-live-assistance-coordination.md` at the repository root and the current
 section of `DESIGN.md`. Historical statements below that exclude dispatch describe
 prior milestones; the approved demo now includes coordination with human approval.
@@ -20,7 +28,8 @@ missing-child shortcut is removed. The drill uses a saved private participant
 roster, configured separately from dispatch; initial single-person environment
 configuration and prior drill records remain fallback sources for migration.
 One click queues one initial call per participant, with capacity for overlapping calls.
-New drills permit bounded coordinator follow-ups. The 12 simulated neighbors
+New drills permit bounded coordinator follow-ups through the arrangement endpoint.
+When enabled in the saved configuration, the 12 simulated neighbors
 produce backend findings and tasks; they never dial a phone. Old cases retain their
 visual simulation history. Only the saved real participants receive phone calls.
 
