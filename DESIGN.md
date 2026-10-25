@@ -1,5 +1,16 @@
 # RideOut design
 
+## Connected product
+
+The live dashboard uses generic investigations and the current operator API.
+Its cards display calls, incoming reports, evidence, unresolved questions and
+organizer controls. The teammate's map and dashboard components are reused.
+Scenario-specific stories are available only through explicit offline selection.
+Live disconnect retains real state; stored directory coordinates never become
+fictional household facts. See `README.md` for local startup and the first UI check.
+
+The visual notes below describe the original map/dashboard direction.
+
 Source: the Droneview AI dashboard. The 3D neighborhood is the canvas. Every fact sits in a black, rounded, slightly blurred card on top of it. Type is large enough to read across a table.
 
 ## Canvas

@@ -3,10 +3,23 @@
 ## UI/backend integration
 
 The integration branch combines the dashboard at `3a5b293` with the generic
-backend at `f453df8`. Generic authenticated routes remain authoritative; the
-dashboard still needs migration to `INFORMATION-API.md` before live use. The
-HTML console remains the verified interaction path. Legacy reducers and fixtures
-are retained for existing records, not exposed as new generic product flows.
+backend at `f453df8`. The product UI now uses `INFORMATION-API.md`: generic
+incident creation, directory filtering, manual calls, decisions, organizer input,
+review, settings, consent, pause/closure and phone intake configuration. No backend
+schema or provider configuration changes are needed for the UI migration.
+
+The loopback Vite proxy injects only `OPERATOR_SECRET`, checks Host/Origin and
+forwarded headers, and exposes only operator API paths. Configure port 5173 in
+`OPERATOR_ORIGINS`. Live/offline selection is explicit; a failed poll preserves the
+last snapshot and disables mutations. Commands retry an uncertain response with
+the same ID and payload. Settings drafts preserve their original revision so new
+evidence cannot be silently overwritten. The map uses stored coordinates and
+suppresses fictional household descriptions in live mode. Backend decisions and
+transport/report states replace legacy assignments and invented review timers.
+
+The HTML console remains available. Browser fixture checks establish UI wiring,
+not real Claude/provider behavior; the combined local live checkpoint is tracked
+in #24 and #27.
 
 Strict Claude requests use `messages.create().withResponse()` and parse the
 structured JSON text before application validation. This preserves request IDs

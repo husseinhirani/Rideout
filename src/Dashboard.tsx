@@ -275,6 +275,7 @@ export function FacilitatorTile({
   lead,
   live,
   busy,
+  disabled = false,
   chat,
   suggestions,
   placeholder,
@@ -286,6 +287,7 @@ export function FacilitatorTile({
   lead: string;
   live: boolean;
   busy: boolean;
+  disabled?: boolean;
   chat: ChatMessage[];
   suggestions: string[];
   placeholder: string;
@@ -335,14 +337,14 @@ export function FacilitatorTile({
         onSubmit={(event) => {
           event.preventDefault();
           const text = draft.trim();
-          if (!text) return;
+          if (!text || busy || disabled) return;
           setDraft("");
           onAsk(text, event);
         }}
       >
         <Icon name="spark" />
-        <input value={draft} onChange={(event) => setDraft(event.target.value)} placeholder={placeholder} aria-label="Ask the facilitator" />
-        <button type="submit" disabled={!draft.trim()} aria-label="Send to the facilitator">
+        <input disabled={disabled} value={draft} onChange={(event) => setDraft(event.target.value)} placeholder={placeholder} aria-label="Ask the facilitator" />
+        <button type="submit" disabled={busy || disabled || !draft.trim()} aria-label="Send to the facilitator">
           <Icon name="arrow" />
         </button>
       </form>

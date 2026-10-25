@@ -9,7 +9,6 @@ import type { CallCard, House, HouseStatus, Sighting } from "./types";
  * confirmed identity, and only the original reporter's confirmation is a reunion.
  */
 
-export const FOLLOW_UP_MS = 10_000;
 
 export type Brief = { summary: string; suggestions: string[] };
 
@@ -54,7 +53,7 @@ export function reportLabel(progress: AttemptProgressRow | undefined, attempt: A
 
 // A due review lets the coordinator reconsider; it does not promise another call.
 export function followUpAt(progress: AttemptProgressRow | undefined): number | null {
-  return progress?.accepted_at_ms != null ? progress.accepted_at_ms + FOLLOW_UP_MS : null;
+  return null; // No persisted review deadline is exposed by this backend.
 }
 
 export function isPossibleMatch(text: string): boolean {
@@ -76,6 +75,7 @@ export function intakeOf(state: BackendState, caseId: number): CaseIntakeRow | n
 export type CaseStatus = { label: string; tone: "open" | "reunion" | "closed"; reunionAt: string | null };
 
 export function caseStatus(row: SupportCaseRow, intake: CaseIntakeRow | null): CaseStatus {
+  if (row.kind === "information") return { label: row.status === "closed" ? "Closed by organizer" : row.policy?.paused ? "Paused" : "Open", tone: row.status === "closed" ? "closed" : "open", reunionAt: null };
   if (intake?.reunion_confirmed) {
     return { label: "Reunion reported by original reporter · self-reported, not verified", tone: "reunion", reunionAt: intake.confirmed_at };
   }
@@ -88,6 +88,16 @@ export type Coordination = { kind: "none" | "idle" | "pending" | "blocked" | "re
 
 export function coordinationOf(state: BackendState, caseId: number, now: number): Coordination {
   if (state.cases.find((row) => row.id === caseId)?.status === "closed") return { kind: "idle", text: "Case closed. No further calls are planned." };
+  const information = state.cases.find(row => row.id === caseId && row.kind === "information");
+  if (information) {
+    const planning = state.information_planning?.find(p => p.support_case_id === caseId);
+    if (information.policy?.paused) return { kind: "blocked", text: "Paused; organizer action is required." };
+    if (!planning?.enabled) return { kind: "idle", text: "Manual questions. The organizer chooses each call." };
+    if (planning.blocked_reason) return { kind: "blocked", text: planning.blocked_reason };
+    if (planning.error) return { kind: "retrying", text: `Planning failed: ${planning.error}${planning.retry_at_ms ? ` · retry eligible ${new Date(planning.retry_at_ms).toLocaleTimeString()}` : " · organizer action needed"}` };
+    if (information.input_revision !== information.evaluated_revision) return { kind: "pending", text: "New information awaits a coordinator decision." };
+    return { kind: "idle", text: "Current decision includes the evaluated evidence." };
+  }
   const progress = state.coordination.find((row) => row.support_case_id === caseId);
   if (!progress) return { kind: "none", text: "Planned by the dispatcher-reviewed planner." };
   if (progress.blocked_reason) return { kind: "blocked", text: `Blocked: ${progress.blocked_reason}` };
@@ -161,13 +171,16 @@ export function notesFor(state: BackendState, caseId: number): NoteView[] {
 }
 
 export function latestIncident(state: BackendState, sweepOnly: boolean): IncidentRow | null {
-  return [...state.incidents].sort((a, b) => b.id - a.id).find((row) => !sweepOnly || row.area.radius_m > 0) ?? null;
+  return [...state.incidents].sort((a, b) => b.id - a.id).find((row) => !sweepOnly || (row.area?.radius_m ?? 0) > 0) ?? null;
 }
 
 type Point = { id: number; lng: number; lat: number };
 
 /** Registered residents keep the footprint the offline map gives them; anyone else takes the nearest free one. */
 export function housesFrom(state: BackendState, residents: House[], footprints: Point[], bounds: { south: number; north: number; west: number; east: number }): House[] {
+  if (state.read_model_version === 2) return state.profiles
+    .filter(p => Number.isFinite(p.lat) && Number.isFinite(p.lng) && p.lat >= bounds.south && p.lat <= bounds.north && p.lng >= bounds.west && p.lng <= bounds.east)
+    .map(p => ({ id: p.id, name: p.name, lat: p.lat, lng: p.lng, status: "waiting" as const, note: "Stored directory coordinate; current whereabouts unverified." }));
   const sweep = latestIncident(state, true);
   const people = sweep ? state.incident_people.filter((row) => row.incident_id === sweep.id) : [];
   const used = new Set<number>();
@@ -221,7 +234,7 @@ function houseStatus(state: BackendState, profile: ProfileRow, checkIn: string |
 
 /** Map pins: the demo locations, and every note the backend stored with a place. */
 export function sightingsFrom(state: BackendState, caseId: number | null): Sighting[] {
-  const pins: Sighting[] = (state.locations ?? []).map((location) => ({
+  const pins: Sighting[] = (state.read_model_version === 2 ? [] : state.locations ?? []).map((location) => ({
     id: `location-${location.id}`,
     householdId: 0,
     reporter: "",
@@ -270,6 +283,8 @@ const INBOUND: Record<string, string> = {
   pending: "Saved · processing",
   prepared: "Saved · applying",
   recorded: "Recorded",
+  attached: "Attached",
+  rejected: "Rejected",
   needs_clarification: "Needs clarification",
   needs_review: "Needs review",
 };
@@ -278,11 +293,11 @@ export function inboundFrom(state: BackendState): InboundView[] {
   return [...(state.incoming_requests ?? [])]
     .sort((a, b) => b.id - a.id)
     .map((row) => {
-      const caller = state.profiles.filter((profile) => profile.phone === row.from_phone);
+      const caller = row.from_phone ? state.profiles.filter((profile) => !!profile.phone && profile.phone === row.from_phone) : [];
       return {
         row,
         // Caller-number matching is not identity verification.
-        caller: caller.length === 1 ? `${caller[0].name} · by phone number, not verified` : `${row.from_phone} · unknown caller`,
+        caller: caller.length === 1 ? `${caller[0].name} · by phone number, not verified` : `${row.phone_last4 ? `Phone ending ${row.phone_last4}` : "Incoming caller"} · unknown caller, identity unverified`,
         label: INBOUND[row.status] ?? row.status,
         review: row.status === "needs_review" || row.status === "needs_clarification",
       };

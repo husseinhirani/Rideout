@@ -40,6 +40,7 @@ type Props = {
   simple?: boolean;
   showFire?: boolean;
   sightings?: Sighting[];
+  liveData?: boolean;
 };
 
 const STATUS: Record<House["status"], string> = {
@@ -82,7 +83,7 @@ const SIDING = [0xe9e2d3, 0xd8d3c8, 0xc9d1c4, 0xe8d9bf, 0xcdd6dd, 0xf2efe9, 0xbf
 const HOVER_GLOW = 0xffb347;
 const HOVER_LIFT = 2.2;
 
-export function NeighborhoodMap({ place, houses, onSelect, angle = "side", simple = false, showFire = true, sightings = [] }: Props) {
+export function NeighborhoodMap({ place, houses, onSelect, angle = "side", simple = false, showFire = true, sightings = [], liveData = false }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const housesRef = useRef(houses);
   const sightingsRef = useRef(sightings);
@@ -565,6 +566,7 @@ export function NeighborhoodMap({ place, houses, onSelect, angle = "side", simpl
     };
 
     const hoverAt = (event: PointerEvent) => {
+      if (liveData) { setTip(null); return; }
       const rect = node.getBoundingClientRect();
       const id = pickAt(event);
       setHover(id);
@@ -660,7 +662,7 @@ export function NeighborhoodMap({ place, houses, onSelect, angle = "side", simpl
       if (moved > 6 || turning) return;
       hoverAt(event);
       const id = pickAt(event);
-      if (id && housesRef.current.some((house) => house.id === id)) onSelect(id);
+      if (!liveData && id && housesRef.current.some((house) => house.id === id)) onSelect(id);
     };
     const onWheel = (event: WheelEvent) => {
       event.preventDefault();
@@ -792,7 +794,7 @@ export function NeighborhoodMap({ place, houses, onSelect, angle = "side", simpl
       for (const house of housesRef.current) {
         const pin = document.getElementById(`pin-${house.id}`);
         if (!pin) continue;
-        if (simpleRef.current || !PIN_STATUS.has(house.status)) {
+        if (!liveData && (simpleRef.current || !PIN_STATUS.has(house.status))) {
           pin.style.visibility = "hidden";
           continue;
         }
@@ -809,7 +811,7 @@ export function NeighborhoodMap({ place, houses, onSelect, angle = "side", simpl
         const pin = document.getElementById(sighting.id);
         if (!pin) continue;
         const spot = toWorld(sighting.lng, sighting.lat);
-        if (simpleRef.current) {
+        if (simpleRef.current && !liveData) {
           pin.style.visibility = "hidden";
           continue;
         }
@@ -886,7 +888,7 @@ export function NeighborhoodMap({ place, houses, onSelect, angle = "side", simpl
       node.removeChild(renderer.domElement);
       node.removeChild(labelLayer);
     };
-  }, [onSelect, place]);
+  }, [onSelect, place, liveData]);
 
   return (
     <div className={simple ? "scene simple" : "scene"}>
