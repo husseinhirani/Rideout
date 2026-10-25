@@ -46,7 +46,7 @@ export async function downloadLog(snapshot: Snapshot) {
   const pad = (value: number) => String(value).padStart(2, "0");
   const stamp = `${exportedAt.getFullYear()}-${pad(exportedAt.getMonth() + 1)}-${pad(exportedAt.getDate())}-${pad(exportedAt.getHours())}${pad(exportedAt.getMinutes())}`;
   link.href = url;
-  link.download = `rideout-log-${snapshot.place.name.toLowerCase()}-${stamp}.zip`;
+  link.download = `sealert-log-${snapshot.place.name.toLowerCase()}-${stamp}.zip`;
   link.click();
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }

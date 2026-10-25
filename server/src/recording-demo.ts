@@ -36,8 +36,8 @@ export async function runRecordingDemo(options: RecordingOptions): Promise<Recor
   if (base.protocol !== "http:" || base.hostname !== "127.0.0.1" || base.pathname !== "/" || base.search || base.hash || base.username || base.password) {
     throw new Error("Recording requires http://127.0.0.1:<port> with no path or credentials")
   }
-  if (!/^rideout-recording(?:-[a-z0-9-]+)?$/.test(options.database)) {
-    throw new Error("RECORDING_DATABASE must name a dedicated rideout-recording or rideout-recording-* database")
+  if (!/^sealert-recording(?:-[a-z0-9-]+)?$/.test(options.database)) {
+    throw new Error("RECORDING_DATABASE must name a dedicated sealert-recording or sealert-recording-* database")
   }
   const fetcher = options.fetch ?? fetch
   const events: RecordingEvent[] = []
@@ -140,7 +140,7 @@ export async function runRecordingDemo(options: RecordingOptions): Promise<Recor
 
 async function main(): Promise<void> {
   if (process.argv.includes("--help")) {
-    console.log("Usage: RECORDING_DATABASE=rideout-recording-<name> npm run demo:recording\nOptional RECORDING_URL=http://127.0.0.1:8787. Start a seeded simulated/scripted recording backend first. Emits JSON stage events to stdout; redirect to save a transcript. No database reset or phone/provider changes.")
+    console.log("Usage: RECORDING_DATABASE=sealert-recording-<name> npm run demo:recording\nOptional RECORDING_URL=http://127.0.0.1:8787. Start a seeded simulated/scripted recording backend first. Emits JSON stage events to stdout; redirect to save a transcript. No database reset or phone/provider changes.")
     return
   }
   if (process.argv.length > 2) throw new Error("Unknown argument; use --help")

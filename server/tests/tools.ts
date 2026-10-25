@@ -12,10 +12,10 @@ import {
   type ListedTool,
 } from "../src/setup-tools"
 
-assert.equal(webhookBase("https://rideout.ngrok.app/"), "https://rideout.ngrok.app")
+assert.equal(webhookBase("https://sealert.ngrok.app/"), "https://sealert.ngrok.app")
 assert.throws(() => webhookBase(""), /NGROK_URL is not set/)
-assert.throws(() => webhookBase("http://rideout.ngrok.app"), /https/)
-assert.throws(() => webhookBase("https://rideout.ngrok.app/check-ins"), /path/)
+assert.throws(() => webhookBase("http://sealert.ngrok.app"), /https/)
+assert.throws(() => webhookBase("https://sealert.ngrok.app/check-ins"), /path/)
 
 const older: ListedTool = { id: "old", name: "record_check_in", updatedAt: "2026-01-01T00:00:00Z" }
 const newer: ListedTool = { id: "new", name: "record_check_in", updatedAt: "2026-02-01T00:00:00Z" }
@@ -60,11 +60,11 @@ const outboundFields = outbound.api_schema.request_body_schema.properties as Rec
 assert.equal(outboundFields.attempt_id.dynamic_variable, "attempt_id")
 assert.equal(outboundFields.provider_call_id.dynamic_variable, "system__conversation_id")
 assert.equal(outboundFields.direction.dynamic_variable, "system__call_direction")
-const created = toolRequest(definitions[0], "https://rideout.ngrok.app", true, "s3cret")
-const updated = toolRequest(definitions[0], "https://rideout.ngrok.app", false, "s3cret")
+const created = toolRequest(definitions[0], "https://sealert.ngrok.app", true, "s3cret")
+const updated = toolRequest(definitions[0], "https://sealert.ngrok.app", false, "s3cret")
 assert.equal(created.type, "webhook")
 assert.equal("type" in updated, false)
-assert.equal((created.api_schema as { url: string }).url, "https://rideout.ngrok.app/check-ins")
+assert.equal((created.api_schema as { url: string }).url, "https://sealert.ngrok.app/check-ins")
 
 // Hosted setup cannot silently clear the credential already used by live tools.
 assert.deepEqual(toolAuth("s3cret"), { mode: "bearer", token: { type: "secret", secret_value: "s3cret" } })

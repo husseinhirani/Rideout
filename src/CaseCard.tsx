@@ -61,7 +61,7 @@ export function CaseCard({
       </div>
       <h3>{child?.name ?? "Unknown person"}</h3>
       <p className="case-goal">{row.goal}</p>
-      {status.reunionAt ? <p className="case-note good">Reported at {new Date(status.reunionAt).toLocaleTimeString()}. Self-reported by the original reporter; RideOut did not verify it.</p> : null}
+      {status.reunionAt ? <p className="case-note good">Reported at {new Date(status.reunionAt).toLocaleTimeString()}. Self-reported by the original reporter; Sealert did not verify it.</p> : null}
 
       {intake ? (
         <dl>

@@ -73,7 +73,7 @@ export function IntakeForm({
         <p className="kicker hot">Missing child · live case</p>
         <h3>Open a case from what the reporter told you</h3>
         <p className="form-lead">
-          RideOut calls the two configured helpers and follows up when they accept. The reporter is self-reported, not verified. Only the original reporter can
+          Sealert calls the two configured helpers and follows up when they accept. The reporter is self-reported, not verified. Only the original reporter can
           confirm a reunion.
         </p>
         {!coordinated ? <p className="form-lead warn wide">This backend is not running automatic coordination, so it cannot open an intake case.</p> : null}

@@ -1,3 +1,3 @@
 #!/bin/sh
 cd "$(dirname "$0")" || exit 1
-exec spacetime publish rideout --server local --module-path spacetimedb --delete-data=always --yes=delete-data
+exec spacetime publish sealert --server local --module-path spacetimedb --delete-data=always --yes=delete-data

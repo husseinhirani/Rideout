@@ -1,4 +1,4 @@
-# RideOut design
+# Sealert design
 
 ## Connected product
 
@@ -58,7 +58,7 @@ Labels are sentence case. Numbers use tight tracking.
 
 Cards float. They do not split the screen into a rigid app frame.
 
-- Top: the word RideOut, and pills for Checks, Map, Routes, Fire. No logo mark.
+- Top: the word Sealert, and pills for Checks, Map, Routes, Fire. No logo mark.
 - Left: two huge metrics, then the check list
 - Right: the match
 - Bottom: the live log

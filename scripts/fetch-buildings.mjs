@@ -11,7 +11,7 @@ const endpoints = [
   "https://overpass.kumi.systems/api/interpreter",
 ];
 
-const USER_AGENT = "RideOutCalHacks/0.1 (educational hackathon demo)";
+const USER_AGENT = "SealertCalHacks/0.1 (educational hackathon demo)";
 
 function toFeatures(elements) {
   return elements

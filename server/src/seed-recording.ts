@@ -5,7 +5,7 @@ import { BLOCK } from "../shared/locations"
 loadEnv()
 async function seed(): Promise<void> {
   const name=process.env.SPACETIMEDB_DATABASE ?? ""
-  if (!/^rideout-recording-[a-z0-9-]+$/.test(name)) throw new Error("Set SPACETIMEDB_DATABASE to a dedicated rideout-recording-<name> database")
+  if (!/^sealert-recording-[a-z0-9-]+$/.test(name)) throw new Error("Set SPACETIMEDB_DATABASE to a dedicated sealert-recording-<name> database")
   if ((await profiles()).length || (await supportCases()).length) throw new Error("Recording seed requires an empty database; it never deletes data")
   for (const [name,phone] of [["Blair (recording)","+15555550102"],["Casey (recording)","+15555550103"],["Ava (recording)",""],["Morgan (recording)","+15555550104"]]) {
     await callReducer("insertProfile",[name,phone,BLOCK.lat,BLOCK.lng,[]])
