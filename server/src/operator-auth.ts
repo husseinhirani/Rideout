@@ -9,7 +9,7 @@ export type AccessConfig = {
   operatorOrigins: ReadonlySet<string>
 }
 
-const CALLBACK_PATHS = new Set(["/requests", "/calls/report", "/check-ins"])
+const CALLBACK_PATHS = new Set(["/requests", "/calls/report", "/calls/events", "/check-ins"])
 
 export function isCallbackPath(path: string): boolean {
   return CALLBACK_PATHS.has(path)
@@ -46,7 +46,10 @@ export function authorizeRequest(req: IncomingMessage, config: AccessConfig): vo
     if (req.method !== "POST") throw new ServiceError(405, "callback requires POST")
     // Simulated reports use explicit operator endpoints, never a credential-free provider route.
     if (!config.callbackSecret) throw new ServiceError(503, "Callback authentication is not configured")
-    requireBearer(req.headers.authorization, config.callbackSecret)
+    if (path === "/calls/events") {
+      const header = req.headers["x-webhook-secret"]
+      requireBearer(typeof header === "string" ? "Bearer " + header : undefined, config.callbackSecret)
+    } else requireBearer(req.headers.authorization, config.callbackSecret)
     return
   }
   requireBearer(req.headers.authorization, config.operatorSecret)

@@ -10,8 +10,9 @@ import { receiveInformationRequest } from "./information-incoming"
 import { startInformationWorker } from "./information-worker"
 import { asId, asNumber, asString, ServiceError } from "./service"
 import { contactScope } from "../shared/information"
-import { startWildfireDrill, wildfireDemo } from "./wildfire-drill"
+import { startWildfireDrill, wildfireDemo, wildfireDrills } from "./wildfire-drill"
 import { attemptAudio } from "./call-audio"
+import { attemptTranscript, receiveCallEvent } from "./call-transcript"
 
 const BODY_LIMIT = 1_000_000
 loadEnv()
@@ -40,10 +41,11 @@ createLocalConsole({ port: consolePort, apiPort: port, operatorSecret: access.op
 }).listen(consolePort, "127.0.0.1", () => console.log("Local test console: http://127.0.0.1:" + consolePort))
 
 async function state() {
-  const [legacy, information, incoming, coordination, inbound] = await Promise.all([getState(false), readInformationState(), incomingRequests(), readInformationPlanning(), readInformationIncomingState()])
+  const [legacy, information, incoming, coordination, inbound, drills] = await Promise.all([getState(false), readInformationState(), incomingRequests(), readInformationPlanning(), readInformationIncomingState(), wildfireDrills()])
   return {
     ...legacy, read_model_version: 2, server_time_ms: Date.now(),
     wildfire_demo: wildfireDemo(),
+    wildfire_drills: drills,
     profiles: (legacy.profiles as ProfileRow[]).map(({phone, ...profile}) => ({...profile, phone_last4: phone.slice(-4)})),
     incidents: [...legacy.incidents as unknown[], ...information.incidents.map(i => ({...i, kind: "information", type: "Information investigation", brief: ""}))],
     cases: [...legacy.cases as unknown[], ...information.cases.map(c => ({...c, kind: "information", goal: c.objective, victim_profile_id: null}))],
@@ -72,10 +74,15 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
   const url = new URL(req.url ?? "/", "http://127.0.0.1")
   const path = url.pathname
   if (req.method === "GET") {
+    const transcript = /^\/attempts\/(\d+)\/transcript$/.exec(path)
+    if (transcript) {
+      res.setHeader("Cache-Control", "no-store")
+      send(res, 200, await attemptTranscript(asId(transcript[1], "attempt_id"))); return
+    }
     const audio = /^\/attempts\/(\d+)\/audio$/.exec(path)
     if (audio) {
       const data = await attemptAudio(asId(audio[1], "attempt_id"))
-      if (!data) { send(res, 202, { status: "waiting", message: "Waiting for provider audio. Cartesia may release the recording only after the call ends." }); return }
+      if (!data) { send(res, 202, { status: "waiting", message: "Waiting for the completed call recording." }); return }
       res.writeHead(200, { "Content-Type": "audio/wav", "Content-Length": data.length, "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" })
       res.end(data); return
     }
@@ -117,6 +124,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
   if (path === "/intake-configuration") { send(res, 200, await configureInformationIntake(body, actor)); return }
   const review = /^\/incoming-requests\/(\d+)\/review$/.exec(path)
   if (review) { send(res, 200, await reviewInformationIncoming(asId(review[1], "request_id"), body, actor)); return }
+  if (path === "/calls/events") { send(res, 200, receiveCallEvent(body)); return }
   if (path === "/calls/report") { send(res, 200, await receiveInformationReport(body)); return }
   if (path === "/requests") {
     if (process.env.INBOUND_REQUESTS !== "1") throw new ServiceError(503, "Inbound receipt is not enabled")

@@ -122,6 +122,7 @@ export function informationCases(state: BackendState): InformationCase[] { retur
 export type DirectoryResult = { profiles: (ProfileRow & { eligible: boolean; eligibility_reasons: string[]; call_consent: boolean; availability: string })[]; next_after_id: number | null };
 export type BackendState = {
   wildfire_demo?: { name: string; ready: boolean };
+  wildfire_drills?: { case_id: number; profile_id: number; started_at: string }[];
   read_model_version?: number;
   server_time_ms?: number;
   adaptive_planning_available?: boolean;

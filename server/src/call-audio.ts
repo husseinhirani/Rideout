@@ -1,26 +1,13 @@
-import { attempts, profiles } from "./db"
-import { getCall, CartesiaServiceError } from "./cartesia"
-import { verifyOutboundCallBinding } from "./provider-binding"
+import { isTerminalCallStatus } from "./cartesia"
+import { verifiedAttemptCall } from "./call-transcript"
 import { ServiceError } from "./service"
 
 /** Operator-only proxy. Provider credentials and full phone numbers never reach the UI. */
 export async function attemptAudio(attemptId: number): Promise<Buffer | null> {
-  const attempt = (await attempts()).find(a => a.id === attemptId)
-  if (!attempt) throw new ServiceError(404, "Call attempt not found")
-  if (!attempt.call_id) return null
-  if (attempt.call_id.startsWith("sim_")) throw new ServiceError(409, "Simulated calls have no phone audio")
-  const person = (await profiles()).find(p => p.id === attempt.profile_id)
-  let call
-  try { call = await getCall(attempt.call_id) }
-  catch (error) { if (error instanceof CartesiaServiceError && error.status === 404) return null; throw error }
-  if (!person) throw new ServiceError(404, "Call participant not found")
-  const binding = verifyOutboundCallBinding(call, {
-    providerCallId: attempt.call_id, agentId: process.env.CARTESIA_AGENT_ID ?? "",
-    toNumber: person.phone, attemptId: String(attempt.id),
-  })
-  if (binding.status === "pending") return null
-  if (binding.status !== "matched") throw new ServiceError(409, "Call identity is not verified for audio playback")
-  const response = await fetch(`https://api.cartesia.ai/agents/calls/${encodeURIComponent(attempt.call_id)}/audio`, {
+  const verified = await verifiedAttemptCall(attemptId)
+  if (!verified || !isTerminalCallStatus(verified.call.status)) return null
+  const callId = verified.callId
+  const response = await fetch(`https://api.cartesia.ai/agents/calls/${encodeURIComponent(callId)}/audio`, {
     headers: { "X-API-Key": process.env.CARTESIA_API_KEY ?? "", "Cartesia-Version": "2026-08-14" },
     signal: AbortSignal.timeout(15000), redirect: "error",
   })

@@ -16,7 +16,7 @@ import { OperatorPanel } from "./OperatorPanel";
 import { RegisterForm } from "./RegisterForm";
 import { downloadLog } from "./exportLog";
 import { householdFor } from "./households";
-import { assignHouses, footprints, GEO, useRideOut } from "./telemetry";
+import { assignHouses, footprints, GEO, useRideOut, wildfireMockCalls } from "./telemetry";
 import type { ChatMessage, HouseStatus, OperatorSession } from "./types";
 
 const STATUS: Record<HouseStatus, string> = {
@@ -82,6 +82,8 @@ export function App() {
     [],
   );
   const liveCase = state ? currentCase(state, caseId) : null;
+  const liveDrill = state?.wildfire_drills?.find(drill => drill.case_id === liveCase?.id);
+  const mockCalls = liveDrill ? wildfireMockCalls(Date.parse(liveDrill.started_at), now.getTime()) : [];
   const savedChat = savedConversation(state, liveCase?.id ?? null);
   const conversation = [...savedChat, ...liveChat.filter(message => !savedChat.some(saved => saved.from === message.from && saved.text === message.text))].sort((a,b) => a.at - b.at);
   useEffect(() => { setLiveChat([]); }, [liveCase?.id]);
@@ -122,6 +124,7 @@ export function App() {
       await backend.run(() => api.report(attemptId, answer, concernText));
     },
     callYourself: (call: LiveCall) => {
+      if (["queued", "dispatching", "active", "unknown"].includes(call.transport ?? "unknown")) return;
       const house = liveHouses.find((item) => item.name === call.person?.name);
       setOutside({
         call,
@@ -396,6 +399,8 @@ export function App() {
             state={state}
             caseId={liveCase?.id ?? null}
             houses={liveHouses}
+            mockCalls={mockCalls}
+            firstProfileId={liveDrill?.profile_id}
             chat={conversation}
             busy={chatBusy}
             operatorBusy={Boolean(outside)}
@@ -408,9 +413,7 @@ export function App() {
               <p>
                 <b>{concern.person?.name ?? "A helper"} raised a concern.</b> {concern.attempt.concern}
               </p>
-              <button type="button" className="pick-up" onClick={() => liveActions.callYourself(concern)}>
-                Call them yourself
-              </button>
+              <span>Follow this call in Outgoing calls.</span>
             </div>
           ) : null}
 

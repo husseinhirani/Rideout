@@ -22,17 +22,35 @@ no tables or schema changes are introduced.
 start command in session storage so retry/refresh cannot create a second case.
 The outgoing row uses the existing backend profile/attempt join.
 
-`GET /attempts/:id/audio` is an operator-only proxy that verifies the provider
-call binding and fetches actual WAV audio. The browser polls every three seconds
-while listening and plays only newly available samples. Mute/unmount stops local
-playback and polling without ending the phone call. This is buffered provider
-audio, not guaranteed live monitoring: Cartesia documents recordings as available
-after the call ends. Before audio is available the UI states that limitation.
-No synthesized transcript audio substitutes for the phone conversation.
+`GET /state` also returns saved wildfire drill case/profile IDs and start times
+from the existing operator command log. The UI reconstructs the existing 12-person
+mock wave (plus its three scripted follow-ups) from that time, below the real
+participant. Refreshing preserves the script's elapsed time. Mock rows and the
+combined counts are explicitly labeled; they never enter the directory, evidence,
+reports, or dispatch worker. Only the configured participant receives a phone call.
 
-Provider references: [call recordings](https://docs.cartesia.ai/line/infrastructure/observability#call-recordings)
-and [download audio](https://docs.cartesia.ai/api-reference/agents/calls/download-call-audio).
-True during-call playback remains unverified with this provider path.
+Before any real outbound call or batch is sent, the shared provider client ensures
+the configured Cartesia agent has an event webhook at `NGROK_URL` + `/calls/events`. It creates and attaches
+one if absent, reuses the matching URL, and refuses to replace another destination.
+The webhook secret must match `CALLBACK_SECRET`; after changing that secret, update
+it in the agent's webhook settings too. Keep `ngrok http 8787 --url=crawlers-quail-unwieldy.ngrok-free.dev` running.
+
+`POST /calls/events` checks `x-webhook-secret` and the configured agent. Spoken
+`call_turn` events are deduplicated by turn ID and retained in a bounded, two-hour
+memory cache. `GET /attempts/:id/transcript` verifies the provider call's agent,
+destination and attempt binding before returning either live turns or the stored
+provider transcript. The expanded UI polls every two seconds while active and
+five seconds after ending until a saved transcript arrives. Provider history
+restores completed conversations after server restart; live delivery requires the
+tunnel. Transcripts are display data, distinct from reports and model evidence.
+
+`GET /attempts/:id/audio` verifies the same binding and refuses playback until the
+provider reports a terminal status. The recording button is shown only for ended
+real calls. It retries while Cartesia prepares the WAV, then plays the recording.
+Closing the row or stopping playback releases local audio resources. No active-call
+listening button or second-call action appears while the agent is on the phone.
+
+Provider reference: [turn webhooks, transcripts and recordings](https://docs.cartesia.ai/line/infrastructure/observability).
 
 ## UI/backend integration
 

@@ -1,9 +1,18 @@
 import { commandId, object, dialablePhone, normalizePhone } from "../shared/information"
 import { runInformationCommand } from "./information"
+import { query, asString, asTimestamp } from "./db"
 import { ServiceError } from "./service"
 
 export function wildfireDemo() {
   return { name: process.env.WILDFIRE_DEMO_NAME?.trim() || "Tony Nguyen", ready: dialablePhone(process.env.WILDFIRE_DEMO_PHONE?.trim() || "") }
+}
+
+export async function wildfireDrills() {
+  const rows = await query("SELECT * FROM operator_command WHERE operation = 'wildfire_drill'")
+  return rows.map(row => {
+    const result = JSON.parse(asString(row.result_json))
+    return { case_id: result.support_case_id as number, profile_id: result.profile_id as number, started_at: asTimestamp(row.created_at) }
+  })
 }
 
 /** Only an authenticated operator click reaches this; no phone comes from the browser. */

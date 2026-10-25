@@ -1,3 +1,5 @@
+import { ensureCallEvents } from "./call-events-setup"
+
 const CARTESIA_VERSION = "2026-08-14"
 const CARTESIA_BASE_URL = "https://api.cartesia.ai"
 const HTTP_TIMEOUT_MS = 30_000
@@ -6,6 +8,25 @@ const CHECKIN_ASK = "Are you safe right now, and can you get out on your own?"
 const E164 = /^\+[1-9]\d{1,14}$/
 
 export type DynamicValue = string | number | boolean
+
+export type CallTurn = {
+  id: string
+  role: "assistant" | "user"
+  text: string
+  start: number
+  interrupted: boolean
+}
+
+export function decodeCallTurns(value: unknown): CallTurn[] {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((raw): CallTurn[] => {
+    const turn = objectOrEmpty(raw)
+    if ((turn.role !== "assistant" && turn.role !== "user") || typeof turn.text !== "string" || !turn.text.trim()) return []
+    const start = typeof turn.start_timestamp === "number" && Number.isFinite(turn.start_timestamp) ? Math.max(0, turn.start_timestamp) : 0
+    return [{ id: String(turn.id ?? `${turn.role}:${start}`), role: turn.role, text: turn.text,
+      start, interrupted: turn.was_interrupted === true }]
+  }).sort((a, b) => a.start - b.start)
+}
 
 export type CallRecord = {
   status: string
@@ -20,6 +41,7 @@ export type CallRecord = {
   fromNumber?: string | null
   toNumber?: string | null
   attemptId?: string | null
+  transcript?: CallTurn[]
 }
 
 export class CartesiaServiceError extends Error {
@@ -41,7 +63,7 @@ export class CartesiaServiceError extends Error {
   }
 }
 
-export function placeCall(to: string, variables: Record<string, DynamicValue>): Promise<string> {
+export async function placeCall(to: string, variables: Record<string, DynamicValue>): Promise<string> {
   if (E164.test(to) === false) {
     return Promise.reject(new Error("phone number must be E.164, for example +14155550123"))
   }
@@ -52,6 +74,7 @@ export function placeCall(to: string, variables: Record<string, DynamicValue>): 
     console.log("simulate dial for attempt " + String(variables.attempt_id ?? "unbound") + " to number ending " + to.slice(-4))
     return Promise.resolve(simulated)
   }
+  await ensureCallEvents(cartesiaJson)
   return postJson("/agents/calls", {
     from_number_id: requireEnv("CARTESIA_FROM_NUMBER_ID"),
     agent_id: requireEnv("CARTESIA_AGENT_ID"),
@@ -75,7 +98,7 @@ export function placeCheckInCall(
   return placeCall(to, { ask: CHECKIN_ASK, context: "", person_name: "", ...variables })
 }
 
-export function placeBatch(
+export async function placeBatch(
   recipients: { to: string; variables: Record<string, DynamicValue> }[],
 ): Promise<string> {
   if (recipients.length === 0) {
@@ -86,6 +109,7 @@ export function placeBatch(
       return Promise.reject(new Error("phone number must be E.164, for example +14155550123"))
     }
   }
+  await ensureCallEvents(cartesiaJson)
   return postJson("/agents/calls/batches", {
     from_number_id: requireEnv("CARTESIA_FROM_NUMBER_ID"),
     agent_id: requireEnv("CARTESIA_AGENT_ID"),
@@ -119,6 +143,7 @@ export function decodeCallRecord(payload: JsonObject): CallRecord {
     fromNumber: textOrNull(telephony.from),
     toNumber: textOrNull(telephony.to),
     attemptId: textOrNull(variables.attempt_id),
+    transcript: decodeCallTurns(payload.transcript),
   }
 }
 

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { CallTranscript } from "./CallTranscript";
 import { CallAudio } from "./CallAudio";
 import type { BackendState } from "./api";
 import { eventKey } from "./backend";
@@ -23,7 +24,7 @@ import {
   type TimelineLine,
 } from "./Dashboard";
 import { awaitingSimulatedReport, briefOf, callsFor, cancellable, coordinationOf, currentCase, inboundFrom, latestIncident, type InboundView, type LiveCall } from "./live";
-import type { ChatMessage, House } from "./types";
+import type { CallCard, ChatMessage, House } from "./types";
 
 export type LiveActions = {
   cancel: (attemptId: number) => Promise<string>;
@@ -46,6 +47,8 @@ export function LiveChecks({
   state,
   caseId,
   houses,
+  mockCalls = [],
+  firstProfileId,
   chat,
   busy,
   operatorBusy,
@@ -56,6 +59,8 @@ export function LiveChecks({
   state: BackendState;
   caseId: number | null;
   houses: House[];
+  mockCalls?: CallCard[];
+  firstProfileId?: number;
   chat: ChatMessage[];
   busy: boolean;
   operatorBusy: boolean;
@@ -63,7 +68,11 @@ export function LiveChecks({
   actions: LiveActions;
 }) {
   const row = currentCase(state, caseId);
-  const calls = callsFor(state, row?.id ?? null);
+  const calls = callsFor(state, row?.id ?? null).sort((a, b) => Number(b.person?.id === firstProfileId) - Number(a.person?.id === firstProfileId));
+  const mockActive = mockCalls.filter(call => call.phase === "live").length;
+  const mockPending = mockCalls.filter(call => call.phase === "live" || call.phase === "calling").length;
+  const total = calls.length + mockCalls.length;
+  const realCount = calls.filter(call => !call.simulated).length;
   const sweep = row?.kind === "information" ? null : latestIncident(state, true);
   const inbound = inboundFrom(state);
   const review = inbound.filter((item) => item.review);
@@ -90,7 +99,7 @@ export function LiveChecks({
     });
   const incident = state.incidents.find((item) => item.id === row?.incident_id) ?? sweep;
   const elapsed = incident ? seconds(Date.parse(incident.created_at) || now, now) : 0;
-  const status = pending.length ? "Live" : row ? (row.status === "closed" ? "Case closed" : `Case #${row.id}`) : "Standing by";
+  const status = pending.length + mockPending ? "Live" : row ? (row.status === "closed" ? "Case closed" : `Case #${row.id}`) : "Standing by";
   const coordination = row ? coordinationOf(state, row.id, now) : null;
   const latest = inbound[0];
 
@@ -98,9 +107,9 @@ export function LiveChecks({
     {
       id: "outgoing",
       label: "Outgoing calls",
-      value: calls.length,
+      value: total,
       icon: "phoneOut",
-      detail: calls.length ? `${reach}% reported · ${active.length} on the line${current?.person ? ` · ${current.person.name.split(" ")[0]}` : ""}` : row ? "No calls planned yet" : "Calls appear once a case opens",
+      detail: mockCalls.length ? `${realCount} real · ${total - realCount} simulated · ${active.length + mockActive} on the line` : calls.length ? `${reach}% reported · ${active.length} on the line${current?.person ? ` · ${current.person.name.split(" ")[0]}` : ""}` : row ? "No calls planned yet" : "Calls appear once a case opens",
     },
     {
       id: "incoming",
@@ -134,7 +143,7 @@ export function LiveChecks({
             <p>{incident?.type ? incident.type[0].toUpperCase() + incident.type.slice(1) : incident ? "Incident" : "No incident yet"} · live backend</p>
           </div>
           <div className="dash-pills">
-            <span className={`dash-pill${pending.length ? " live" : ""}`}>
+            <span className={`dash-pill${pending.length + mockPending ? " live" : ""}`}>
               <i />
               {status}
             </span>
@@ -142,7 +151,7 @@ export function LiveChecks({
               <Icon name="clock" />
               {mmss(elapsed)}
             </span>
-            <span className="dash-pill dark">{simulate ? "Simulated calls" : "Real calls"}</span>
+            <span className="dash-pill dark">{mockCalls.length ? "Real + simulated calls" : simulate ? "Simulated calls" : "Real calls"}</span>
           </div>
         </header>
 
@@ -157,15 +166,15 @@ export function LiveChecks({
               <span className="calls-figures">
                 <span>
                   <small>Calls</small>
-                  <strong>{calls.length}</strong>
+                  <strong>{total}</strong>
                 </span>
                 <span>
                   <small>Reports in</small>
                   <strong>{reported}</strong>
                 </span>
-                {pending.length ? <em className="chip">{pending.length} in progress</em> : null}
+                {pending.length + mockPending ? <em className="chip">{pending.length + mockPending} in progress</em> : null}
               </span>
-              <Bars bars={liveBars(calls, now, current)} empty={row ? "No calls planned for this case yet" : "Calls appear once a case opens"} />
+              <Bars bars={[...liveBars(calls, now, current), ...mockCalls.map(call => ({ id: call.id, tone: mockTone(call), height: call.phase === "calling" ? 34 : barHeight(seconds(call.answeredAt ?? call.startedAt, call.endedAt ?? now), 42), title: `${call.name} · Simulated` }))]} empty={row ? "No calls planned for this case yet" : "Calls appear once a case opens"} />
               <span className="legend-row">
                 <span><i className="k-live" />Active</span>
                 <span><i className="k-ring" />Placing</span>
@@ -223,19 +232,20 @@ export function LiveChecks({
           {focus.id === "outgoing" ? (
             <>
               <div className="focus-stats">
-                <span><strong>{calls.length}</strong>calls</span>
-                <span><strong>{active.length}</strong>active</span>
+                <span><strong>{total}</strong>calls</span>
+                <span><strong>{active.length + mockActive}</strong>active</span>
                 <span><strong>{reported}</strong>reports in</span>
                 <span><strong>{calls.filter((call) => call.transport === "unknown").length}</strong>unresolved</span>
               </div>
-              <p className="focus-note">Call status comes from the phone provider. A report is separate: answered does not mean the call ended.</p>
-              {calls.length === 0 ? (
+              <p className="focus-note">{mockCalls.length ? `${realCount} real call${realCount === 1 ? "" : "s"} · ${total - realCount} simulated calls. Scripted neighbors do not contribute saved reports.` : "Call status comes from the phone provider. Reports are saved separately."}</p>
+              {total === 0 ? (
                 <p className="focus-empty">{row ? "No calls planned for this case yet." : "Calls appear once a case opens."}</p>
               ) : (
                 <ul className="call-list">
                   {calls.map((call) => (
                     <LiveCallRow key={call.attempt.id} call={call} now={now} simulate={simulate} operatorBusy={operatorBusy} actions={actions} initial={focus.item === String(call.attempt.id)} />
                   ))}
+                  {mockCalls.map(call => <MockCallRow key={call.id} call={call} now={now} />)}
                 </ul>
               )}
             </>
@@ -389,7 +399,6 @@ function LiveCallRow({
   call,
   now,
   simulate,
-  operatorBusy,
   actions,
   initial,
 }: {
@@ -404,7 +413,6 @@ function LiveCallRow({
   const [notice, setNotice] = useState<string | null>(null);
   const [answer, setAnswer] = useState("");
   const [concern, setConcern] = useState("");
-  const pending = call.transport === "active" || call.transport === "dispatching" || call.transport === "queued";
   const showReport = simulate && awaitingSimulatedReport(call);
   const shown = open || showReport || call.transport === "unknown";
   const name = call.person?.name ?? "Unknown";
@@ -415,9 +423,9 @@ function LiveCallRow({
   const length = liveLength(call, now);
   const stamp = (ms: number | null) => (ms && created ? mmss(seconds(created, ms)) : "");
 
-  const lines: TimelineLine[] = [{ at: "0:00", who: "Asked", text: call.attempt.ask, kind: "system" }];
+  const lines: TimelineLine[] = [{ at: "0:00", who: "Assigned question", text: call.attempt.ask, kind: "system" }];
   if (placed) lines.push({ at: stamp(placed), who: "", text: call.simulated ? "Simulated call placed." : "Call placed.", kind: "system" });
-  if (call.attempt.answer) lines.push({ at: stamp(reportedAt), who: first, text: call.attempt.answer, kind: "them" });
+  if (call.attempt.answer) lines.push({ at: stamp(reportedAt), who: `${first} · saved report`, text: call.attempt.answer, kind: "them" });
   if (call.attempt.concern) lines.push({ at: stamp(reportedAt), who: "Concern", text: call.attempt.concern, kind: "warn" });
   if (call.progress?.dispatch_error) lines.push({ at: "", who: "Dispatch", text: call.progress.dispatch_error, kind: "warn" });
   if (call.followUpAt !== null && !call.progress?.review_consumed) {
@@ -464,24 +472,14 @@ function LiveCallRow({
               {timeOf(placed)}
             </span>
           </div>
-          {cancellable(call) || (pending && call.person) ? (
-            <div className="call-actions">
-              {pending && call.person ? (
-                <button type="button" className="hot" disabled={operatorBusy} onClick={() => actions.callYourself(call)}>
-                  <Icon name="phoneOut" />
-                  Call them yourself
-                </button>
-              ) : null}
-              {cancellable(call) ? (
-                <button type="button" onClick={async () => setNotice(await actions.cancel(call.attempt.id))}>
-                  <Icon name="close" />
-                  Cancel call
-                </button>
-              ) : null}
-            </div>
-          ) : null}
+          {cancellable(call) && <div className="call-actions">
+            <button type="button" onClick={async () => setNotice(await actions.cancel(call.attempt.id))}>
+              <Icon name="close" /> Cancel call
+            </button>
+          </div>}
           <Timeline lines={lines} />
-          {shown && !call.simulated && <CallAudio attemptId={call.attempt.id} ended={call.transport === "ended"} disabled={!call.attempt.call_id || call.transport === "cancelled"} />}
+          {shown && !call.simulated && call.attempt.call_id && <CallTranscript key={call.attempt.id} attemptId={call.attempt.id} name={name} ended={call.transport === "ended"} />}
+          {shown && !call.simulated && call.transport === "ended" && call.attempt.call_id && <CallAudio attemptId={call.attempt.id} />}
           {showReport ? (
             <form
               className="dash-sim"
@@ -509,6 +507,32 @@ function LiveCallRow({
       </div>
     </li>
   );
+}
+
+function mockTone(call: CallCard): BarTone {
+  return call.phase === "calling" ? "ring" : call.phase === "live" ? "live" : call.phase === "missed" ? "miss" : "done";
+}
+
+function MockCallRow({ call, now }: { call: CallCard; now: number }) {
+  const [open, setOpen] = useState(false);
+  const label = call.phase === "calling" ? "Ringing" : call.phase === "live" ? "Active" : call.phase === "missed" ? "No answer" : "Ended";
+  return <li className={`dash-call t-${mockTone(call)}${open ? " open" : ""}`}>
+    <button type="button" className="call-head" onClick={() => setOpen(!open)} aria-expanded={open}>
+      <span className="face">{initials(call.name)}</span>
+      <span className="call-name"><b>{call.name}</b><small>Simulated · wildfire drill</small></span>
+      <em className="call-state"><i />{label}</em>
+      <span className="call-time">{mmss(seconds(call.answeredAt ?? call.startedAt, call.endedAt ?? now))}</span>
+      <Icon name="chevron" />
+    </button>
+    <div className="call-drop"><div>
+      <p className="focus-note">Scripted demo call. This neighbor has not been phoned.</p>
+      <Timeline lines={[
+        { at: "0:00", who: "Agent · simulated", text: "Are you safe, and can you leave on your own?", kind: "you" },
+        ...(call.transcript ? [{ at: mmss(seconds(call.startedAt, call.answeredAt ?? now)), who: call.name, text: call.transcript, kind: "them" as const }] : []),
+        { at: mmss(seconds(call.startedAt, call.endedAt ?? now)), who: "", text: label, kind: "system" },
+      ]} />
+    </div></div>
+  </li>;
 }
 
 function InboundRow({ item }: { item: InboundView }) {

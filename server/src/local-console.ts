@@ -81,7 +81,7 @@ async function handle(req: IncomingMessage, res: ServerResponse, options: Consol
 }
 
 function isOperatorProxyRoute(method: string, path: string): boolean {
-  if (method === "GET") return ["/state", "/profiles", "/intake-configuration"].includes(path) || /^\/attempts\/\d+\/audio$/.test(path)
+  if (method === "GET") return ["/state", "/profiles", "/intake-configuration"].includes(path) || /^\/attempts\/\d+\/(audio|transcript)$/.test(path)
   if (method !== "POST") return false
   return ["/drills/wildfire", "/incidents", "/cases", "/profiles", "/profiles/preferences", "/intake", "/intake-configuration"].includes(path)
     || /^\/cases\/\d+\/(calls|configuration|input|close)$/.test(path)
