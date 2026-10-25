@@ -200,3 +200,8 @@ test("late legacy summaries cannot overwrite coordinated case or incident state"
   assert.equal(s.rows.supportCase[0].brief,caseBrief)
   assert.equal(s.rows.incident[0].brief,incidentBrief)
 })
+
+test("expected stale plan rejection is a sender error", () => {
+  const s=fixture();plan(s)
+  assert.throws(()=>plan(s),{name:"SenderError",message:/Stale/})
+})

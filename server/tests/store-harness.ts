@@ -7,10 +7,10 @@ registerHooks({ resolve(specifier, context, next) {
 import { Timestamp } from "spacetimedb"
 export function storeHarness() {
   let now = 1_000
-  const rows: Record<string, any[]> = Object.fromEntries(["profile", "incident", "incidentPerson", "supportCase", "attempt", "note", "caseProgress", "attemptProgress"].map(name => [name, []]))
+  const rows: Record<string, any[]> = Object.fromEntries(["profile", "incident", "incidentPerson", "supportCase", "attempt", "note", "caseProgress", "attemptProgress", "caseIntake", "caseInput"].map(name => [name, []]))
   const db: any = {}
   for (const name of Object.keys(rows)) {
-    const key = name === "caseProgress" ? "support_case_id" : name === "attemptProgress" ? "attempt_id" : "id"
+    const key = (name === "caseProgress" || name === "caseIntake") ? "support_case_id" : name === "attemptProgress" ? "attempt_id" : name === "caseInput" ? "event_key" : "id"
     db[name] = new Proxy({
       iter: () => rows[name].map(row => ({ ...row }))[Symbol.iterator](),
       insert: (row: any) => {

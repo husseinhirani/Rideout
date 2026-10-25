@@ -1,5 +1,5 @@
 import type { Learned } from "./agent"
-import type { CaseProgressRow, AttemptProgressRow, ProfileRow, SupportCaseRow, IncidentRow, AttemptRow, NoteRow } from "./db"
+import type { CaseProgressRow, AttemptProgressRow, ProfileRow, SupportCaseRow, IncidentRow, AttemptRow, NoteRow, CaseIntakeRow } from "./db"
 import type { Planner } from "./coordinator"
 import { evaluateCase, type CaseSnapshot } from "./coordinator"
 import { randomUUID } from "node:crypto"
@@ -8,6 +8,7 @@ export type CoordinationState = {
   cases: SupportCaseRow[]; incidents: IncidentRow[]; profiles: ProfileRow[]
   attempts: AttemptRow[]; notes: NoteRow[]
   coordination: CaseProgressRow[]; attempt_progress: AttemptProgressRow[]
+  case_intakes?: CaseIntakeRow[]
 }
 export type WorkerPorts = {
   read: () => Promise<CoordinationState>
@@ -126,13 +127,15 @@ function snapshotFor(state: CoordinationState, progress: CaseProgressRow, now: n
   const current = state.cases.find(row => row.id === progress.support_case_id)!
   const victim = state.profiles.find(row => row.id === current.victim_profile_id)!
   const incident = state.incidents.find(row => row.id === current.incident_id)!
+  const intake = state.case_intakes?.find(row => row.support_case_id === current.id)
   const history = state.attempt_progress.filter(row => row.support_case_id === current.id && row.transport !== "cancelled")
   const locations = [{id:"park-bench",label:"Park bench"},{id:"playground",label:"Playground"}]
   return {
     case_id: current.id, status: current.status === "closed" ? "closed" : "open", now,
-    child: {name:victim.name,description:current.goal + ". " + incident.description,last_seen_location_id:"not structured; see initial report",last_seen_at:"not structured; see initial report"},
-    // Intake identity is supplied by milestone 3; do not invent a verified parent.
-    reporter: {name:"Initial report",relationship:"not yet bound by phone intake"},
+    child: intake ? {name:victim.name,description:intake.child_description,last_seen_location_id:intake.last_seen_location_id,last_seen_at:intake.last_seen_time}
+      : {name:victim.name,description:current.goal + ". " + incident.description,last_seen_location_id:"not structured; see initial report",last_seen_at:"not structured; see initial report"},
+    reporter: intake ? {name:intake.reporter_name,relationship:intake.reporter_relationship,attribution:"self_reported"}
+      : {name:"Initial report",relationship:"not yet bound by phone intake"},
     helpers: progress.helper_profile_ids.map((id,index) => {
       const person = state.profiles.find(row => row.id === id)!
       return {profile_id:id,name:person.name,phone:person.phone,location_id:locations[index].id,available:true}

@@ -2,8 +2,10 @@
 
 Tony owns receiving, validation, case matching and persistence. Vien owns hosted
 routing, tools and provider-bound metadata. The frontend team owns the UI.
-`src/intake.ts` implements only the internal completeness check below; no route,
-phone payload, reducer, hosted configuration or closure behavior has changed.
+`src/intake.ts` exposes the shared completeness check. `src/case-inputs.ts` now
+implements internal durable intake, updates and reported-reunion operations over
+new reducers. No phone route, hosted payload or configuration has changed.
+Participant binding in the recording is simulated, not verified caller identity.
 
 ## Internal application input
 
@@ -30,8 +32,9 @@ complete semantic check of arbitrary conversation text.
 
 `assessDemoIntake(input)` returns either `complete` with normalized input and
 reporter attribution `self_reported`, or `needs_clarification` with fixed questions.
-It ignores caller-supplied `verified` flags/profile IDs. A complete result alone
-does not authorize outreach, verify identity or create a case.
+It ignores caller-supplied `verified` flags/profile IDs. A complete validator result alone does not authorize outreach or verify identity.
+The internal createCaseFromIntake service combines complete details with configured
+reporter/helper IDs and an application event key to atomically create a case.
 
 ## Proposed provider boundary for agreement
 
@@ -72,13 +75,14 @@ Suggested responses, pending agreement:
 ```
 
 Incomplete intake would return questions without opening a case or authorizing
-helper calls. A complete report would atomically store the receipt, reported
-facts, original reporter association and case before coordination begins.
+helper calls. The internal intake operation already atomically stores the receipt, reported
+facts, original reporter association and case before coordination begins; the
+provider receiver still needs to call it with an agreed, trusted binding.
 If the provider-bound call ID is stable and available, a namespaced final-intake
 key derived from it could deduplicate repeated final submissions. Partial
 clarification attempts must not consume that final key. Identical final replay
-would return the same case; conflicting final content would return 409. None of
-this delivery/persistence behavior is implemented by the pure validator.
+would return the same case; conflicting final content would return 409. Internal operations implement this persistence/deduplication behavior using opaque
+application event keys; deriving those keys from provider metadata remains open.
 
 ## Vien's concrete next input
 
@@ -89,11 +93,12 @@ this delivery/persistence behavior is implemented by the pure validator.
 4. Confirm the hosted conversation can use the clarification response and submit
    one final intake once the essentials are present.
 
-After agreement: Tony implements the receiver and atomic deduplication/case
-creation; Vien implements the hosted tool/bindings. Existing outbound reporting
+After agreement: Tony wires the receiver to the implemented atomic
+deduplication/case creation service; Vien supplies the hosted tool/bindings. Existing outbound reporting
 must also be shown to reach `/calls/report` successfully.
 
-Later updates and parent confirmation still need an explicit association rule.
+Later phone updates and parent confirmation still need provider binding into the
+implemented internal participant/case association rule.
 Do not select the newest case on an ambiguous phone match. Do not interpret a
 helper sighting as reunion or accept an arbitrary caller's claimed relationship
 as authorization. No update/confirmation route is frozen by this document.

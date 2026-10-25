@@ -5,7 +5,7 @@ export type CaseSnapshot = {
   status: "open" | "closed"
   now: number
   child: { name: string; description: string; last_seen_location_id: string; last_seen_at: string }
-  reporter: { name: string; relationship: string }
+  reporter: { name: string; relationship: string; attribution?: "self_reported" }
   helpers: { profile_id: number; name: string; phone: string; location_id: string; available: boolean }[]
   locations: { id: string; label: string }[]
   reports: { id: string; source_name: string; text: string; received_at: number }[]

@@ -68,6 +68,45 @@ export type CaseProgressRow = {
   blocked_reason: string
 }
 
+export type CaseIntakeRow = {
+  support_case_id: number
+  reporter_profile_id: number
+  child_description: string
+  last_seen_location_id: string
+  last_seen_time: string
+  reporter_name: string
+  reporter_relationship: string
+  reunion_confirmed: boolean
+  confirmed_at: string | null
+}
+
+export type CaseInputRow = {
+  event_key: string
+  support_case_id: number
+  reporter_profile_id: number
+  kind: string
+  payload: string
+  received_at: string
+}
+
+export async function caseIntakes(): Promise<CaseIntakeRow[]> {
+  return (await query("SELECT * FROM case_intake")).map(row => ({
+    support_case_id: asId(row.support_case_id), reporter_profile_id: asId(row.reporter_profile_id),
+    child_description: asString(row.child_description), last_seen_location_id: asString(row.last_seen_location_id),
+    last_seen_time: asString(row.last_seen_time), reporter_name: asString(row.reporter_name),
+    reporter_relationship: asString(row.reporter_relationship), reunion_confirmed: row.reunion_confirmed === true,
+    confirmed_at: asOptionalTimestamp(row.confirmed_at),
+  }))
+}
+
+export async function caseInputs(): Promise<CaseInputRow[]> {
+  return (await query("SELECT * FROM case_input")).map(row => ({
+    event_key: asString(row.event_key), support_case_id: asId(row.support_case_id),
+    reporter_profile_id: asId(row.reporter_profile_id), kind: asString(row.kind),
+    payload: asString(row.payload), received_at: asTimestamp(row.received_at),
+  }))
+}
+
 export type AttemptProgressRow = {
   attempt_id: number
   support_case_id: number
