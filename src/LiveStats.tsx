@@ -1,16 +1,16 @@
 import type { BackendState } from "./api";
-import { callsFor, currentCase, inboundFrom, latestIncident } from "./live";
+import { callsFor, currentCase, inboundFrom, latestIncident, notReached } from "./live";
 
 type Tile = { label: string; value: number | string; hot?: boolean; good?: boolean };
 
 /** Live numbers from /state, in the same tiles as the offline drill. */
 export function LiveStats({ state, caseId }: { state: BackendState; caseId: number | null }) {
   const row = currentCase(state, caseId);
-  const calls = callsFor(state, row?.id ?? null);
-  const sweep = latestIncident(state, true);
+  const calls = row ? callsFor(state, row.id) : [];
+  const sweep = !row || row.kind === "information" ? null : latestIncident(state, true);
   const people = sweep ? state.incident_people.filter((item) => item.incident_id === sweep.id) : [];
   const count = (status: string) => people.filter((item) => item.status === status).length;
-  const reports = row ? state.notes.filter((note) => note.support_case_id === row.id && note.source !== "dispatcher").length : 0;
+  const reports = calls.filter(call => call.progress?.report_received).length;
   const review = inboundFrom(state).filter((item) => item.review).length;
   const groups: { name: string; tiles: Tile[] }[] = [];
   if (row) {
@@ -19,7 +19,8 @@ export function LiveStats({ state, caseId }: { state: BackendState; caseId: numb
       tiles: [
         { label: "Active", value: calls.filter((call) => call.transport === "active").length, hot: calls.some((call) => call.transport === "active") },
         { label: "Queued or placing", value: calls.filter((call) => call.transport === "queued" || call.transport === "dispatching").length },
-        { label: "Ended", value: calls.filter((call) => call.transport === "ended").length },
+        { label: "Ended", value: calls.filter((call) => call.transport === "ended" && !notReached(call)).length },
+        { label: "Not reached", value: calls.filter(notReached).length, hot: calls.some(notReached) },
         { label: "Unresolved", value: calls.filter((call) => call.transport === "unknown").length, hot: calls.some((call) => call.transport === "unknown") },
         { label: "Reports", value: reports, good: reports > 0 },
         { label: "Inbound to review", value: review, hot: review > 0 },
@@ -38,7 +39,7 @@ export function LiveStats({ state, caseId }: { state: BackendState; caseId: numb
     });
   }
   if (!groups.length) {
-    groups.push({ name: "Backend", tiles: [{ label: "Registered", value: state.profiles.filter((profile) => profile.phone).length }, { label: "Cases", value: state.cases.length }] });
+    groups.push({ name: "Backend", tiles: [{ label: "Registered", value: state.profiles.length }, { label: "Cases", value: state.cases.length }] });
   }
   return (
     <section className="left stats" aria-label="Live numbers">

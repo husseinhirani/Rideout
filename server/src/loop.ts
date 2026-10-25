@@ -89,7 +89,7 @@ function configuredHelperIds(): number[] {
 
 // ------------------------------------------------------------------ reading
 
-export async function getState(): Promise<Record<string, unknown>> {
+export async function getState(includeLegacyConfiguration = true): Promise<Record<string, unknown>> {
   const [allProfiles, allIncidents, people, cases, allAttempts, allNotes, coordination, attempt_progress, case_intakes, incoming_requests] = await Promise.all([
     profiles(),
     incidents(),
@@ -107,11 +107,11 @@ export async function getState(): Promise<Record<string, unknown>> {
     demo_mode: {
       simulate: process.env.SIMULATE === "1", scripted: recordingMode(),
       auto_coordinate: automatic(), database: process.env.SPACETIMEDB_DATABASE ?? "rideout",
-      helper_ids: automatic() ? configuredHelperIds() : [],
-      reporter_id: configuredReporterId(),
+      helper_ids: includeLegacyConfiguration && automatic() ? configuredHelperIds() : [],
+      reporter_id: includeLegacyConfiguration ? configuredReporterId() : null,
       inbound: process.env.INBOUND_REQUESTS === "1",
     },
-    locations: DEMO_LOCATIONS,
+    locations: includeLegacyConfiguration ? DEMO_LOCATIONS : [],
     profiles: allProfiles,
     incidents: allIncidents,
     incident_people: people,
@@ -429,7 +429,7 @@ export async function registerProfile(input: {
   if (missing !== undefined) throw new ServiceError(400, "Contact profile " + String(missing) + " not found")
   const before = new Set(known.map(row => row.id))
   await callReducer("insertProfile", [name, phone, input.lat, input.lng, []])
-  const created = (await profiles()).find(row => !before.has(row.id))
+  const created = (await profiles()).find(row => !before.has(row.id) && row.name === name && row.phone === phone && row.lat === input.lat && row.lng === input.lng)
   if (!created) throw new Error("insertProfile did not insert a profile")
   if (input.contact_profile_ids.length) await callReducer("setContacts", [created.id, input.contact_profile_ids])
   return { profile_id: created.id }

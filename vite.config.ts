@@ -1,37 +1,51 @@
-import { defineConfig, loadEnv, type ProxyOptions } from "vite";
+import { defineConfig, loadEnv, type Plugin, type ProxyOptions } from "vite";
 import react from "@vitejs/plugin-react";
 
-// The backend serves same-origin routes with no CORS, so the dev server proxies them.
-// BACKEND_URL picks the backend (8787 by default; the recording runs use their own port).
-// The callback routes need CALLBACK_SECRET when the backend sets one. The proxy adds it
-// here, on the dev server, so the secret never reaches the browser bundle, and only for
-// requests from this machine, because the dev server also listens on the network.
 export default defineConfig(({ mode }) => {
   const env = { ...loadEnv(mode, process.cwd(), ""), ...process.env };
   const target = env.BACKEND_URL || "http://127.0.0.1:8787";
-  const secret = (env.CALLBACK_SECRET ?? "").trim();
+  const secret = (env.OPERATOR_SECRET ?? "").trim();
+  const paths = /^\/(state|profiles|incidents|drills\/wildfire|intake-configuration|cases\/\d+\/(configuration|calls|input|close|coordinator)|incoming-requests\/\d+\/review|attempts\/\d+\/(cancel|retry-interpretation|audio|transcript)|simulation\/(report|incoming))$/;
+  const hosts = new Set(["127.0.0.1:5173", "localhost:5173"]);
   const loopback = new Set(["127.0.0.1", "::1", "::ffff:127.0.0.1"]);
-  const route = (callback: boolean): ProxyOptions => ({
-    target,
-    configure: (proxy) => {
-      if (!callback || !secret) return;
-      proxy.on("proxyReq", (request, incoming) => {
-        if (loopback.has(incoming.socket.remoteAddress ?? "")) request.setHeader("Authorization", `Bearer ${secret}`);
+  const guard: Plugin = {
+    name: "local-operator-access",
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        const path = new URL(req.url ?? "/", "http://localhost").pathname;
+        if (!paths.test(path)) return next();
+        const host = req.headers.host ?? "";
+        const sameOrigin = req.headers.origin === `http://${host}`;
+        if (!loopback.has(req.socket.remoteAddress ?? "") || !hosts.has(host)
+          || Object.keys(req.headers).some(name => name === "forwarded" || name.startsWith("x-forwarded-"))
+          || (req.headers["sec-fetch-site"] !== undefined && !["same-origin", "none"].includes(String(req.headers["sec-fetch-site"])))
+          || (req.headers.origin !== undefined && !sameOrigin)
+          || (req.method !== "GET" && !sameOrigin)) {
+          res.writeHead(403, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Use the local operator UI origin." }));
+          return;
+        }
+        if (!secret) {
+          res.writeHead(503, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Configure OPERATOR_SECRET on the UI server." }));
+          return;
+        }
+        next();
       });
     },
-  });
-  return {
-    plugins: [react()],
-    server: {
-      port: 5173,
-      host: true,
-      proxy: {
-        "^/state$": route(false),
-        "^/(incidents|intake|profiles)$": route(false),
-        "^/cases(/\\d+/(input|close))?$": route(false),
-        "^/attempts/\\d+/cancel$": route(false),
-        "^/(calls/report|check-ins|requests)$": route(true),
-      },
+  };
+  const route: ProxyOptions = {
+    target,
+    changeOrigin: true,
+    configure(proxy) {
+      proxy.on("proxyReq", (request) => {
+        request.setHeader("Authorization", `Bearer ${secret}`);
+        request.setHeader("ngrok-skip-browser-warning", "1");
+      });
     },
+  };
+  return {
+    plugins: [react(), guard],
+    server: { host: "127.0.0.1", port: 5173, strictPort: true, proxy: { [paths.source.slice(0, -1) + "(?:\\?.*)?$"]: route } },
   };
 });

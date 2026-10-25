@@ -114,7 +114,7 @@ export type IncomingRequestRow = {
   direction: string
   text: string
   revision: number
-  status: "pending" | "prepared" | "needs_clarification" | "recorded" | "needs_review"
+  status: "pending" | "prepared" | "needs_clarification" | "recorded" | "needs_review" | "attached" | "rejected"
   decision_json: string
   reply: string
   support_case_id: number | null
@@ -412,3 +412,6 @@ function asNumber(value: unknown): number {
   if (typeof value === "number" && Number.isFinite(value)) return value
   throw new Error("SpacetimeDB returned a value that is not a number")
 }
+
+// Shared SQL decoding for the additive information-case read model.
+export { query, asId, asString, asArea, asTimestamp, asOption, optionalNumber }

@@ -1,5 +1,348 @@
 # design.md
 
+## Assistance coordination (current)
+
+New drills atomically create `assistance_session` and initial assessment tasks alongside
+the existing case and attempts. A JSON session holds its revision, attributed findings,
+reported participant facts and source IDs, tasks, arrangements, messages, human review,
+and bounded planning retry state. The database remains the authority for transitions.
+`server/shared/assistance.ts` defines and validates these transitions; the process owns
+model/provider I/O. Existing cases without sessions retain their earlier behavior.
+
+`POST /calls/coordinate` uses provider callback authentication and verifies the provider
+call ID, agent and destination against the saved attempt. `coordinate_call` lets the
+hosted voice agent check for tasks and report discoveries without ending a conversation.
+Sequence numbers make exact retries idempotent and reject out-of-order overwrites.
+The response includes current known facts, an authorized task and the next sequence.
+No assignment is delivered after pause, closure, loss of permission or a final report.
+A delayed callback may preserve facts but cannot resurrect a cancelled task.
+
+The coordinator wakes on meaningful session revisions. It selects supported information
+questions or proposes eligible arrangements, citing current finding sources. Hard gates
+check consent/scope, reported location, need, willingness, capacity, vehicle requirements,
+supplied access/routes, and existing reservations. Each helper has at most one reserved
+pickup. A declined pairing is not automatically repeated. Changed approved pickup details
+withdraw the old approval and allow a fresh proposal. Old information planning remains off.
+
+The worker delivers pending tasks through ongoing calls, or atomically queues bounded
+follow-up attempts after terminal status and cooldown. There is no speculative redial of
+an unknown provider state. A task permits at most two callback attempts and a participant
+at most eight calls in a drill. Consent withdrawal and task cancellation are checked at
+claim and immediately before provider dispatch. Calls without final reports receive a 15-second grace period, then block their
+unfinished tasks for review. Late reports are still processed without restarting blocked
+work. Finishing calls cannot receive new tasks. Current permissions for both arrangement
+parties are checked again before dispatch, delivery, and milestone acceptance. Temporary
+availability restrictions remain separate from withdrawn consent. Deadline failures and unresolved milestones remain visible.
+
+`POST /cases/:id/coordinator` accepts revisioned/idempotent operator actions: message,
+approve/reject/cancel arrangement, pause/resume, scenario location-access changes and
+planning retry. Messages are persisted and answered by Claude using the current incident;
+chat replies alone cannot execute actions. Proposal approval authorizes asking the helper,
+then recipient confirmation. Pickup and arrival each require both parties' reports.
+Completion means reported arrival in the scenario, not independently verified safety.
+
+`GET /state` exposes `assistance_sessions` without hidden synthetic persona answers.
+The dashboard shows proposals/evidence, task progress, reported needs, explicit controls
+and persistent coordinator chat. Polling does not duplicate chat entries. Only a changed
+message advances the scroll position. New sessions do not use the old scripted UI wave.
+The Start menu can include 12 backend-simulated neighbors; their `mode=simulated` is checked
+before provider calls, and their non-dialable synthetic destinations also fail ordinary
+contact eligibility. Simulations follow the same task/report/milestone state transitions.
+
+Deployment: publish the module without deleting data, restart API and Vite, then run
+`npm --prefix server run setup-agent` to attach `coordinate_call` and its prompt. Do not
+apply the hosted prompt before the new callback route is running. No real call is made
+by database publication, startup or agent setup; an explicit Start action creates work.
+Existing active authorized work can resume after restart. The first live test should use
+only the saved real roster; simulated neighbors are optional after that loop is confirmed.
+
+## Wildfire drill calling (foundation and compatibility)
+
+`POST /drills/participants` accepts an authenticated operator command ID and
+`participants: [{ name, phone }]`. The reducer upserts by normalized phone, updates
+names, preserves existing consent, rejects duplicate destinations and records a
+private roster of profile IDs in the command log. Configuration places no calls.
+It supports 1–10 participants; real phone numbers are not committed as fixtures.
+
+`POST /drills/wildfire` accepts an operator command ID and optional `include_simulated` flag. The backend resolves
+the saved roster, with the earlier environment/prior-drill participant fallback
+for existing installations. The reducer atomically creates one case with the roster
+as its permitted scope, and queues one call for each person. Initial calls cover the roster; bounded follow-up calls are included in the
+assistance session policy. Existing destination locks, withdrawn consent
+and exact command replay remain enforced. The worker staggers provider requests
+without waiting for other conversations to end; the calls can run concurrently.
+The old information planner remains off; assistance sessions now own bounded follow-up planning.
+
+Each call receives a fictional wildfire drill context. The hosted Tom prompt
+introduces the AI assistant and confirms the recipient's name before disclosing
+situation details. A wrong/unconfirmed person is recorded as such, never attributed
+to the intended recipient. An outbound attempt ID takes priority over provider
+direction to prevent an outgoing call from entering inbound intake. Inbound intake
+has no predefined missing-child scenario. An explicit hang-up request overrides identification, questions and report saving
+on its first occurrence. The agent acknowledges briefly and ends immediately; if
+no report was saved, the transcript remains available but the UI must not claim a
+saved report. Explicit refusal of future contact is still reported to persist consent
+withdrawal, without further questions. Interrupted identification is completed briefly on the next turn,
+unless the person asked to stop. Questions are not restarted once finished. The
+final goodbye is spoken once; end_call has pre-tool speech disabled. Voicemail
+skips the identity flow and records not reached, without an invented identity concern.
+
+Report interpretation receives the call context so drill answers remain hypothetical.
+It preserves stated needs and unresolved questions without inferring comprehension,
+medical or language problems or prescribing follow-up that nobody requested.
+This affects new interpretations; existing saved accounts are not silently rewritten.
+
+The Checks board shows outgoing calls and the facilitator. Accepted/check-in summary
+cards and the case/timer/mode pills are removed in both live and offline layouts.
+Mock rows remain individually labeled. Not-reached outcomes use the missed-call color
+and label even when the phone transport ended normally. Notifications share one
+bottom-right portal stack above modal backdrops, with dismissible concern notices;
+queued-call confirmations expire after eight seconds.
+
+The live board has a follow-up inbox reconstructed from saved attempts across open
+cases. It includes not-reached/no-answer outcomes, unresolved provider status,
+calls that ended without a report and reported concerns. A retry in progress does
+not erase the previous unresolved result. A later completed result supersedes the
+earlier result for that case/person; case closure removes its inbox items. Dismissing
+a toast does not affect this inbox. The coordinator conversation includes attributed
+call starts and results from the same saved records, so results appear without the
+operator typing a message and survive refresh. These are status updates, not new
+model decisions or invented reports. SMS, automatic retries and rescue assignments
+are not implemented by this display change.
+
+Transcript and recording reads retry transient connection/5xx failures twice with
+bounded delays. Cancel/unmount aborts pending reads and retries. Preparing recordings
+stop polling after two minutes and can be requested again; playback remains restricted
+to ended calls. HTTP and network failures get distinct useful messages. The Vite proxy
+uses the configured backend host for upstream requests, including HTTPS tunnels, and
+requests API responses rather than ngrok's browser warning page. The reported recording
+failure recovered after a browser refresh; authenticated reads of that saved transcript
+and WAV succeeded. No provider recording loss was observed.
+
+Use `npm --prefix server run setup-agent` to apply the tracked prompt and tool
+configuration to the hosted agent, preserving unrelated voice configuration.
+The latest investigated call used an older hosted missing-child prompt despite a
+correct wildfire task. Hosted settings must be read back after setup, not inferred
+from local source. Database module publication is required for roster and multi-call
+reducers; no table/schema changes are introduced.
+
+`GET /state` includes the participant names, count and readiness, with no phone numbers. The UI keeps an uncertain
+start command in session storage so retry/refresh cannot create a second case.
+The outgoing row uses the existing backend profile/attempt join. Readiness uses
+that same participant resolver. If initial setup is missing, clicking the menu
+shows an explanation instead of silently doing nothing. Consent and duplicate-call
+checks remain enforced by the reducer.
+
+A fresh browser page starts with zero outgoing calls unless a queued, dispatching,
+active or unresolved call needs attention. Completed cases remain selectable under
+Map → Previous cases. New cases opened during the session take focus; finishing a
+call does not clear the current view. This separates history from a new drill
+without deleting any database records.
+
+`GET /state` also returns saved wildfire drill case/profile IDs and start times
+from the existing operator command log. The UI reconstructs the existing 12-person
+mock wave (plus its three scripted follow-ups) from that time, below the real
+participants. Refreshing preserves the script's elapsed time. Mock rows and the
+combined counts are explicitly labeled; they never enter the directory, evidence,
+reports, or dispatch worker. Only the configured participants receive phone calls.
+
+Before any real outbound call or batch is sent, the shared provider client ensures
+the configured Cartesia agent has an event webhook at `NGROK_URL` + `/calls/events`. It creates and attaches
+one if absent, reuses the matching URL, and refuses to replace another destination.
+The webhook secret must match `CALLBACK_SECRET`; after changing that secret, update
+it in the agent's webhook settings too. Keep `ngrok http 8787 --url=crawlers-quail-unwieldy.ngrok-free.dev` running.
+
+`POST /calls/events` checks `x-webhook-secret` and the configured agent. Spoken
+`call_turn` events are deduplicated by turn ID and retained in a bounded, two-hour
+memory cache. `GET /attempts/:id/transcript` verifies the provider call's agent,
+destination and attempt binding before returning either live turns or the stored
+provider transcript. The expanded UI polls every two seconds while active and
+five seconds after ending until a saved transcript arrives. Provider history
+restores completed conversations after server restart; live delivery requires the
+tunnel. Transcripts are display data, distinct from reports and model evidence.
+
+`GET /attempts/:id/audio` verifies the same binding and refuses playback until the
+provider reports a terminal status. The recording button is shown only for ended
+real calls. It retries while Cartesia prepares the WAV, then plays the recording.
+Closing the row or stopping playback releases local audio resources. No active-call
+listening button or second-call action appears while the agent is on the phone.
+
+Provider reference: [turn webhooks, transcripts and recordings](https://docs.cartesia.ai/line/infrastructure/observability).
+
+## UI/backend integration
+
+The integration branch combines the dashboard at `3a5b293` with the generic
+backend at `f453df8`. The product UI now uses `INFORMATION-API.md`: generic
+incident creation, directory filtering, manual calls, decisions, organizer input,
+review, settings, consent, pause/closure and phone intake configuration. No backend
+schema or provider configuration changes are needed for the UI migration.
+
+The loopback Vite proxy injects only `OPERATOR_SECRET`, checks Host/Origin and
+forwarded headers, and exposes only operator API paths. Configure port 5173 in
+`OPERATOR_ORIGINS`. Live/offline selection is explicit; a failed poll preserves the
+last snapshot and disables mutations. Commands retry an uncertain response with
+the same ID and payload. Settings drafts preserve their original revision so new
+evidence cannot be silently overwritten. The map uses stored coordinates and
+suppresses fictional household descriptions in live mode. Backend decisions and
+transport/report states replace legacy assignments and invented review timers.
+
+The HTML console remains available. Browser fixture checks establish UI wiring,
+not real Claude/provider behavior; the combined local live checkpoint is tracked
+in #24 and #27.
+
+Strict Claude requests use `messages.create().withResponse()` and parse the
+structured JSON text before application validation. This preserves request IDs
+without relying on the installed SDK's `parse()` returning an APIPromise at runtime.
+
+## Organizer controls — Step 6
+
+Pause/resume and contact consent reuse the configuration reducer. Explicit close
+and queued cancellation require a command ID, current case revision and reason.
+They save an organizer note and replayable result. Closing cancels only queued
+work with no claim, provider ID or report; dispatching, active and unknown calls
+remain tracked. Late reports remain history and cannot reopen a case.
+
+An explicit request not to call again revokes consent for profiles sharing that
+phone destination. Renewal requires an explicit organizer action. The console
+exposes these controls without clearing stored evidence or pretending to hang up
+active calls.
+
+Restart recovery already scans durable work and marks expired dispatch claims
+unknown instead of redialing. Reconciliation and report interpretation continue
+while paused or closed. If call creation returns an ID but saving it fails, the
+worker retries saving that same ID, never the call. A crash before persistence
+can still leave an unresolved dispatch; no automatic redial is permitted. A
+pause/close racing after the final eligibility check cannot atomically prevent an
+external request already being started.
+
+No tables or future-review timers are added. VM verification remains pending.
+
+## Incoming information — Step 5
+
+`/requests` saves the raw account before classification. A unique phone match is
+an association hint, not verified identity. Claude can associate a clear update
+with an open case linked through explicit contact selection, dispatched calls,
+or that caller's original intake. Ambiguous and unfamiliar reports need review.
+
+Phone intake requires an enabled line and a profile with `intake_allowed`.
+The caller reports what happened and their needs; they do not need to supply an
+organizer's information objective. Claude can derive a narrow information objective
+from that account, identifying the inference in its reason. Missing incident
+essentials prompt clarification. The organizer's stored scope, policy and disclosure facts
+govern the new case. Intake permission never grants call consent.
+
+Two additive tables store line configuration and incoming resolutions. Reducers
+check request, configuration and candidate-case revisions before atomically
+saving a case/note and resolution. Attach/reject commands are replay-safe and
+preserve the original report. Attachment adds unverified evidence without
+enrolling the caller; paused cases stay paused. Phone replies disclose neither
+case association nor operator decisions. Existing provider bindings are unchanged.
+
+Implementation is source-reviewed; compilation and live verification await Vien's VM.
+
+Tom's hosted instructions guide calm, situation-sensitive acknowledgment and short
+questions, without scripted sympathy or promises of safety/help. Immediate danger
+must not be mistaken for a dispatched emergency response. This prompt change needs
+Vien to run `setup-agent` after active calls finish; tone remains live-unverified.
+Conversation guidance now respects an explicit finish, asks for unclear words instead
+of inventing a meaning, and uses natural receipt acknowledgments. The built-in
+`skip_turn` tool waits quietly when requested, with a 30-second check-in timeout.
+Inbound accounts preserve a stated voicemail callback; this does not implement
+retrieval of the previous call's context. Voice selection and backend processing
+latency are unchanged. Verify the updated behavior in a real conversation after setup.
+
+## Adaptive information path — Step 4
+
+On the separate Step 4 branch, an organizer explicitly enables coordination for
+a case and approves disclosure facts, optionally restricted to recipients.
+`AUTO_COORDINATE=1` enables the worker; it never enrolls historical cases.
+Manual call commands are rejected while that case is automatically coordinated.
+
+The worker brackets snapshot reads with the case revision. Real Claude returns
+a bounded plan with evidence references, a complete retain/cancel partition of
+queued work, at most two new information calls, and waiting/review reasons.
+The commit reducer checks current scope, consent, evidence, disclosure, budgets
+and queue state before saving the whole decision and attempts atomically.
+Array-size limits are enforced in application/reducer validation; the provider
+schema omits `maxItems`, which the live API rejected during the Step 4 checkpoint.
+Claims do not dirty the case, so one claim does not invalidate a sibling call.
+New answers and organizer input do dirty it. There is no timed follow-up here.
+
+The additive `information_planning` table stores opt-in, disclosure facts and
+bounded revision-specific failure retries. `information_decision` stores accepted
+plans, model/request metadata and created attempt IDs. Context is rendered from
+approved facts, not free model-written context. Questions remain model-generated
+under information-only/disclosure instructions; semantic privacy cannot be
+guaranteed by the schema alone. Reports remain attributed claims.
+
+Planning, interpretation and transport reconciliation have separate in-flight
+guards. Failed planning cannot stop recording reports or observing hang-up.
+An organizer-review decision pauses new calls. Explicit configuration can resume
+it. The console displays reasons, evidence IDs and whether the summary is stale.
+Inbound association is added in Step 5; final closure remains a later checkpoint.
+
+After three interpretation failures, an operator can explicitly retry the same
+saved, matched account via `POST /attempts/:id/retry-interpretation` with a stable
+`command_id`. The reducer records the command and resets interpretation retries
+only. It cannot redial, replace the receipt, reopen the case or bypass binding.
+The console exposes this action only for exhausted, unprocessed matched reports.
+
+See `ADAPTIVE-TEST-HANDOFF.md` for the API and VM checks. This implementation has
+been inspected as code only; compilation and runtime checks await Vien's VM.
+
+## Generic information path — Stage 1
+
+Current domain language is in root `GLOSSARY.md`. New investigations use additive
+information incident/case records; existing cases, calls and notes remain intact.
+The manual console creates a free-text objective, searches profiles without
+dialing, and commits an explicit organizer call at the current revision. Calls
+share persisted attempts, exclusive claims and destination locks.
+
+Bound raw reports are saved before acknowledgment. Claude interpretation runs
+separately from transport polling. A report can be saved while the call remains
+active. Both completed and failed provider states are terminal; dispatch
+uncertainty never authorizes an automatic redial. Inbound accounts are received
+without disclosure and await association; automatic matching is the next stage.
+
+The new live server does not run legacy child-specific intake or planning.
+Legacy history is readable; old fixture modules remain available for regression
+commands. See `INFORMATION-API.md`, `ACCESS.md` and `PROVIDER-CONTRACT.md`.
+
+
+## Manual baseline console (issue #16)
+
+`GET /` serves the backend test console, separate from the product frontend.
+It shows configured profiles with masked phone numbers, backend mode/database,
+attempt and provider IDs, and report status separately from transport. Legacy
+attempts without progress rows explicitly have untracked transport; an absent
+report does not mean the phone is ringing. Connection loss retains the last
+snapshot, shows its age and disables mutations until the next successful poll.
+The close button explicitly says "Close case".
+
+Use a dedicated empty test database for the live baseline. Profile seeding refuses
+to change an already populated directory and never prints full phone numbers.
+Current product scope is GitHub #15; #27 records human test results. These console
+changes do not implement the later generic coordinator or establish a live
+provider pass.
+
+The first real baseline call exposed a hosted-prompt failure: an outbound call
+with an attempt ID followed the inbound closing script and invoked no report
+tool. The phone prompt now prioritizes the supplied attempt ID, keeps the question
+and context task-specific, and acknowledges saving only after tool success.
+Scenario-specific intake instructions and promises of future callbacks were
+removed from the phone prompt. This does not generalize the existing intake
+interpreter: inbound processing remains disabled for this baseline and is tracked
+in #19. A natural correction/refusal is reported as information, not an instruction
+to switch workflows. Live retry results are recorded in #27.
+
+The phone identity is Tom, an AI assistant from RideOut. The prompt explains report
+submission before waiting and acknowledges only the actual tool result. Setup
+enables Cartesia's built-in `end_call`, preserving other system-tool settings, so
+Tom can say goodbye and end a completed conversation. This does not shorten the
+legacy handler's interpretation-before-response latency; durable early receipt
+is part of #22. Hang-up configuration readback and actual live hang-up are separate
+verification steps.
+
 Shared vocabulary, workflow, tech stack, architecture, and decisions. Keep this in sync with the code.
 
 Status markers used below: **Decided** (agreed), **Proposed** (suggested, needs confirmation), **Open** (not decided).
@@ -79,6 +422,10 @@ worker instances over retained rows. They do not prove SpacetimeDB deployment,
 real process/database restart recovery, Claude behavior, or phone delivery.
 
 ## Persisted recording replay
+
+Historical runtime description: the current generic server rejects scripted
+planning. `server:recording` now exits with a retirement message. Real-Claude
+simulation uses `server:adaptive:sim`; the old fixtures remain available.
 
 `COORDINATOR_SCRIPTED=1` selects explicit demonstration planner/interpreter fixtures,
 never an automatic fallback. Startup rejects this flag without both `SIMULATE=1`
@@ -290,7 +637,7 @@ Two Cartesia webhook tools, not one. `record_check_in` stays for the triage swee
 
 Dynamic variables on every dial: `attempt_id`, `person_name`, `ask`, `context`. `ask` and `context` come from `plan()`. `context` is the only thing the person may be told, is built server-side, and never carries a phone number or an address. A check-in dial sends an empty `attempt_id`, and the agent instructions use that to choose between the two tools.
 
-The hosted Cartesia phone coordinator uses short, plain, slightly brisk turns and skips social filler. Few-shot examples in `setup-tools.ts` demonstrate wording only; call branching, required questions, data collection, and tool use remain defined by the existing instructions. This prompt is distinct from Claude's planning and briefing prompts.
+The hosted Cartesia phone coordinator uses short, plain, slightly brisk turns and skips unnecessary social filler. This style applies within the current identity, consent, stop-request, reporting and live-coordination instructions; an explicit stop request takes priority over further questions or reports. This prompt is distinct from Claude's planning and briefing prompts.
 
 ## 6. Decisions
 

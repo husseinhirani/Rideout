@@ -17,7 +17,7 @@ type Tip = {
   owner: string;
   number: number;
   street: string;
-  people: number;
+  people: number | string;
   vehicles: string[];
   needs?: string;
   note: string;
@@ -33,6 +33,7 @@ type BuildingFeature = {
 };
 
 type Props = {
+  liveData?: boolean;
   place: Place;
   houses: House[];
   onSelect: (id: number) => void;
@@ -86,9 +87,11 @@ const SIDING = [0xe9e2d3, 0xd8d3c8, 0xc9d1c4, 0xe8d9bf, 0xcdd6dd, 0xf2efe9, 0xbf
 const HOVER_GLOW = 0xffb347;
 const HOVER_LIFT = 2.2;
 
-export function NeighborhoodMap({ place, houses, onSelect, angle = "side", simple = false, showFire = true, sightings = [], selectedIds = [], onSelectionChange, drawMode = null, onOpenGroupMenu }: Props) {
+export function NeighborhoodMap({ place, houses, onSelect, angle = "side", simple = false, showFire = true, sightings = [], liveData = false, selectedIds = [], onSelectionChange, drawMode = null, onOpenGroupMenu }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const housesRef = useRef(houses);
+  const liveRef = useRef(liveData);
+  liveRef.current = liveData;
   const sightingsRef = useRef(sightings);
   const fireRef = useRef<THREE.Mesh | null>(null);
   sightingsRef.current = sightings;
@@ -585,7 +588,7 @@ export function NeighborhoodMap({ place, houses, onSelect, angle = "side", simpl
         return;
       }
       const house = housesRef.current.find((item) => item.id === id);
-      const home = householdFor(id, house?.name);
+      const home = liveRef.current ? { owner: house?.name ?? "Not recorded", number: id, address: "Stored map feature", people: "—", vehicles: ["Not recorded"], needs: undefined } : householdFor(id, house?.name);
       const x = Math.min(Math.max(12, event.clientX - rect.left + 16), rect.width - 312);
       const y = Math.min(Math.max(12, event.clientY - rect.top + 16), rect.height - 250);
       setTip({
@@ -598,7 +601,7 @@ export function NeighborhoodMap({ place, houses, onSelect, angle = "side", simpl
         people: home.people,
         vehicles: home.vehicles,
         needs: home.needs,
-        note: house ? house.note : "Not on the ride check-in list.",
+        note: house ? house.note : liveRef.current ? "No resident or safety report is associated with this building." : "Not on the ride check-in list.",
       });
     };
     const onPointerLeave = () => {
@@ -863,7 +866,7 @@ export function NeighborhoodMap({ place, houses, onSelect, angle = "side", simpl
       for (const house of housesRef.current) {
         const pin = document.getElementById(`pin-${house.id}`);
         if (!pin) continue;
-        if (simpleRef.current || !PIN_STATUS.has(house.status)) {
+        if (!liveRef.current && (simpleRef.current || !PIN_STATUS.has(house.status))) {
           pin.style.visibility = "hidden";
           continue;
         }
@@ -981,7 +984,7 @@ export function NeighborhoodMap({ place, houses, onSelect, angle = "side", simpl
           {sighting.label ?? `${sighting.safe ? "Safe here" : "Seen here"} · ${new Date(sighting.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`}
         </p>
       ))}
-      {problem ? <p className="scene-problem">{problem}</p> : null}
+      {problem && !simple ? <p className="scene-problem">{problem}</p> : null}
       {tip ? (
         <aside className="hover-card" style={{ left: tip.x, top: tip.y }}>
           <p>{tip.kicker}</p>

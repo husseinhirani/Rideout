@@ -1,3 +1,5 @@
+import { ensureCallEvents } from "./call-events-setup"
+
 const CARTESIA_VERSION = "2026-08-14"
 const CARTESIA_BASE_URL = "https://api.cartesia.ai"
 const HTTP_TIMEOUT_MS = 30_000
@@ -7,10 +9,39 @@ const E164 = /^\+[1-9]\d{1,14}$/
 
 export type DynamicValue = string | number | boolean
 
+export type CallTurn = {
+  id: string
+  role: "assistant" | "user"
+  text: string
+  start: number
+  interrupted: boolean
+}
+
+export function decodeCallTurns(value: unknown): CallTurn[] {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((raw): CallTurn[] => {
+    const turn = objectOrEmpty(raw)
+    if ((turn.role !== "assistant" && turn.role !== "user") || typeof turn.text !== "string" || !turn.text.trim()) return []
+    const start = typeof turn.start_timestamp === "number" && Number.isFinite(turn.start_timestamp) ? Math.max(0, turn.start_timestamp) : 0
+    return [{ id: String(turn.id ?? `${turn.role}:${start}`), role: turn.role, text: turn.text,
+      start, interrupted: turn.was_interrupted === true }]
+  }).sort((a, b) => a.start - b.start)
+}
+
 export type CallRecord = {
   status: string
   endReason: string | null
   summary: string | null
+  // Optional for legacy consumers and test adapters. getCall returns these
+  // fields explicitly; missing provider metadata stays null, never inferred.
+  id?: string | null
+  agentId?: string | null
+  agentVersionId?: string | null
+  direction?: string | null
+  fromNumber?: string | null
+  toNumber?: string | null
+  attemptId?: string | null
+  transcript?: CallTurn[]
 }
 
 export class CartesiaServiceError extends Error {
@@ -32,7 +63,7 @@ export class CartesiaServiceError extends Error {
   }
 }
 
-export function placeCall(to: string, variables: Record<string, DynamicValue>): Promise<string> {
+export async function placeCall(to: string, variables: Record<string, DynamicValue>): Promise<string> {
   if (E164.test(to) === false) {
     return Promise.reject(new Error("phone number must be E.164, for example +14155550123"))
   }
@@ -40,9 +71,10 @@ export function placeCall(to: string, variables: Record<string, DynamicValue>): 
   // posted back to /calls/report by hand from the test UI.
   if (process.env.SIMULATE === "1") {
     const simulated = "sim_" + Math.random().toString(36).slice(2, 12)
-    console.log("simulate dial " + to + " " + JSON.stringify(variables))
+    console.log("simulate dial for attempt " + String(variables.attempt_id ?? "unbound") + " to number ending " + to.slice(-4))
     return Promise.resolve(simulated)
   }
+  await ensureCallEvents(cartesiaJson)
   return postJson("/agents/calls", {
     from_number_id: requireEnv("CARTESIA_FROM_NUMBER_ID"),
     agent_id: requireEnv("CARTESIA_AGENT_ID"),
@@ -66,7 +98,7 @@ export function placeCheckInCall(
   return placeCall(to, { ask: CHECKIN_ASK, context: "", person_name: "", ...variables })
 }
 
-export function placeBatch(
+export async function placeBatch(
   recipients: { to: string; variables: Record<string, DynamicValue> }[],
 ): Promise<string> {
   if (recipients.length === 0) {
@@ -77,6 +109,7 @@ export function placeBatch(
       return Promise.reject(new Error("phone number must be E.164, for example +14155550123"))
     }
   }
+  await ensureCallEvents(cartesiaJson)
   return postJson("/agents/calls/batches", {
     from_number_id: requireEnv("CARTESIA_FROM_NUMBER_ID"),
     agent_id: requireEnv("CARTESIA_AGENT_ID"),
@@ -93,11 +126,39 @@ export function placeBatch(
 }
 
 export function getCall(callId: string): Promise<CallRecord> {
-  return cartesiaJson("GET", "/agents/calls/" + encodeURIComponent(callId)).then((payload) => ({
-    status: typeof payload.status === "string" ? payload.status : "",
-    endReason: typeof payload.end_reason === "string" ? payload.end_reason : null,
-    summary: typeof payload.summary === "string" ? payload.summary : null,
-  }))
+  return cartesiaJson("GET", "/agents/calls/" + encodeURIComponent(callId)).then(decodeCallRecord)
+}
+
+export function decodeCallRecord(payload: JsonObject): CallRecord {
+  const telephony = objectOrEmpty(payload.telephony_params)
+  const variables = objectOrEmpty(payload.dynamic_variables)
+  return {
+    status: textOrNull(payload.status) ?? "",
+    endReason: textOrNull(payload.end_reason),
+    summary: textOrNull(payload.summary),
+    id: textOrNull(payload.id),
+    agentId: textOrNull(payload.agent_id),
+    agentVersionId: textOrNull(payload.agent_version_id),
+    direction: textOrNull(telephony.direction),
+    fromNumber: textOrNull(telephony.from),
+    toNumber: textOrNull(telephony.to),
+    attemptId: textOrNull(variables.attempt_id),
+    transcript: decodeCallTurns(payload.transcript),
+  }
+}
+
+export function isTerminalCallStatus(status: string): boolean {
+  return status === "completed" || status === "failed"
+}
+
+function textOrNull(value: unknown): string | null {
+  return typeof value === "string" && value.length > 0 ? value : null
+}
+
+function objectOrEmpty(value: unknown): JsonObject {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? value as JsonObject
+    : {}
 }
 
 function postJson(path: string, body: unknown): Promise<JsonObject> {

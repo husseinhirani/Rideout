@@ -1,5 +1,70 @@
 # Context
 
+## Live assistance coordinator
+
+The approved next slice turns call discoveries into proposed assistance arrangements.
+New wildfire drills create an assistance session and run a coordinator that selects
+information tasks and proposes suitable pairings. Humans approve proposals, voice
+agents obtain explicit commitments, and follow-ups separately confirm pickup and
+arrival. All physical situations and routes remain fictional drill data. Real phone
+participants' needs and capabilities come from their answers; no named roles are fixed.
+Optional simulated neighbors use backend attempts and findings, not visual-only calls.
+See `docs/adr/0003-live-assistance-coordination.md` at the repository root and the current
+section of `DESIGN.md`. Historical statements below that exclude dispatch describe
+prior milestones; the approved demo now includes coordination with human approval.
+
+## Wildfire drill with real participants
+
+The Start menu offers the wildfire drill and neighbor registration. The hardcoded
+missing-child shortcut is removed. The drill uses a saved private participant
+roster, configured separately from dispatch; initial single-person environment
+configuration and prior drill records remain fallback sources for migration.
+One click queues one initial call per participant, with capacity for overlapping calls.
+New drills permit bounded coordinator follow-ups. The optional 12 simulated neighbors
+produce backend findings and tasks; they never dial a phone. Old cases retain their
+visual simulation history. Only the saved real participants receive phone calls.
+
+Every outgoing conversation introduces Tom as an AI assistant and confirms the
+recipient's name before discussing the situation, unless the person asks to stop.
+The first explicit hang-up request ends the conversation without further questions. A supplied outbound attempt ID
+takes priority over the provider direction branch. The hosted prompt must match
+`setup-tools.ts`; run setup-agent after intentional prompt changes. Live turns use
+provider webhooks, and recording playback appears after call completion.
+See `DESIGN.md` for roster, dispatch, transcript and audio behavior. The older
+information-only framing below is superseded by the user's rescue-coordination
+direction recorded in GitHub #15.
+
+## Current product — GitHub #15
+
+Integration update: Vien's testing handoff is complete. Tony owns the remaining
+dashboard/API integration on `tony/ui-backend-integration`. The product dashboard
+now uses the generic API; Tony can verify it from his own local checkout. GitHub #27 records
+passed live checkpoints and outstanding checks; the stage descriptions below
+are implementation history, not a request to wait for Vien.
+
+RideOut collects information for an organizer about any incident. The organizer
+sets an objective and permitted contacts; calls and incoming accounts become
+attributed evidence. No child, victim, parent, predefined place or participant
+count is required. Root `GLOSSARY.md` and `docs/adr/0002-generic-information-cases.md`
+define the current vocabulary and migration boundary.
+
+Stage 1 provides a generic organizer-directed call and durable report path.
+Step 4 adds opt-in adaptive contact/question selection on a separate development
+branch while Vien verifies Stage 1. Runtime verification and integration remain
+sequential on Vien's VM. Inbound case association and timer follow-ups are not
+part of Step 4. Step 5 adds generic phone intake, clear-update association, and
+organizer attach/reject actions on `tony/incoming-association`; VM verification
+is pending. Intake uses organizer-configured permissions and contact scope.
+See `INFORMATION-API.md`. The older sections below describe
+legacy fixtures and must not introduce scenario rules into new product logic.
+Step 6 on `tony/organizer-controls` adds explicit closure, queued cancellation and
+console controls, reusing existing pause/consent and restart recovery. It is
+implemented separately while Vien tests Step 5; runtime verification is pending.
+Tony owns the backend and manual HTML console; Vien owns the product frontend.
+The legacy `server:recording` command is retired; `server:adaptive:sim` runs real
+Claude with simulated phones. The older recording descriptions below are history.
+
+
 Global context and working conventions. Read before making any change.
 
 ## What this is

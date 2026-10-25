@@ -1,5 +1,5 @@
 import type { BackendState } from "./api";
-import { briefOf, callsFor, caseStatus, coordinationOf, currentCase, intakeOf, notesFor } from "./live";
+import { briefOf, callsFor, callStatusLabel, caseStatus, coordinationOf, currentCase, intakeOf, notesFor } from "./live";
 
 const clock = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" });
 
@@ -25,8 +25,12 @@ export function CaseCard({
   if (!row) {
     return (
       <article className="glass case-card">
-        <p className="kicker">No case yet</p>
-        <p className="case-goal">Start → Missing child opens one from the dispatcher form. Inbound calls open one too.</p>
+        <p className="kicker">Ready to start</p>
+        <p className="case-goal">Use Start to begin a new drill, or open a previous case.</p>
+        {state.cases.length > 0 && <select value="" onChange={event => onChoose(Number(event.target.value))} aria-label="Open a previous case">
+          <option value="" disabled>Previous cases…</option>
+          {[...state.cases].sort((a, b) => b.id - a.id).map(item => <option key={item.id} value={item.id}>Case #{item.id} · {item.goal}</option>)}
+        </select>}
       </article>
     );
   }
@@ -93,7 +97,7 @@ export function CaseCard({
             <div key={call.attempt.id} className="case-call">
               <p>
                 <b>{call.person?.name ?? "Unknown"}</b>
-                <span className={`badge t-${call.transport ?? "legacy"}`}>{call.transportLabel}</span>
+                <span className={`badge t-${call.transport ?? "legacy"}`}>{callStatusLabel(call)}</span>
                 <span className="badge">{call.reportLabel}</span>
               </p>
               <p className="case-ask">“{call.attempt.ask}”</p>

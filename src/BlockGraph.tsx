@@ -2,9 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import type { CallCard, House } from "./types";
 
-type Signal = "idle" | "ringing" | "connected" | "failed";
+type Signal = "idle" | "ringing" | "connected" | "failed" | "ended";
 
 const FILL: Record<Signal, string> = {
+  ended: "#5b6272",
   idle: "#5b6272",
   ringing: "#f0c14a",
   connected: "#3ddc97",
@@ -12,6 +13,7 @@ const FILL: Record<Signal, string> = {
 };
 
 const LABEL: Record<Signal, string> = {
+  ended: "Ended",
   idle: "Not called yet",
   ringing: "Ringing",
   connected: "Connected",
@@ -29,12 +31,13 @@ type Props = {
   calls: CallCard[];
   selectedId: number | null;
   onSelect: (id: number) => void;
+  liveEdges?: Edge[];
 };
 
 type Body = { x: number; y: number; vx: number; vy: number };
 type Edge = { a: number; b: number; kind: "call" | "near" | "match" };
 
-export function BlockGraph({ houses, calls, selectedId, onSelect }: Props) {
+export function BlockGraph({ houses, calls, selectedId, onSelect, liveEdges }: Props) {
   const svg = useRef<SVGSVGElement>(null);
   const bodies = useRef(new Map<number, Body>());
   const drag = useRef<{ id: number; moved: boolean } | null>(null);
@@ -42,8 +45,8 @@ export function BlockGraph({ houses, calls, selectedId, onSelect }: Props) {
   const [, setTick] = useState(0);
   const [hoverId, setHoverId] = useState<number | null>(null);
 
-  const signals = new Map(houses.map((house) => [house.id, signalFor(house, calls)]));
-  const edges = buildEdges(houses);
+  const signals = new Map(houses.map((house) => [house.id, signalFor(house, calls, liveEdges !== undefined)]));
+  const edges = liveEdges ?? buildEdges(houses);
   const links = useRef(edges);
   links.current = edges;
   const ids = [HUB, ...houses.map((house) => house.id)];
@@ -116,7 +119,7 @@ export function BlockGraph({ houses, calls, selectedId, onSelect }: Props) {
   const pos = (id: number) => bodies.current.get(id) ?? { x: CX, y: CY };
 
   const selected = houses.find((house) => house.id === selectedId) ?? null;
-  const counts = { ringing: 0, connected: 0, failed: 0, idle: 0 };
+  const counts = { ringing: 0, connected: 0, failed: 0, idle: 0, ended: 0 };
   for (const signal of signals.values()) counts[signal] += 1;
 
   return (
@@ -186,17 +189,18 @@ export function BlockGraph({ houses, calls, selectedId, onSelect }: Props) {
         <aside className="graph-card">
           <p>Nodes</p>
           <strong>The block as a graph</strong>
-          <span>Dispatch calls every house. Gray lines join next-door neighbors. Orange is a matched ride. Drag a node to move it.</span>
+          <span>{liveEdges ? "Lines show recorded call attempts and stored contact relationships. Drag a node to move it." : "Dispatch calls every house. Gray lines join next-door neighbors. Orange is a matched ride. Drag a node to move it."}</span>
         </aside>
       )}
     </section>
   );
 }
 
-function signalFor(house: House, calls: CallCard[]): Signal {
+function signalFor(house: House, calls: CallCard[], live = false): Signal {
   let latest: CallCard | undefined;
   for (const call of calls) if (call.name === house.name) latest = call;
   if (!latest) return "idle";
+  if (live && latest.phase === "done") return "ended";
   if (latest.phase === "calling" || latest.phase === "holding") return "ringing";
   if (latest.phase === "missed" || latest.phase === "declined") return "failed";
   if (latest.phase === "canceled") return "idle";

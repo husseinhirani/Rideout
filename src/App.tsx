@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api } from "./api";
+import { createPortal } from "react-dom";
+import { api, presentationState, savedConversation, directoryEdges, type CoordinatorAction } from "./updated-ui-api";
 import { useBackend } from "./backend";
 import { BlockGraph } from "./BlockGraph";
 import { CaseCard } from "./CaseCard";
@@ -12,11 +13,13 @@ import { LiveStats } from "./LiveStats";
 import { MapStats } from "./MapStats";
 import { MissingChildForm } from "./MissingChildForm";
 import { NeighborhoodMap } from "./NeighborhoodMap";
+import { IncidentMap } from "./IncidentMap";
+import { participantLocation } from "../server/shared/spatial";
 import { OperatorPanel } from "./OperatorPanel";
 import { RegisterForm } from "./RegisterForm";
 import { downloadLog } from "./exportLog";
 import { householdFor } from "./households";
-import { assignHouses, footprints, GEO, useRideOut } from "./telemetry";
+import { assignHouses, footprints, GEO, useRideOut, wildfireMockCalls } from "./telemetry";
 import type { ChatMessage, HouseStatus, OperatorSession } from "./types";
 
 const STATUS: Record<HouseStatus, string> = {
@@ -53,19 +56,30 @@ export function App() {
   const [menu, setMenu] = useState(false);
   const [form, setForm] = useState(false);
   const [register, setRegister] = useState(false);
-  const [caseId, setCaseId] = useState<number | null>(null);
+  const [caseId, setCaseId] = useState<number | null>(0);
   const [liveChat, setLiveChat] = useState<ChatMessage[]>([]);
   const [chatBusy, setChatBusy] = useState(false);
   const [liveSelected, setLiveSelected] = useState<number | null>(null);
   const [outside, setOutside] = useState<{ session: OperatorSession; call: LiveCall } | null>(null);
+  const [startingDrill, setStartingDrill] = useState(false);
+  const [includeSimulated, setIncludeSimulated] = useState(false);
+  const [coordinatorBusy, setCoordinatorBusy] = useState(false);
+  const [retryChat, setRetryChat] = useState<{ caseId: number; text: string } | null>(null);
+  const drillLock = useRef(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [dismissedConcern, setDismissedConcern] = useState("");
+  useEffect(() => {
+    if (!notice?.startsWith("Calls are queued")) return;
+    const timer = window.setTimeout(() => setNotice(null), 8000);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
   const recordings = useRef(new Map<string, Blob>());
   const waiting = ride.calls.find((call) => call.phase === "holding");
   const child = ride.incident.kind === "missing_child" ? ride.incident.child : null;
   const selected = ride.selected;
   const clock = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  const state = backend.state;
-  const live = Boolean(backend.connected && state && !preferOffline);
+  const state = useMemo(() => backend.state ? presentationState(backend.state) : null, [backend.state]);
+  const live = Boolean(state && !preferOffline);
 
   const residents = useMemo(() => assignHouses(), []);
   const spots = useMemo(
@@ -84,17 +98,33 @@ export function App() {
     [],
   );
   const liveCase = state ? currentCase(state, caseId) : null;
-  const liveHouses = useMemo(() => (state ? housesFrom(state, residents, spots, GEO) : []), [state, residents, spots]);
-  const liveCalls = useMemo(() => (state ? callsFor(state, liveCase?.id ?? null) : []), [state, liveCase?.id]);
+  const liveDrill = state?.wildfire_drills?.find(drill => drill.case_id === liveCase?.id);
+  const assistance = state?.assistance_sessions?.find(session => session.case_id === liveCase?.id);
+  const mockCalls = liveDrill && !assistance ? wildfireMockCalls(Date.parse(liveDrill.started_at), now.getTime()) : [];
+  const savedChat = savedConversation(state, liveCase?.id ?? null);
+  const conversation = [...savedChat, ...liveChat.filter(message => !savedChat.some(saved => saved.from === message.from && saved.text === message.text))].sort((a,b) => a.at - b.at);
+  useEffect(() => { setLiveChat([]); }, [liveCase?.id]);
+  const liveHouses = useMemo(() => assistance ? assistance.people.flatMap(person => {
+    const { location, confirmed } = participantLocation(assistance, person);
+    return location ? [{ id: person.profile_id, name: person.name, lat: location.lat, lng: location.lng,
+      status: (person.unreachable ? "unknown" : person.facts.needs_transport ? "needs_ride" : "waiting") as HouseStatus,
+      note: (confirmed ? "Participant-reported incident location: " : "Unconfirmed simulation starting point: ") + location.label }] : [];
+  }) : state ? housesFrom(state, residents, spots, GEO) : [], [state, assistance, residents, spots]);
+  const liveCalls = useMemo(() => (state && liveCase ? callsFor(state, liveCase.id) : []), [state, liveCase?.id]);
   const liveSightings = useMemo(() => (state ? sightingsFrom(state, liveCase?.id ?? null) : []), [state, liveCase?.id]);
   const liveGraph = useMemo(() => graphCalls(liveCalls, liveHouses), [liveCalls, liveHouses]);
-  const livePerson = liveHouses.find((house) => house.id === liveSelected) ?? null;
+  const selectedProfile = state?.profiles.find(p => p.id === liveSelected);
+  const livePerson = liveHouses.find((house) => house.id === liveSelected) ?? (!assistance && selectedProfile ? { ...selectedProfile, status: "waiting" as const, note: "Stored directory profile; current whereabouts unverified." } : null);
   const concern = live ? liveCalls.find((call) => call.attempt.concern && call.transport !== "ended" && call.transport !== "cancelled") : undefined;
   const highlighted = useMemo(() => highlightedIds.map((id) => {
-    const house = (live ? liveHouses : ride.houses).find((item) => item.id === id);
+    if (live) {
+      const footprint = spots.find(item => item.id === id);
+      return `mapped building ${id}${footprint ? ` at ${footprint.lat}, ${footprint.lng}` : ""} (current occupants and whereabouts unconfirmed)`;
+    }
+    const house = ride.houses.find((item) => item.id === id);
     const home = householdFor(id, house?.name);
     return `${home.address} (${home.owner}, building ${id})`;
-  }), [highlightedIds, live, liveHouses, ride.houses]);
+  }), [highlightedIds, live, spots, ride.houses]);
   const mapContext = highlighted.length ? `\n\nDispatcher map filter: highlighted ${highlighted.length} building${highlighted.length === 1 ? "" : "s"}: ${highlighted.join("; ")}. Use these buildings as the geographic area of interest when choosing candidates.` : "";
   const changeHighlights = useCallback((ids: number[], position?: { x: number; y: number }) => {
     setHighlightedIds(ids);
@@ -107,11 +137,20 @@ export function App() {
     setFacilitatorRequest((value) => value + 1);
   };
 
-  // A newly opened case takes over the view; choosing one by hand holds until the next opens.
+  // Start idle on a fresh page unless a real call still needs attention. New
+  // cases opened during this session take focus; old completed drills stay history.
+  const newestSeen = useRef<number | null>(null);
   const newestCase = state?.cases.reduce((max, row) => Math.max(max, row.id), 0) ?? 0;
   useEffect(() => {
-    setCaseId(null);
-  }, [newestCase]);
+    if (!state) return;
+    if (newestSeen.current === null) {
+      const ongoing = [...state.attempt_progress].reverse().find(call => ["queued", "dispatching", "active", "unknown"].includes(call.transport));
+      const openCoordination = [...(state.assistance_sessions ?? [])].reverse().find(session =>
+        state.cases.some(row => row.id === session.case_id && row.status !== "closed"));
+      setCaseId(current => current === 0 ? ongoing?.support_case_id ?? openCoordination?.case_id ?? current : current);
+    } else if (newestCase > newestSeen.current) setCaseId(newestCase);
+    newestSeen.current = newestCase;
+  }, [state, newestCase]);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), 1000);
@@ -123,7 +162,27 @@ export function App() {
 
   const fail = (error: unknown) => setNotice(error instanceof Error ? error.message : "The backend refused that");
 
+  const sendCoordinatorMessage = async (selectedCaseId: number, text: string) => {
+    const session = state?.assistance_sessions?.find(item => item.case_id === selectedCaseId);
+    if (!session || chatBusy) return;
+    setChatBusy(true);
+    setRetryChat(null);
+    try {
+      await backend.run(() => api.coordinator(selectedCaseId, session.revision, { action: "message", text }));
+      setNotice(null);
+    } catch (error) {
+      setRetryChat({ caseId: selectedCaseId, text });
+      setNotice(error instanceof Error ? error.message : "The coordinator could not answer. Retry to check the saved message.");
+    } finally { setChatBusy(false); }
+  };
+
   const liveActions = {
+    coordinator: async (expectedRevision: number, action: CoordinatorAction) => {
+      if (!liveCase || coordinatorBusy) return;
+      setCoordinatorBusy(true);
+      try { await backend.run(() => api.coordinator(liveCase.id, expectedRevision, action)); }
+      finally { setCoordinatorBusy(false); }
+    },
     cancel: async (attemptId: number) => {
       try {
         const result = await backend.run(() => api.cancel(attemptId));
@@ -136,6 +195,7 @@ export function App() {
       await backend.run(() => api.report(attemptId, answer, concernText));
     },
     callYourself: (call: LiveCall) => {
+      if (["queued", "dispatching", "active", "unknown"].includes(call.transport ?? "unknown")) return;
       const house = liveHouses.find((item) => item.name === call.person?.name);
       setOutside({
         call,
@@ -154,7 +214,8 @@ export function App() {
       return `${result.reply} (${result.status})`;
     },
     ask: async (text: string) => {
-      if (!state) return;
+      if (!state || !text.trim() || chatBusy) return;
+      if (assistance && liveCase) { await sendCoordinatorMessage(liveCase.id, text); return; }
       const request = `${text}${mapContext}`;
       say("lead", request);
       setChatBusy(true);
@@ -163,10 +224,10 @@ export function App() {
           const result = await backend.run(() => api.caseInput(liveCase.id, request));
           say("facilitator", `Saved to case #${liveCase.id} as dispatcher input, not verified. ${result.reason}`);
         } else if (state.demo_mode.scripted) {
-          say("facilitator", "This backend runs a scripted model, so it cannot read a free-text incident. Use Start → Missing child.");
+          say("facilitator", "This backend runs a scripted model, so it cannot read a free-text incident. Use Start → Wildfire drill.");
         } else {
           const result = await backend.run(() => api.incident({ text: request }));
-          say("facilitator", `Opened incident #${result.incident_id}${result.case_ids.length ? ` with case ${result.case_ids.map((id) => `#${id}`).join(", ")}` : ""}. Check-in calls go to everyone in range.`);
+          say("facilitator", `Opened incident #${result.incident_id}. ${result.reason}`);
         }
       } catch (error) {
         say("facilitator", error instanceof Error ? `Not saved: ${error.message}` : "Not saved.");
@@ -177,15 +238,27 @@ export function App() {
   };
 
   const startWildfire = async () => {
+    if (drillLock.current || !backend.connected) return;
+    drillLock.current = true;
+    setStartingDrill(true);
     try {
-      const radius_m = 400;
-      const result = await backend.run(() =>
-        api.incident({ type: "wildfire evacuation drill", lat: (GEO.south + GEO.north) / 2, lng: (GEO.west + GEO.east) / 2, radius_m }),
-      );
-      setNotice(`Wildfire incident #${result.incident_id} opened. Check-in calls go to every registered neighbor within ${radius_m} m.`);
+      const key = "rideout:wildfire-command";
+      const pendingId = sessionStorage.getItem(key);
+      const commandId = pendingId || crypto.randomUUID();
+      const include = pendingId ? sessionStorage.getItem(key + ":simulation") === "true" : includeSimulated;
+      sessionStorage.setItem(key, commandId);
+      sessionStorage.setItem(key + ":simulation", String(include));
+      const result = await backend.run(() => api.wildfireDrill(commandId, include));
+      sessionStorage.removeItem(key);
+      sessionStorage.removeItem(key + ":simulation");
+      setCaseId(result.support_case_id);
+      setNotice(`Calls are queued for ${(state?.wildfire_demo?.names ?? [state?.wildfire_demo?.name ?? "Demo participant"]).join(", ")}. Open Outgoing calls to follow them.`);
       setTab("checks");
     } catch (error) {
       fail(error);
+    } finally {
+      drillLock.current = false;
+      setStartingDrill(false);
     }
   };
 
@@ -197,8 +270,8 @@ export function App() {
       calls: liveGraph,
       inbound: null,
       inboundLog: [],
-      incident: { kind: latestIncident(state, true) ? "wildfire" : "missing_child", startedAt: 0, child: null, sightings: liveSightings, foundAt: null },
-      chat: liveChat,
+      incident: { kind: liveCase?.kind === "information" ? "information" : latestIncident(state, true) ? "wildfire" : "missing_child", startedAt: 0, child: null, sightings: liveSightings, foundAt: null },
+      chat: conversation,
       tasks: [],
       started: state.cases.length > 0 || state.incidents.length > 0,
       running: false,
@@ -223,8 +296,9 @@ export function App() {
     });
 
   return (
-    <main className={`${tab === "checks" ? "stage checks-on" : "stage"}${scene === "nodes" ? " nodes-on" : ""}${simple ? " simple-on" : ""}`}>
-      <NeighborhoodMap
+    <main className={`${tab === "checks" ? "stage checks-on" : "stage"}${scene === "nodes" ? " nodes-on" : ""}${simple ? " simple-on" : ""}${live && assistance ? " incident-map-on" : ""}`}>
+      {live && assistance ? (tab === "map" ? <div className="incident-map-scene"><IncidentMap session={assistance} selectedId={liveSelected} onSelect={setLiveSelected} /></div> : null) : <NeighborhoodMap
+        liveData={live}
         place={ride.place}
         houses={live ? liveHouses : ride.houses}
         onSelect={live ? setLiveSelected : ride.select}
@@ -236,8 +310,8 @@ export function App() {
         onSelectionChange={changeHighlights}
         drawMode={drawMode}
         onOpenGroupMenu={openGroupMenu}
-      />
-      {tab === "map" && highlightedIds.length > 0 && groupMenuPosition ? (
+      />}
+      {tab === "map" && !(live && assistance) && highlightedIds.length > 0 && groupMenuPosition ? (
         <aside className="group-action" style={{ left: Math.max(8, Math.min(groupMenuPosition.x, window.innerWidth - 292)), top: Math.max(8, Math.min(groupMenuPosition.y, window.innerHeight - 190)) }} aria-label="Selected area actions">
           <div className="group-action-title"><span>Selected area</span><button type="button" aria-label="Close selected area menu" onClick={() => setGroupMenuPosition(null)}>×</button></div>
           <p><strong>{highlightedIds.length}</strong><span>Buildings</span></p>
@@ -245,9 +319,9 @@ export function App() {
           <button type="button" onClick={openCoordinatorForGroup}>Go to facilitator</button>
         </aside>
       ) : null}
-      {scene === "nodes" ? (
+      {scene === "nodes" && !(live && assistance) ? (
         live ? (
-          <BlockGraph houses={liveHouses} calls={liveGraph} selectedId={liveSelected} onSelect={setLiveSelected} />
+          <BlockGraph houses={state!.profiles.map(p => ({ id: p.id, name: p.name, lat: p.lat, lng: p.lng, status: "waiting", note: "Stored directory profile; current whereabouts unverified." }))} liveEdges={directoryEdges(state!, liveCase?.id ?? null)} calls={liveGraph} selectedId={liveSelected} onSelect={setLiveSelected} />
         ) : (
           <BlockGraph houses={ride.houses} calls={ride.calls} selectedId={selected?.id ?? null} onSelect={ride.select} />
         )
@@ -262,7 +336,7 @@ export function App() {
               onClick={() => setPreferOffline((value) => !value)}
               title={live ? "Switch to the offline demo" : "Switch back to the live backend"}
             >
-              {live ? `Live · ${demoLabel(state)}` : "Offline demo · switch to live"}
+              {live ? `${backend.connected ? "Live" : "Disconnected"} · ${demoLabel(state)}` : "Offline demo · switch to live"}
             </button>
           ) : null}
         </div>
@@ -290,7 +364,7 @@ export function App() {
             Export log
           </button>
           <div className="start-menu">
-            <button type="button" onClick={() => setMenu((open) => !open)} disabled={!live && ride.running} aria-expanded={menu}>
+            <button type="button" onClick={() => setMenu((open) => !open)} disabled={(!preferOffline && !backend.connected) || startingDrill || (!live && ride.running)} aria-expanded={menu}>
               {live ? "Start ▾" : ride.running ? "Live" : ride.started ? "New incident ▾" : "Start ▾"}
             </button>
             {menu && live && state ? (
@@ -298,25 +372,23 @@ export function App() {
                 <button
                   type="button"
                   role="menuitem"
+                  disabled={!backend.connected || startingDrill}
                   onClick={() => {
                     setMenu(false);
+                    if (!state.wildfire_demo?.ready) {
+                      setNotice("No saved drill participant is available. Configure the private participant roster before starting.");
+                      return;
+                    }
                     void startWildfire();
                   }}
                 >
-                  <b>Wildfire drill</b>
-                  <small>{state.demo_mode.simulate ? "Simulated check-in calls to every registered neighbor" : "Places real check-in calls to every registered neighbor"}</small>
+                  <b>{startingDrill ? "Starting calls…" : "Wildfire drill"}</b>
+                  <small>{state.wildfire_demo?.ready ? `${state.demo_mode.simulate ? "Simulated calls" : "Call"} ${(state.wildfire_demo.names ?? [state.wildfire_demo.name]).join(", ")}` : "Configure the private drill roster"}</small>
                 </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    setMenu(false);
-                    setForm(true);
-                  }}
-                >
-                  <b>Missing child</b>
-                  <small>Open a case; the backend calls the two helpers</small>
-                </button>
+                <label className="start-simulation-option">
+                  <input type="checkbox" checked={includeSimulated} disabled={startingDrill} onChange={event => setIncludeSimulated(event.target.checked)} />
+                  <span>Include 12 simulated neighbors<small>They participate in coordination without phone calls.</small></span>
+                </label>
                 <button
                   type="button"
                   role="menuitem"
@@ -343,37 +415,51 @@ export function App() {
                   <b>Wildfire drill</b>
                   <small>Check every registered neighbor and match rides</small>
                 </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    setMenu(false);
-                    setForm(true);
-                  }}
-                >
-                  <b>Missing child</b>
-                  <small>Call every home with the child's description</small>
-                </button>
               </div>
             ) : null}
           </div>
         </div>
       </header>
 
+      {createPortal(<div className="notification-stack" aria-label="Notifications">
+      {live && !backend.connected && <div className="live-notice" role="status"><p>Disconnected. Showing the last saved call state; reconnect before starting a call.</p></div>}
       {notice ? (
         <div className="live-notice" role="status">
           <p>{notice}</p>
+          {retryChat && <button type="button" disabled={chatBusy || !backend.connected} onClick={() => void sendCoordinatorMessage(retryChat.caseId, retryChat.text)}>{chatBusy ? "Retrying…" : "Retry reply"}</button>}
           <button type="button" onClick={() => setNotice(null)}>
             Dismiss
           </button>
         </div>
       ) : null}
+          {live && concern && !outside && dismissedConcern !== `${concern.attempt.id}:${concern.attempt.concern}` ? (
+            <div className="handoff-banner" role="alert">
+              <p>
+                <b>{concern.person?.name ?? "A caller"} · review needed.</b> {concern.attempt.concern}
+              </p>
+              <button type="button" onClick={() => setDismissedConcern(`${concern.attempt.id}:${concern.attempt.concern}`)}>Dismiss</button>
+            </div>
+          ) : null}
+          {!live && waiting && !ride.operator ? (
+            <div className="handoff-banner" role="alert">
+              <p>
+                <b>{waiting.name} needs a person.</b> {waiting.escalation?.reason}
+              </p>
+              <button type="button" className="pick-up" onClick={() => ride.takeOver(waiting.id)}>
+                Pick up
+              </button>
+              <button type="button" onClick={() => ride.cancelCall(waiting.id)}>
+                Cancel call
+              </button>
+            </div>
+          ) : null}
+      </div>, document.body)}
 
       {live && state ? (
         <>
           {tab === "map" ? (
             <>
-              <LiveStats state={state} caseId={liveCase?.id ?? null} />
+              {!assistance && <LiveStats state={state} caseId={liveCase?.id ?? 0} />}
               <aside className="right">
                 <CaseCard
                   state={state}
@@ -388,7 +474,7 @@ export function App() {
                   <article className="glass person">
                     <p className="kicker">{LIVE_STATUS[livePerson.status]}</p>
                     <h3>{livePerson.name}</h3>
-                    <p>{householdFor(livePerson.id, livePerson.name).address}</p>
+                    <p>{`${assistance ? "Incident coordinates" : "Stored coordinates"}: ${livePerson.lat}, ${livePerson.lng}`}</p>
                     <p>{livePerson.note}</p>
                   </article>
                 ) : null}
@@ -399,26 +485,18 @@ export function App() {
           <LiveChecks
             visible={tab === "checks"}
             state={state}
-            caseId={liveCase?.id ?? null}
+            caseId={liveCase?.id ?? 0}
             houses={liveHouses}
-            chat={liveChat}
+            mockCalls={mockCalls}
+            firstProfileId={liveDrill?.profile_id}
+            chat={conversation}
             busy={chatBusy}
-            operatorBusy={Boolean(outside)}
+            operatorBusy={Boolean(outside) || coordinatorBusy || !backend.connected}
             now={now.getTime()}
             actions={liveActions}
             facilitatorRequest={facilitatorRequest}
           />
 
-          {concern && !outside ? (
-            <div className="handoff-banner" role="alert">
-              <p>
-                <b>{concern.person?.name ?? "A helper"} raised a concern.</b> {concern.attempt.concern}
-              </p>
-              <button type="button" className="pick-up" onClick={() => liveActions.callYourself(concern)}>
-                Call them yourself
-              </button>
-            </div>
-          ) : null}
 
           {outside ? (
             <OperatorPanel
@@ -524,19 +602,6 @@ export function App() {
             }}
           />
 
-          {waiting && !ride.operator ? (
-            <div className="handoff-banner" role="alert">
-              <p>
-                <b>{waiting.name} needs a person.</b> {waiting.escalation?.reason}
-              </p>
-              <button type="button" className="pick-up" onClick={() => ride.takeOver(waiting.id)}>
-                Pick up
-              </button>
-              <button type="button" onClick={() => ride.cancelCall(waiting.id)}>
-                Cancel call
-              </button>
-            </div>
-          ) : null}
 
           {ride.operator ? (
             <OperatorPanel

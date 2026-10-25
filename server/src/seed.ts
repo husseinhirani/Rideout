@@ -56,7 +56,7 @@ async function seed(): Promise<void> {
   const existing = await profiles()
   if (existing.length > 0) {
     throw new Error(
-      "Profiles already exist. Wipe with: spacetime publish rideout --server local --module-path spacetimedb --delete-data",
+      "Profiles already exist; nothing was changed. Select an empty test database with SPACETIMEDB_DATABASE instead of wiping existing records.",
     )
   }
   for (const profile of rows) {
@@ -77,7 +77,7 @@ async function seed(): Promise<void> {
   for (const profile of rows) {
     const id = idByName.get(profile.name)
     const dial = profile.phone.startsWith(PLACEHOLDER_PHONE_PREFIX) ? "placeholder, not dialed" : "dialable"
-    console.log(String(id) + " " + profile.name + " " + profile.phone + " " + dial)
+    console.log(String(id) + " " + profile.name + " phone ending " + profile.phone.slice(-4) + " " + dial)
   }
 }
 

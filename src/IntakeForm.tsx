@@ -1,5 +1,6 @@
 import { useState } from "react";
-import type { api, BackendState, IntakeQuestion, IntakeResult } from "./api";
+import type { api } from "./updated-ui-api";
+import type { BackendState, IntakeQuestion, IntakeResult } from "./api";
 import { eventKey } from "./backend";
 
 type Draft = { name: string; description: string; location: string; time: string; reporterId: string; reporterName: string; relationship: string };
@@ -19,7 +20,7 @@ export function IntakeForm({
   onClose: () => void;
 }) {
   const helpers = new Set(state.demo_mode.helper_ids);
-  const reporters = state.profiles.filter((profile) => profile.phone && !helpers.has(profile.id));
+  const reporters = state.profiles.filter((profile) => (profile.phone || profile.phone_last4) && !helpers.has(profile.id));
   const defaultReporter = reporters.find((profile) => profile.id === state.demo_mode.reporter_id) ?? reporters[0];
   const locations = state.locations ?? [];
   const [key] = useState(eventKey);
@@ -40,7 +41,7 @@ export function IntakeForm({
     onChange: (event: { target: { value: string } }) => setDraft((current) => ({ ...current, [name]: event.target.value })),
   });
   const asked = (prefix: string) => questions.find((question) => question.field === prefix)?.question;
-  const coordinated = state.demo_mode.auto_coordinate && state.demo_mode.helper_ids.length === 2;
+  const coordinated = state.adaptive_planning_available === true && state.information_intake_configuration?.coordination_enabled === true;
 
   return (
     <div className="modal-scrim" role="presentation" onClick={onClose}>

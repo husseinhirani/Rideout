@@ -31,7 +31,7 @@ export function RegisterForm({
   const [problem, setProblem] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const spot = homes.find((item) => String(item.id) === home);
-  const known = state.profiles.filter((profile) => profile.phone);
+  const known = state.profiles.filter((profile) => profile.phone || profile.phone_last4);
 
   return (
     <div className="modal-scrim" role="presentation" onClick={onClose}>

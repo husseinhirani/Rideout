@@ -9,7 +9,6 @@ import type { CallCard, House, HouseStatus, Sighting } from "./types";
  * confirmed identity, and only the original reporter's confirmation is a reunion.
  */
 
-export const FOLLOW_UP_MS = 10_000;
 
 export type Brief = { summary: string; suggestions: string[] };
 
@@ -54,7 +53,7 @@ export function reportLabel(progress: AttemptProgressRow | undefined, attempt: A
 
 // A due review lets the coordinator reconsider; it does not promise another call.
 export function followUpAt(progress: AttemptProgressRow | undefined): number | null {
-  return progress?.accepted_at_ms != null ? progress.accepted_at_ms + FOLLOW_UP_MS : null;
+  return null; // No persisted review deadline is exposed by this backend.
 }
 
 export function isPossibleMatch(text: string): boolean {
@@ -63,6 +62,7 @@ export function isPossibleMatch(text: string): boolean {
 
 /** The case the dashboard follows: the chosen one, else the newest open, else the newest. */
 export function currentCase(state: BackendState, chosenId: number | null): SupportCaseRow | null {
+  if (chosenId === 0) return null; // Explicit idle view; history remains selectable.
   const chosen = chosenId === null ? undefined : state.cases.find((row) => row.id === chosenId);
   if (chosen) return chosen;
   const newest = [...state.cases].sort((a, b) => b.id - a.id);
@@ -76,6 +76,7 @@ export function intakeOf(state: BackendState, caseId: number): CaseIntakeRow | n
 export type CaseStatus = { label: string; tone: "open" | "reunion" | "closed"; reunionAt: string | null };
 
 export function caseStatus(row: SupportCaseRow, intake: CaseIntakeRow | null): CaseStatus {
+  if (row.kind === "information") return { label: row.status === "closed" ? "Closed by organizer" : row.policy?.paused ? "Paused" : "Open", tone: row.status === "closed" ? "closed" : "open", reunionAt: null };
   if (intake?.reunion_confirmed) {
     return { label: "Reunion reported by original reporter · self-reported, not verified", tone: "reunion", reunionAt: intake.confirmed_at };
   }
@@ -88,6 +89,16 @@ export type Coordination = { kind: "none" | "idle" | "pending" | "blocked" | "re
 
 export function coordinationOf(state: BackendState, caseId: number, now: number): Coordination {
   if (state.cases.find((row) => row.id === caseId)?.status === "closed") return { kind: "idle", text: "Case closed. No further calls are planned." };
+  const information = state.cases.find(row => row.id === caseId && row.kind === "information");
+  if (information) {
+    const planning = state.information_planning?.find(p => p.support_case_id === caseId);
+    if (information.policy?.paused) return { kind: "blocked", text: "Paused; organizer action is required." };
+    if (!planning?.enabled) return { kind: "idle", text: "Manual questions. The organizer chooses each call." };
+    if (planning.blocked_reason) return { kind: "blocked", text: planning.blocked_reason };
+    if (planning.error) return { kind: "retrying", text: `Planning failed: ${planning.error}${planning.retry_at_ms ? ` · retry eligible ${new Date(planning.retry_at_ms).toLocaleTimeString()}` : " · organizer action needed"}` };
+    if (information.input_revision !== information.evaluated_revision) return { kind: "pending", text: "New information awaits a coordinator decision." };
+    return { kind: "idle", text: "Current decision includes the evaluated evidence." };
+  }
   const progress = state.coordination.find((row) => row.support_case_id === caseId);
   if (!progress) return { kind: "none", text: "Planned by the dispatcher-reviewed planner." };
   if (progress.blocked_reason) return { kind: "blocked", text: `Blocked: ${progress.blocked_reason}` };
@@ -107,6 +118,43 @@ export type LiveCall = {
   simulated: boolean;
 };
 
+export function notReached(call: LiveCall): boolean {
+  return ["no_answer", "not_reached"].includes(call.attempt.outcome ?? "");
+}
+
+/** The contact outcome is distinct from the provider connection ending. */
+export function callStatusLabel(call: LiveCall): string {
+  if (["queued", "dispatching", "active", "unknown"].includes(call.transport ?? "")) return call.transportLabel;
+  return notReached(call) ? "Not reached" : call.transportLabel;
+}
+
+export type FollowUp = { call: LiveCall; reason: string; retrying: boolean };
+
+/** Rebuilt from durable records, including after a page refresh. One item per case/person. */
+export function followUps(state: BackendState): FollowUp[] {
+  const openCases = new Set(state.cases.filter(row => row.status !== "closed").map(row => row.id));
+  const groups = new Map<string, LiveCall[]>();
+  for (const call of callsFor(state, null)) {
+    if (!openCases.has(call.attempt.support_case_id) || call.transport === "cancelled"
+      || ["cancelled", "superseded"].includes(call.attempt.outcome ?? "")) continue;
+    const key = `${call.attempt.support_case_id}:${call.attempt.profile_id}`;
+    groups.set(key, [...(groups.get(key) ?? []), call]);
+  }
+  return [...groups.values()].flatMap(group => {
+    group.sort((a, b) => b.attempt.id - a.attempt.id);
+    const latest = group[0];
+    const retrying = ["queued", "dispatching", "active"].includes(latest.transport ?? "");
+    // Starting a retry does not resolve a previous unsuccessful contact.
+    const call = group.find(item => !["queued", "dispatching", "active"].includes(item.transport ?? ""));
+    if (!call) return [];
+    const reason = call.transport === "unknown" ? "Call status is unconfirmed. Review it before attempting another call."
+      : notReached(call) ? "Not reached. Their situation is still unknown; another contact method or follow-up is needed."
+      : call.attempt.concern || (call.transport === "ended" && !call.progress?.report_received && !call.attempt.answer
+        ? "The call ended without a report. Their situation is still unknown." : "");
+    return reason ? [{ call, reason, retrying }] : [];
+  }).sort((a, b) => b.call.attempt.id - a.call.attempt.id);
+}
+
 export function callsFor(state: BackendState, caseId: number | null): LiveCall[] {
   return state.attempts
     .filter((row) => caseId === null || row.support_case_id === caseId)
@@ -121,7 +169,7 @@ export function callsFor(state: BackendState, caseId: number | null): LiveCall[]
         transportLabel: progress ? transportLabel(progress.transport) : legacyTransport(attempt),
         reportLabel: reportLabel(progress, attempt),
         followUpAt: followUpAt(progress),
-        simulated: attempt.call_id?.startsWith("sim_") === true,
+        simulated: attempt.call_id?.startsWith("sim_") === true || state.assistance_sessions?.some(session => session.case_id === attempt.support_case_id && session.people.some(person => person.profile_id === attempt.profile_id && person.mode === "simulated")) === true,
       };
     });
 }
@@ -161,13 +209,16 @@ export function notesFor(state: BackendState, caseId: number): NoteView[] {
 }
 
 export function latestIncident(state: BackendState, sweepOnly: boolean): IncidentRow | null {
-  return [...state.incidents].sort((a, b) => b.id - a.id).find((row) => !sweepOnly || row.area.radius_m > 0) ?? null;
+  return [...state.incidents].sort((a, b) => b.id - a.id).find((row) => !sweepOnly || (row.area?.radius_m ?? 0) > 0) ?? null;
 }
 
 type Point = { id: number; lng: number; lat: number };
 
 /** Registered residents keep the footprint the offline map gives them; anyone else takes the nearest free one. */
 export function housesFrom(state: BackendState, residents: House[], footprints: Point[], bounds: { south: number; north: number; west: number; east: number }): House[] {
+  if (state.read_model_version === 2) return state.profiles
+    .filter(p => Number.isFinite(p.lat) && Number.isFinite(p.lng) && p.lat >= bounds.south && p.lat <= bounds.north && p.lng >= bounds.west && p.lng <= bounds.east)
+    .map(p => ({ id: p.id, name: p.name, lat: p.lat, lng: p.lng, status: "waiting" as const, note: "Stored directory coordinate; current whereabouts unverified." }));
   const sweep = latestIncident(state, true);
   const people = sweep ? state.incident_people.filter((row) => row.incident_id === sweep.id) : [];
   const used = new Set<number>();
@@ -221,7 +272,7 @@ function houseStatus(state: BackendState, profile: ProfileRow, checkIn: string |
 
 /** Map pins: the demo locations, and every note the backend stored with a place. */
 export function sightingsFrom(state: BackendState, caseId: number | null): Sighting[] {
-  const pins: Sighting[] = (state.locations ?? []).map((location) => ({
+  const pins: Sighting[] = (state.read_model_version === 2 ? [] : state.locations ?? []).map((location) => ({
     id: `location-${location.id}`,
     householdId: 0,
     reporter: "",
@@ -259,8 +310,8 @@ export function graphCalls(calls: LiveCall[], houses: House[]): CallCard[] {
     const house = houses.find((row) => row.name === call.person?.name);
     const at = Date.parse(call.attempt.created_at) || 0;
     const phase: CallCard["phase"] =
-      call.transport === "active" ? "live" : call.transport === "ended" ? "done" : call.transport === "cancelled" ? "canceled" : call.transport === undefined && call.attempt.outcome !== null ? "done" : "calling";
-    return { id: `attempt-${call.attempt.id}`, name: call.person?.name ?? "Unknown", phase, transcript: call.attempt.answer, at, startedAt: at, answeredAt: null, endedAt: null, householdId: house?.id };
+      call.transport === "active" ? "live" : notReached(call) ? "missed" : call.transport === "ended" ? "done" : call.transport === "cancelled" ? "canceled" : call.transport === undefined && call.attempt.outcome !== null ? "done" : "calling";
+    return { id: `attempt-${call.attempt.id}`, name: call.person?.name ?? "Unknown", phase, transcript: call.attempt.answer ? `Saved call report (not a verbatim transcript): ${call.attempt.answer}` : "", at, startedAt: at, answeredAt: null, endedAt: null, householdId: house?.id };
   });
 }
 
@@ -270,6 +321,8 @@ const INBOUND: Record<string, string> = {
   pending: "Saved · processing",
   prepared: "Saved · applying",
   recorded: "Recorded",
+  attached: "Attached",
+  rejected: "Rejected",
   needs_clarification: "Needs clarification",
   needs_review: "Needs review",
 };
@@ -278,11 +331,11 @@ export function inboundFrom(state: BackendState): InboundView[] {
   return [...(state.incoming_requests ?? [])]
     .sort((a, b) => b.id - a.id)
     .map((row) => {
-      const caller = state.profiles.filter((profile) => profile.phone === row.from_phone);
+      const caller = row.from_phone ? state.profiles.filter((profile) => !!profile.phone && profile.phone === row.from_phone) : [];
       return {
         row,
         // Caller-number matching is not identity verification.
-        caller: caller.length === 1 ? `${caller[0].name} · by phone number, not verified` : `${row.from_phone} · unknown caller`,
+        caller: caller.length === 1 ? `${caller[0].name} · by phone number, not verified` : `${row.phone_last4 ? `Phone ending ${row.phone_last4}` : "Incoming caller"} · unknown caller, identity unverified`,
         label: INBOUND[row.status] ?? row.status,
         review: row.status === "needs_review" || row.status === "needs_clarification",
       };

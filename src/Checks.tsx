@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { AgentColumn, barHeight, Bars, DashRail, FacilitatorTile, Faces, FocusView, Icon, initials, mmss, PeopleList, seconds, StatusSticks, Timeline, useFocus, type Bar, type BarTone, type Person, type RailItem, type TimelineLine } from "./Dashboard";
+import { barHeight, Bars, DashRail, FacilitatorTile, FocusView, Icon, initials, mmss, PeopleList, seconds, Timeline, useFocus, type Bar, type BarTone, type Person, type RailItem, type TimelineLine } from "./Dashboard";
 import type { CallCard, ChatMessage, House, InboundReport, Incident } from "./types";
 
 /**
@@ -200,18 +200,23 @@ export function Checks({
   const current = onLine.find((call) => call.phase === "live" || call.phase === "operator") ?? onLine[0] ?? null;
   const talked = calls.filter((call) => call.answeredAt).map((call) => seconds(call.answeredAt ?? 0, call.endedAt ?? now));
   const average = talked.length ? Math.round(talked.reduce((sum, value) => sum + value, 0) / talked.length) : 0;
-  const elapsed = started && incident.startedAt ? seconds(incident.startedAt, now) : 0;
   const state = !started ? "Standing by" : finished ? "Wave done" : "Live";
   const asPeople = (list: House[], tone: Person["tone"]): Person[] =>
     list.map((house) => ({ key: house.id, name: house.name, note: house.note, chip: STATUS_NAME[house.status], tone }));
 
   const rail: RailItem<Focus>[] = [
-    { id: "outgoing", label: "Outgoing calls", value: calls.length, icon: "phoneOut" },
-    { id: "incoming", label: "Incoming calls", value: inbound ? 1 : 0, icon: "phoneIn" },
-    { id: "need", label: "Need help", value: needHelp.length, icon: "alert" },
-    { id: "help", label: "Can help", value: helpers.length, icon: "hand" },
-    { id: "links", label: "Connections", value: links.length, icon: "link" },
-    { id: "facilitator", label: "Facilitator agent", value: null, icon: "spark", agent: true },
+    {
+      id: "outgoing",
+      label: "Outgoing calls",
+      value: calls.length,
+      icon: "phoneOut",
+      detail: calls.length ? `${reached}% reached · ${onLine.length} on the line${current ? ` · ${current.name.split(" ")[0]} ${mmss(seconds(current.answeredAt ?? current.startedAt, now))}` : ""}` : "Calls start with the drill",
+    },
+    { id: "incoming", label: "Incoming calls", value: inbound ? 1 : 0, icon: "phoneIn", detail: takerWho ? `${takerKicker} · ${takerWho}` : takerKicker },
+    { id: "need", label: "Need help", value: needHelp.length, icon: "alert", detail: names(needHelp, "No one is waiting on a ride") },
+    { id: "help", label: "Can help", value: helpers.length, icon: "hand", detail: names(helpers, "No open seats yet") },
+    { id: "links", label: "Connections", value: links.length, icon: "link", detail: links[0] ? `${links[0].from} → ${links[0].to}` : "No ride matched yet" },
+    { id: "facilitator", label: "Facilitator agent", value: null, icon: "spark", agent: true, detail: busy ? "Working…" : desk.kicker },
   ];
   const focused = focus ? rail.find((item) => item.id === focus.id) : undefined;
 
@@ -224,17 +229,6 @@ export function Checks({
           <div>
             <h1>Checks</h1>
             <p>{incident.kind === "missing_child" ? "Missing child alert" : "Wildfire check-in"} · Rockridge</p>
-          </div>
-          <div className="dash-pills">
-            <span className={`dash-pill${state === "Live" ? " live" : ""}`}>
-              <i />
-              {state}
-            </span>
-            <span className="dash-pill">
-              <Icon name="clock" />
-              {mmss(elapsed)}
-            </span>
-            <span className="dash-pill dark">{houses.length} neighbors</span>
           </div>
         </header>
 
@@ -266,111 +260,21 @@ export function Checks({
               </span>
             </button>
 
-            <div className="dash-pair low">
-              <button type="button" className="tile lime" onClick={(event) => open("links", event)}>
-                <span className="tile-label">
-                  <em className="chip light">
-                    <Icon name="link" /> Matches
-                  </em>
-                </span>
-                <span className="pager" aria-hidden="true">
-                  {Array.from({ length: Math.max(4, links.length) }, (_, index) => (
-                    <i key={index} className={index < links.length ? "on" : ""} />
-                  ))}
-                </span>
-                <span className="tile-unit">rides matched</span>
-                <strong className="huge">{links.length}</strong>
-                <span className="tile-foot">{links[0] ? `${links[0].from} → ${links[0].to}` : "No ride matched yet"}</span>
-              </button>
-
-              <button type="button" className="tile status" onClick={(event) => open("need", event)}>
-                <span className="tile-title">Neighbors</span>
-                <StatusSticks houses={houses} />
-              </button>
-
-            </div>
           </div>
-          <AgentColumn
-            top={
-              <>
-                <div className="dash-pair">
-                  <button type="button" className="tile stat reach" onClick={(event) => open("outgoing", event)}>
-                    <span className="tile-label">Reached</span>
-                    <strong className="big">
-                      {reached}
-                      <small>%</small>
-                    </strong>
-                    <span className="tile-foot">
-                      {answered} of {calls.length} picked up
-                    </span>
-                  </button>
-
-                  <button type="button" className={takerLive ? "tile stat incoming ringing" : "tile stat incoming"} onClick={(event) => open("incoming", event)}>
-                    <span className="tile-label">
-                      Incoming
-                      <em className={takerLive ? "chip hot" : "chip"}>{takerKicker}</em>
-                    </span>
-                    <strong className="big">{inbound ? 1 : 0}</strong>
-                    <span className="tile-foot">{takerWho ? `${takerWho} · Elena has the line` : "Elena answers call-ins"}</span>
-                  </button>
-
-                </div>
-                <div className="dash-pair">
-                  <button type="button" className={current ? "tile stat sky on" : "tile stat sky"} onClick={(event) => open("outgoing", event, current?.id)}>
-                    <span className="tile-label">On the line</span>
-                    <strong className="big">
-                      {onLine.length}
-                      <small>live</small>
-                    </strong>
-                    <span className="tile-foot">
-                      {current ? `${current.name} · ${mmss(seconds(current.answeredAt ?? current.startedAt, now))}` : "No one on the line"}
-                    </span>
-                  </button>
-
-                  <div className="tile people">
-                    <button type="button" className="people-half" onClick={(event) => open("need", event)}>
-                      <span className="tile-label">
-                        <i className="k-miss" />
-                        Need help
-                      </span>
-                      <span className="people-row">
-                        <strong className="big">{needHelp.length}</strong>
-                        <Faces names={needHelp.map((house) => house.name)} />
-                      </span>
-                    </button>
-                    <button type="button" className="people-half" onClick={(event) => open("help", event)}>
-                      <span className="tile-label">
-                        <i className="k-dark" />
-                        Can help
-                      </span>
-                      <span className="people-row">
-                        <strong className="big">{helpers.length}</strong>
-                        <Faces names={helpers.map((house) => house.name)} />
-                      </span>
-                    </button>
-                  </div>
-
-                </div>
-              </>
-            }
-            agent={
-              <FacilitatorTile
-                chat={chat}
-                name={AGENTS.facilitator.name}
-                kicker={desk.kicker}
-                lead={desk.lead}
-                live={desk.live || busy}
-                busy={busy}
-                suggestions={SUGGESTIONS}
-                placeholder="Ask Jonah to call someone…"
-                onOpen={(from) => open("facilitator", from)}
-                onAsk={(text, from) => {
-                  onAsk(text);
-                  open("facilitator", from);
-                }}
-              />
-            }
-          />
+          <div className="dash-col agent-col">
+            <FacilitatorTile
+              chat={chat}
+              name={AGENTS.facilitator.name}
+              kicker={desk.kicker}
+              lead={desk.lead}
+              live={desk.live || busy}
+              busy={busy}
+              suggestions={SUGGESTIONS}
+              placeholder="Ask Jonah to call someone…"
+              onOpen={(from) => open("facilitator", from)}
+              onAsk={(text) => onAsk(text)}
+            />
+          </div>
         </div>
       </div>
 
@@ -449,6 +353,12 @@ export function Checks({
       ) : null}
     </section>
   );
+}
+
+function names(list: House[], none: string) {
+  if (list.length === 0) return none;
+  const first = list.slice(0, 2).map((house) => house.name);
+  return list.length > 2 ? `${first.join(", ")} +${list.length - 2}` : first.join(" and ");
 }
 
 function canHelp(house: House) {
@@ -682,14 +592,15 @@ export function FacilitatorChat({
 }) {
   const [draft, setDraft] = useState("");
   const feed = useRef<HTMLDivElement>(null);
+  const latestMessage = chat[chat.length - 1];
 
   useEffect(() => {
     const node = feed.current;
     if (node) node.scrollTop = node.scrollHeight;
-  }, [chat, busy]);
+  }, [latestMessage?.id, latestMessage?.text, busy]);
 
   const send = (text: string) => {
-    if (!text.trim()) return;
+    if (!text.trim() || busy) return;
     onAsk(text);
     setDraft("");
   };
@@ -711,7 +622,7 @@ export function FacilitatorChat({
       </div>
       <div className="chat-chips">
         {suggestions.map((suggestion) => (
-          <button key={suggestion} type="button" onClick={() => send(suggestion)}>
+          <button key={suggestion} type="button" disabled={busy} onClick={() => send(suggestion)}>
             {suggestion}
           </button>
         ))}
@@ -729,7 +640,7 @@ export function FacilitatorChat({
           placeholder={placeholder}
           aria-label="Message the facilitator"
         />
-        <button type="submit" disabled={!draft.trim()}>
+        <button type="submit" disabled={busy || !draft.trim()}>
           Send
         </button>
       </form>

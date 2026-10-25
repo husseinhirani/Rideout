@@ -1,5 +1,26 @@
 # RideOut design
 
+## Connected product
+
+The product restores the original `UpdatedUI` screens, styles, menus, map controls,
+forms, call details, export and offline scenario interactions. Do not replace or
+simplify these screens while connecting backend features.
+
+`src/updated-ui-api.ts` translates the original UI actions into generic investigation
+commands with command IDs and input revisions. Saved organizer notes and coordinator
+decisions feed the original conversation component. Registration uses the operator
+API. Live map coordinates and graph relationships come from stored profiles;
+unrecorded household facts are not populated with demo residents or vehicles.
+
+The original scenario forms are presentation inputs, translated into free-text
+context. They do not introduce scenario-specific backend state. The original
+helper-acceptance/check-in displays still require their corresponding records;
+information collection does not manufacture rescue assignments or safety states.
+Generic scope, consent, association and pause controls remain in the backend console.
+See `README.md` for the exact connection boundaries and local checkpoint.
+
+The visual notes below describe the original map/dashboard direction.
+
 Source: the Droneview AI dashboard. The 3D neighborhood is the canvas. Every fact sits in a black, rounded, slightly blurred card on top of it. Type is large enough to read across a table.
 
 ## Canvas

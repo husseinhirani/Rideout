@@ -260,6 +260,33 @@ function buildBeats(): Beat[] {
 
 const BEATS = buildBeats();
 
+/** Display-only companions for a real drill. Reconstruct from its saved start
+ * time so refreshing never restarts the script or queues any extra phone calls. */
+export function wildfireMockCalls(startedAt: number, now: number): CallCard[] {
+  const calls = new Map<string, CallCard>();
+  for (const beat of BEATS) {
+    if (beat.at > now - startedAt) break;
+    const id = `mock-${startedAt}-${beat.callId}`;
+    const at = startedAt + beat.at;
+    if (beat.kind === "dial") {
+      calls.set(id, { id, name: beat.name, phase: "calling", transcript: "", at,
+        startedAt: at, answeredAt: null, endedAt: null });
+      continue;
+    }
+    const call = calls.get(id);
+    if (!call) continue;
+    if (beat.kind === "say") {
+      call.phase = "live"; call.answeredAt ??= at; call.transcript = beat.text;
+    } else if (beat.kind === "miss" || beat.kind === "decline") {
+      call.phase = beat.kind === "miss" ? "missed" : "declined"; call.endedAt = at;
+    } else if (beat.kind === "resolve") {
+      if (call.phase !== "missed" && call.phase !== "declined") call.phase = "done";
+      call.endedAt ??= at;
+    }
+  }
+  return [...calls.values()];
+}
+
 function mark(houses: House[], name: string, status: HouseStatus, note: string): House[] {
   return houses.map((house) => (house.name === name ? { ...house, status, note } : house));
 }

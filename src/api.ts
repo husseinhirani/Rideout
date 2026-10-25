@@ -1,3 +1,9 @@
+import type { AssistanceState } from "../server/shared/assistance";
+import type { ContactScope, InformationPolicy, ProfileSettingsRow, InformationAttemptRow, CreateInformationInput, ConfigureInformationInput, RequestInformationCallInput, InformationCommandResult } from "../server/shared/information";
+import type { InformationPlanningRow, InformationDecisionRow } from "../server/shared/information-plan";
+import type { InformationIntakeConfiguration, InformationIncomingResolution } from "../server/shared/information-incoming";
+export type { ContactScope, InformationPolicy, InformationPlanningRow, InformationDecisionRow, InformationIntakeConfiguration };
+
 /**
  * The backend contract, as GET /state returns it. These mirror the row types in
  * server/src/db.ts; keep them in step rather than inventing frontend-only fields.
@@ -6,13 +12,13 @@
 
 export type Transport = "queued" | "dispatching" | "active" | "ended" | "unknown" | "cancelled";
 
-export type ProfileRow = { id: number; name: string; phone: string; lat: number; lng: number; contact_profile_ids: number[] };
+export type ProfileRow = { id: number; name: string; phone?: string; phone_last4?: string; lat: number; lng: number; contact_profile_ids: number[] };
 
 export type IncidentRow = {
   id: number;
   type: string;
   description: string;
-  area: { lat: number; lng: number; radius_m: number };
+  area: { lat: number; lng: number; radius_m: number } | null;
   brief: string;
   status: string;
   created_at: string;
@@ -21,7 +27,7 @@ export type IncidentRow = {
 
 export type IncidentPersonRow = { id: number; incident_id: number; profile_id: number; status: "checking_in" | "safe" | "victim" | "unknown" | string };
 
-export type SupportCaseRow = { id: number; incident_id: number; victim_profile_id: number; goal: string; brief: string; status: "open" | "needs_dispatcher" | "closed" | string };
+export type SupportCaseRow = { id: number; incident_id: number; victim_profile_id: number | null; kind?: string; objective?: string; scope?: ContactScope; policy?: InformationPolicy; input_revision?: number; evaluated_revision?: number; goal: string; brief: string; status: "open" | "needs_dispatcher" | "closed" | string };
 
 export type AttemptRow = {
   id: number;
@@ -88,12 +94,12 @@ export type CaseIntakeRow = {
 export type IncomingRequestRow = {
   id: number;
   provider_call_id: string;
-  from_phone: string;
+  from_phone?: string; phone_last4?: string; identity_status?: string; review_reason?: string;
   direction: string;
   text: string;
   revision: number;
   status: "pending" | "prepared" | "needs_clarification" | "recorded" | "needs_review" | string;
-  decision_json: string;
+  decision_json?: string;
   reply: string;
   support_case_id: number | null;
   failure_count: number;
@@ -112,7 +118,22 @@ export type DemoMode = {
   inbound?: boolean;
 };
 
+export type InformationCase = SupportCaseRow & { kind: "information"; objective: string; scope: ContactScope; policy: InformationPolicy; input_revision: number; evaluated_revision: number };
+export function informationCases(state: BackendState): InformationCase[] { return state.cases.filter((row): row is InformationCase => row.kind === "information"); }
+export type DirectoryResult = { profiles: (ProfileRow & { eligible: boolean; eligibility_reasons: string[]; call_consent: boolean; availability: string })[]; next_after_id: number | null };
 export type BackendState = {
+  assistance_sessions?: AssistanceState[];
+  wildfire_demo?: { name: string; names?: string[]; count?: number; ready: boolean };
+  wildfire_drills?: { case_id: number; profile_id: number; started_at: string }[];
+  read_model_version?: number;
+  server_time_ms?: number;
+  adaptive_planning_available?: boolean;
+  profile_settings?: ProfileSettingsRow[];
+  information_attempts?: InformationAttemptRow[];
+  information_planning?: InformationPlanningRow[];
+  information_decisions?: InformationDecisionRow[];
+  information_intake_configuration?: InformationIntakeConfiguration;
+  information_incoming_resolutions?: InformationIncomingResolution[];
   demo_mode: DemoMode;
   locations?: DemoLocation[];
   profiles: ProfileRow[];
@@ -143,6 +164,7 @@ async function call<T>(path: string, body?: unknown): Promise<T> {
     method: body === undefined ? "GET" : "POST",
     headers: body === undefined ? undefined : { "Content-Type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),
+    signal: AbortSignal.timeout(15000),
   });
   const text = await response.text();
   let parsed: unknown = null;
@@ -161,23 +183,14 @@ async function call<T>(path: string, body?: unknown): Promise<T> {
 
 export const api = {
   state: () => call<BackendState>("/state"),
-  intake: (body: {
-    event_key: string;
-    reporter_profile_id: number | null;
-    child: { name: string; description: string; last_seen_location_id: string; last_seen_time: string };
-    reporter: { name: string; relationship: string };
-  }) => call<IntakeResult>("/intake", body),
-  incident: (body: { type: string; lat: number; lng: number; radius_m: number } | { text: string }) =>
-    call<{ incident_id: number; case_ids: number[] }>("/incidents", body),
-  caseInput: (caseId: number, text: string) => call<{ support_case_id: number; planned: number; reason: string }>(`/cases/${caseId}/input`, { text }),
-  closeCase: (caseId: number) => call<{ support_case_id: number; status: string }>(`/cases/${caseId}/close`, {}),
-  cancel: (attemptId: number) => call<{ attempt_id: number; cancelled: boolean; reason: string }>(`/attempts/${attemptId}/cancel`, {}),
-  report: (attemptId: number, answer: string, concern: string) =>
-    call<{ support_case_id: number }>("/calls/report", { attempt_id: String(attemptId), answer, concern }),
-  checkIn: (incidentId: number, profileId: number, result: "safe" | "victim") =>
-    call<{ result: string; support_case_id: number | null }>("/check-ins", { incident_id: incidentId, profile_id: profileId, result }),
-  inbound: (fromPhone: string, text: string, providerCallId: string) =>
-    call<{ request_id: number; status: string; reply: string }>("/requests", { from_phone: fromPhone, provider_call_id: providerCallId, direction: "inbound", text }),
-  register: (body: { name: string; phone: string; lat: number; lng: number; contact_profile_ids: number[] }) =>
-    call<{ profile_id: number }>("/profiles", body),
+  directory: (filter: ContactScope, after = 0, caseId?: number) => call<DirectoryResult>(`/profiles?filter=${encodeURIComponent(JSON.stringify(filter))}&after_id=${after}${caseId === undefined ? "" : `&case_id=${caseId}`}`),
+  incident: (body: CreateInformationInput) => call<InformationCommandResult>("/incidents", body),
+  configure: (id: number, body: ConfigureInformationInput) => call<InformationCommandResult>(`/cases/${id}/configuration`, body),
+  caseInput: (id: number, body: { command_id: string; expected_input_revision: number; text: string }) => call<InformationCommandResult>(`/cases/${id}/input`, body),
+  closeCase: (id: number, body: { command_id: string; expected_input_revision: number; reason: string }) => call<InformationCommandResult>(`/cases/${id}/close`, body),
+  cancel: (id: number, body: { command_id: string; expected_input_revision: number; reason: string }) => call<InformationCommandResult>(`/attempts/${id}/cancel`, body),
+  requestCall: (id: number, body: RequestInformationCallInput) => call<InformationCommandResult>(`/cases/${id}/calls`, body),
+  review: (id: number, body: { command_id: string; expected_revision: number; decision: "attach" | "reject"; reason: string; support_case_id?: number }) => call<InformationCommandResult>(`/incoming-requests/${id}/review`, body),
+  intakeConfiguration: (body: Record<string, unknown> & { command_id: string; expected_revision: number }) => call<InformationCommandResult>("/intake-configuration", body),
+  simulationReport: (attempt_id: number, answer: string, concern: string) => call<InformationCommandResult>("/simulation/report", { attempt_id, answer, concern }),
 };

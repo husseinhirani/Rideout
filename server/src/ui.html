@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>RideOut dispatcher</title>
+<title>RideOut backend test console</title>
 <style>
   :root { color-scheme: dark; }
   body {
@@ -42,18 +42,21 @@
   .badge.needs_dispatcher { border-color: #6b5a2a; color: #d6b45c; }
   .flag { color: #d6b45c; }
   label { display: block; font-size: 11px; color: #8d969e; margin-bottom: 4px; }
-  textarea, input {
+  textarea, input, select.review-case {
     width: 100%; box-sizing: border-box;
     background: #0d1013; color: #d7dde3;
     border: 1px solid #333a41; border-radius: 3px; padding: 6px 8px;
     font: inherit; resize: vertical;
   }
-  textarea:focus, input:focus { outline: none; border-color: #4a6f8c; }
+  textarea:focus, input:focus, select.review-case:focus { outline: none; border-color: #4a6f8c; }
+  summary { cursor: pointer; }
+  .incoming-account { white-space: pre-wrap; overflow-wrap: anywhere; margin: 8px 0; }
   button {
     background: #22292f; color: #d7dde3; border: 1px solid #3a4148;
     border-radius: 3px; padding: 5px 12px; font: inherit; cursor: pointer;
   }
   button:hover { background: #2c343b; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
   button.go { border-color: #3d6b4f; color: #8fd4a6; }
   .bar { display: flex; gap: 8px; margin-top: 8px; align-items: flex-start; }
   .err { background: #3a1f20; border: 1px solid #6b3134; color: #e4a1a3; padding: 6px 10px; border-radius: 3px; margin-bottom: 12px; }
@@ -68,27 +71,46 @@
 <body>
 <div class="wrap">
   <div class="top">
-    <h1>RideOut dispatcher</h1>
-    <span class="tag sim" id="sim" hidden>SIMULATE</span>
+    <h1>RideOut backend test console</h1>
+    <span class="tag" id="sim">MODE UNKNOWN</span>
     <span class="grow"></span>
     <span class="dot off" id="dot"></span>
     <span class="sub" id="dotText">connecting</span>
   </div>
 
   <div class="err" id="err" hidden></div>
+  <div class="sub" id="environment">Waiting for backend state. This console is separate from the product UI.</div>
+  <section>
+    <h2>Available profiles</h2>
+    <div class="body">
+      <label>Directory filter (optional JSON: profile_ids, radius, related_to_profile_id, tags)</label>
+      <input id="directoryFilter" placeholder='{"related_to_profile_id":1}'>
+      <div class="bar"><button id="searchProfiles" disabled>Find people</button><span class="sub">Search never calls anyone. Coordinates are stored directory data.</span></div>
+      <div id="profiles">Waiting for the database.</div>
+    </div>
+  </section>
 
   <section>
     <h2>What is happening?</h2>
     <div class="body">
-      <textarea id="newIncident" rows="2" placeholder="7-year-old Ava Reyes missing near Loma Alta Park since 3pm"></textarea>
+      <textarea id="newIncident" rows="2" placeholder="Describe what is happening"></textarea>
+      <label><input id="contactConsent" type="checkbox" style="width:auto"> Selected people have agreed to receive these calls</label>
+      <label>What do you need to find out?</label><textarea id="newObjective" rows="2" placeholder="Which entrances are accessible?"></textarea>
+      <label><input id="newCoordination" type="checkbox" style="width:auto"> Let Claude choose contacts and questions within this scope</label>
+      <div class="sub">When enabled, opening this investigation may start calls. Otherwise you choose each call manually.</div>
+      <label>Information the agent may share with these contacts (optional)</label>
+      <textarea id="newDisclosure" rows="2" placeholder="Only put information here that these contacts may hear."></textarea>
+      <div class="sub">The incident description and organizer instructions are not automatically approved for disclosure.</div>
       <div class="bar">
-        <button class="go" id="openIncident">Open incident</button>
+        <button class="go" id="openIncident" disabled>Open incident</button>
         <span class="sub" id="newHint"></span>
       </div>
     </div>
   </section>
 
   <div id="view"></div>
+  <section><h2>Incoming reports and association</h2><div class="body" id="incoming"></div></section>
+  <section><div class="body"><details id="intakeDetails"><summary>Phone intake configuration</summary><div id="intakeConfiguration"></div></details></div></section>
 </div>
 
 <script>
@@ -100,6 +122,13 @@ let state = null
 let selectedIncident = null
 let selectedCase = null
 let busy = false
+let connected = false
+let lastSeenAt = 0
+let directory = null
+const selectedProfiles = new Set()
+const pendingCommands = new Map()
+const drafts = new Map()
+let intakeDraftRevision = null
 
 const els = {
   sim: document.getElementById("sim"),
@@ -108,7 +137,10 @@ const els = {
   err: document.getElementById("err"),
   view: document.getElementById("view"),
   newIncident: document.getElementById("newIncident"),
+  newObjective: document.getElementById("newObjective"),
   newHint: document.getElementById("newHint"),
+  environment: document.getElementById("environment"),
+  profiles: document.getElementById("profiles"),
 }
 
 // --------------------------------------------------------------- plumbing
@@ -119,6 +151,7 @@ function showError(message) {
 }
 
 async function post(path, body) {
+  if (!connected) throw new Error("Backend disconnected. Wait for a fresh state before making changes.")
   const response = await fetch(path, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -144,22 +177,191 @@ async function send(button, work) {
   } catch (error) {
     showError(error.message || "request failed")
   } finally {
-    if (button) { button.disabled = false; button.textContent = label }
+    if (button) button.textContent = label
     busy = false
+    if (state) { renderIncoming(); renderIntakeConfiguration() }
+    updateControls()
   }
 }
 
 async function poll() {
-  const response = await fetch("/state")
+  const response = await fetch("/state", { signal: AbortSignal.timeout(10000) })
   if (!response.ok) throw new Error("state failed (" + response.status + ")")
   state = await response.json()
-  els.sim.hidden = !state.simulate
+  connected = true
+  lastSeenAt = Date.now()
+  els.sim.textContent = state.simulate ? "SIMULATED CALLS" : "REAL CALLS"
+  els.sim.classList.toggle("sim", state.simulate)
+  const mode = state.demo_mode || {}
+  els.environment.textContent = "Database: " + (mode.database || "not reported")
+    + " · Planning: " + (mode.scripted === true ? "SCRIPTED" : state.adaptive_planning_available === true ? "Real Claude; enabled per investigation" : mode.scripted === false ? "Manual selection; Claude interprets reports" : "not reported")
+  renderProfiles()
+  renderIncoming()
+  renderIntakeConfiguration()
   els.dot.classList.remove("off")
-  els.dotText.textContent = "live"
+  els.dotText.textContent = "connected"
+  updateControls()
 }
 
-// The poll must never eat half-typed text. Anything the dispatcher has
-// started writing holds the render until they send or clear it.
+function updateControls() {
+  for (const button of document.querySelectorAll("button")) {
+    button.disabled = busy || !connected || button.dataset.locked === "true"
+  }
+}
+
+function renderProfiles() {
+  els.profiles.replaceChildren()
+  for (const profile of directory || state.profiles || []) {
+    const line = el("div", "row")
+    const contacts = (profile.contact_profile_ids || []).map(personName).join(", ") || "none"
+    const check = el("input")
+    check.type = "checkbox"; check.style.width = "auto"; check.checked = selectedProfiles.has(profile.id)
+    check.onchange = () => check.checked ? selectedProfiles.add(profile.id) : selectedProfiles.delete(profile.id)
+    line.append(check)
+    line.append(el("span", "name", "#" + profile.id + " " + profile.name))
+    line.append(el("span", "sub", (profile.phone_last4 ? "Phone ending " + profile.phone_last4 : "No phone") + " · Contacts: " + contacts))
+    const preference = (state.profile_settings || []).find(p => p.profile_id === profile.id)
+    line.append(el("span", "sub", preference?.call_consent ? "Calls allowed" : "Call consent not recorded"))
+    els.profiles.append(line)
+  }
+  if (!(directory || state.profiles || []).length) els.profiles.textContent = "No profiles loaded."
+}
+
+// Keep focus and drafts while polling still collects the latest backend state.
+function editingWithin(target) {
+  const active = document.activeElement
+  return target.contains(active) && ["INPUT", "TEXTAREA", "SELECT"].includes(active.tagName)
+}
+
+function renderIncoming() {
+  const target = document.getElementById("incoming")
+  if (busy || editingWithin(target)) return
+  target.replaceChildren()
+  const cases = (state.cases || []).filter(row => row.kind === "information" && row.status !== "closed")
+  for (const request of state.incoming_requests || []) {
+    const row = el("section", "body")
+    row.append(el("div", "", "Report #" + request.id + " · " + request.status + " · revision " + request.revision))
+    row.append(el("div", "sub", "Source: incoming phone report · "
+      + (request.phone_last4 ? "phone ending " + request.phone_last4 : "caller number unavailable")
+      + " · identity: " + (request.identity_status || "unverified")))
+    row.append(el("div", "incoming-account", request.text))
+    if (request.review_reason) row.append(el("div", "flag", "Review reason: " + request.review_reason))
+    for (const resolution of (state.information_incoming_resolutions || []).filter(item => item.request_id === request.id)) {
+      row.append(el("div", "sub", "Resolution: " + resolution.kind
+        + (resolution.support_case_id == null ? "" : " · Case #" + resolution.support_case_id)
+        + (resolution.note_id == null ? "" : " · Note #" + resolution.note_id)
+        + " · " + resolution.actor + " · " + clock(resolution.created_at)))
+      if (resolution.reason) row.append(el("div", "sub", resolution.reason))
+    }
+    if (request.status === "needs_review") {
+      const prefix = "incoming:" + request.id + ":" + request.revision + ":"
+      const picker = el("select", "review-case")
+      picker.append(el("option", "", "Choose an open information case"))
+      picker.firstChild.value = ""
+      for (const item of cases) {
+        const option = el("option", "", "Case #" + item.id + " · " + item.goal)
+        option.value = String(item.id)
+        picker.append(option)
+      }
+      picker.value = drafts.get(prefix + "case") || ""
+      picker.onchange = () => drafts.set(prefix + "case", picker.value)
+      const reason = draftField(prefix + "reason", "textarea")
+      reason.rows = 2; reason.placeholder = "Why should this report be attached or rejected?"
+      const attach = el("button", "go", "Attach to case")
+      attach.dataset.locked = String(cases.length === 0)
+      attach.onclick = () => send(attach, async () => {
+        if (!picker.value) throw new Error("Choose an open information case first.")
+        if (!reason.value.trim()) throw new Error("Add a reason for the review decision.")
+        await command("/incoming-requests/" + request.id + "/review", {
+          expected_revision: request.revision, decision: "attach", support_case_id: Number(picker.value), reason: reason.value.trim(),
+        })
+        clearDrafts("incoming:" + request.id + ":")
+      })
+      const reject = el("button", "", "Reject report")
+      reject.onclick = () => send(reject, async () => {
+        if (!reason.value.trim()) throw new Error("Add a reason for the review decision.")
+        await command("/incoming-requests/" + request.id + "/review", {
+          expected_revision: request.revision, decision: "reject", reason: reason.value.trim(),
+        })
+        clearDrafts("incoming:" + request.id + ":")
+      })
+      const bar = el("div", "bar"); bar.append(attach, reject)
+      row.append(el("label", "", "Associate the original report"), picker, reason, bar)
+      row.append(el("div", "sub", "Attachment saves an unverified account; it does not enroll the caller or permit calls. Enabled coordination reconsiders the case unless paused. A paused case stays paused until you resume it."))
+      if (!cases.length) row.append(el("div", "sub", "Open an information case before attaching this report."))
+    }
+    target.append(row)
+  }
+  if (!target.childNodes.length) target.textContent = "No incoming reports."
+}
+
+function renderIntakeConfiguration() {
+  const target = document.getElementById("intakeConfiguration")
+  if (busy || editingWithin(target)) return
+  target.replaceChildren()
+  const config = state.information_intake_configuration
+  if (!config) { target.textContent = "Intake configuration is not available from this backend."; return }
+  const revision = intakeDraftRevision ?? config.revision
+  const markEdited = () => { if (intakeDraftRevision === null) intakeDraftRevision = revision }
+  const checkbox = (key, initial, label) => {
+    const field = el("input"); field.type = "checkbox"; field.style.width = "auto"
+    field.checked = drafts.has(key) ? drafts.get(key) : initial
+    field.onchange = () => { markEdited(); drafts.set(key, field.checked) }
+    const wrapper = el("label"); wrapper.append(field, document.createTextNode(" " + label))
+    return { field, wrapper }
+  }
+  const jsonField = (key, initial) => {
+    const field = draftField(key, "textarea", JSON.stringify(initial, null, 2))
+    field.rows = 3
+    field.oninput = () => { markEdited(); drafts.set(key, field.value) }
+    return field
+  }
+  const enabled = checkbox("intake:enabled", config.enabled, "Allow permitted callers to open investigations by phone")
+  const automatic = checkbox("intake:automatic", config.coordination_enabled === true, "Enable automatic questions for new phone-created investigations")
+  target.append(el("div", "sub", "Configuration revision " + config.revision + ". These defaults apply to new phone intake; existing investigations keep their settings."))
+  if (revision !== config.revision) target.append(el("div", "flag", "Configuration changed while you were editing. Discard drafts and reload before saving."))
+  target.append(enabled.wrapper, el("div", "sub", "Intake permission lets a known profile create a case. It does not grant consent to receive calls or verify their identity."))
+  const permissions = []
+  for (const profile of state.profiles || []) {
+    const setting = (state.profile_settings || []).find(item => item.profile_id === profile.id)
+    const allowed = checkbox("intake:profile:" + profile.id, setting?.intake_allowed === true, "Intake allowed · #" + profile.id + " " + profile.name)
+    permissions.push({ profile_id: profile.id, field: allowed.field })
+    target.append(allowed.wrapper)
+  }
+  const scope = jsonField("intake:scope", config.default_scope || {})
+  const disclosures = jsonField("intake:disclosures", config.disclosure_facts || [])
+  target.append(el("label", "", "Default permitted contact scope (JSON)"), scope, automatic.wrapper,
+    el("div", "sub", "Automatic questions may start calls after intake. Contacts still need call consent. Leave off for manual selection."),
+    el("label", "", "Approved disclosure facts (JSON)"), disclosures,
+    el("div", "sub", "Only include information the selected contacts may hear. Example: [{\"id\":\"briefing\",\"text\":\"Approved information\",\"profile_ids\":null}]."))
+  const save = el("button", "go", "Save intake configuration")
+  save.dataset.locked = String(revision !== config.revision)
+  save.onclick = () => send(save, async () => {
+    let defaultScope, disclosureFacts
+    try { defaultScope = JSON.parse(scope.value); disclosureFacts = JSON.parse(disclosures.value) }
+    catch { throw new Error("Contact scope and disclosure facts must be valid JSON.") }
+    await command("/intake-configuration", {
+      expected_revision: revision, enabled: enabled.field.checked, default_scope: defaultScope,
+      coordination_enabled: automatic.field.checked, disclosure_facts: disclosureFacts,
+      preferences: permissions.map(item => ({ profile_id: item.profile_id, intake_allowed: item.field.checked })),
+    })
+    clearDrafts("intake:"); intakeDraftRevision = null
+  })
+  const discard = el("button", "", "Discard drafts / reload")
+  discard.onclick = () => { clearDrafts("intake:"); intakeDraftRevision = null; renderIntakeConfiguration(); updateControls() }
+  const bar = el("div", "bar"); bar.append(save, discard); target.append(bar)
+}
+
+// A retry of the same command reuses its receipt key; changed content is a new command.
+function command(path, body) {
+  const key = path + JSON.stringify(body)
+  if (!pendingCommands.has(key)) pendingCommands.set(key, crypto.randomUUID())
+  return post(path, { ...body, command_id: pendingCommands.get(key) }).then(result => {
+    pendingCommands.delete(key)
+    return result
+  })
+}
+
 function typing() {
   const active = document.activeElement
   if (!active) return false
@@ -172,8 +374,10 @@ async function tick() {
     await poll()
     if (!busy && !typing()) render()
   } catch {
+    connected = false
     els.dot.classList.add("off")
-    els.dotText.textContent = "disconnected"
+    els.dotText.textContent = "disconnected" + (lastSeenAt ? " · last update " + Math.floor((Date.now() - lastSeenAt) / 1000) + "s ago" : "")
+    updateControls()
   }
 }
 
@@ -215,6 +419,17 @@ function el(tag, className, text) {
   return node
 }
 
+function draftField(key, tag, initial = "") {
+  const field = el(tag)
+  field.value = drafts.has(key) ? drafts.get(key) : initial
+  field.oninput = () => drafts.set(key, field.value)
+  return field
+}
+
+function clearDrafts(prefix) {
+  for (const key of drafts.keys()) if (key.startsWith(prefix)) drafts.delete(key)
+}
+
 function briefBlock(brief) {
   const box = document.createDocumentFragment()
   if (!brief) {
@@ -237,7 +452,7 @@ function render() {
   const incidents = (state.incidents || []).slice().sort((a, b) => b.id - a.id)
   els.view.replaceChildren()
   if (incidents.length === 0) {
-    els.newHint.textContent = "Describe an area evacuation or one missing person."
+    els.newHint.textContent = "Describe an incident and an information objective; select the permitted contacts above."
     return
   }
   els.newHint.textContent = ""
@@ -256,6 +471,7 @@ function render() {
   els.view.append(caseListSection(cases))
   const current = cases.find((row) => row.id === selectedCase)
   if (current) els.view.append(caseSection(current))
+  updateControls()
 }
 
 function incidentSection(incident, incidents, cases) {
@@ -298,12 +514,12 @@ function caseListSection(cases) {
     body.append(el("div", "muted", "no cases on this incident yet"))
   }
   for (const row of cases) {
-    const ringing = (state.attempts || [])
+    const pending = (state.attempts || [])
       .filter((item) => item.support_case_id === row.id && item.outcome === null).length
     const line = el("div", "row pick" + (row.id === selectedCase ? " sel" : ""))
-    line.append(el("span", "name", personName(row.victim_profile_id)))
+    line.append(el("span", "name", row.kind === "information" ? "Case #" + row.id : personName(row.victim_profile_id)))
     line.append(el("span", "badge " + row.status, row.status.replace("_", " ")))
-    line.append(el("span", "grow sub", ringing > 0 ? ringing + " ringing" : ""))
+    line.append(el("span", "grow sub", pending > 0 ? pending + " without an interpreted report" : ""))
     line.onclick = () => { selectedCase = row.id; render() }
     body.append(line)
   }
@@ -313,27 +529,53 @@ function caseListSection(cases) {
 
 function caseSection(current) {
   const node = el("section")
-  node.append(el("h2", "", "Case · " + personName(current.victim_profile_id)))
+  node.append(el("h2", "", "Case #" + current.id))
   const body = el("div", "body")
 
   body.append(el("div", "sub", "goal: " + current.goal))
-  body.append(briefBlock(parseBrief(current.brief)))
+  if (current.kind === "information") body.append(decisionBlock(current))
+  else body.append(briefBlock(parseBrief(current.brief)))
 
   const calls = (state.attempts || []).filter((row) => row.support_case_id === current.id)
   body.append(el("h2", "", "Calls"))
   if (calls.length === 0) body.append(el("div", "muted", "no calls placed yet"))
   for (const call of calls) {
-    const outcome = call.outcome || "ringing"
+    const outcome = call.outcome || "pending"
+    const progress = (state.attempt_progress || []).find(row => row.attempt_id === call.id)
+    const binding = (state.information_attempts || []).find(row => row.attempt_id === call.id)
     const line = el("div", "row")
     const who = el("span", "name", personName(call.profile_id))
-    who.title = personPhone(call.profile_id)
+
     line.append(who)
-    line.append(el("span", "badge " + outcome, outcome.replace("_", " ")))
+    line.append(el("span", "badge " + outcome, "Report: " + (call.outcome ? outcome.replace("_", " ") : progress?.report_received ? "received; processing" : "not received")))
     const detail = el("span", "grow")
     const ask = el("div", "sub", call.ask)
     ask.title = call.ask
     detail.append(ask)
+    detail.append(el("div", "sub", "Attempt #" + call.id + " · Provider: " + (call.call_id || "not recorded")
+      + " · Transport: " + (progress ? progress.transport : "not tracked by legacy call path")))
+    if (progress?.dispatch_error) detail.append(el("div", "flag", progress.dispatch_error))
+    if (binding) detail.append(el("div", "sub", "Binding: " + binding.binding_status + " · Provider outcome: " + (binding.provider_terminal_status || "not terminal") + (binding.interpretation_error ? " · Interpretation: " + binding.interpretation_error : "")))
+    if (progress?.report_received && !progress.report_processed && binding?.binding_status === "matched" && binding.interpretation_failure_count >= 3) {
+      const retry = el("button", "", "Retry saved report interpretation")
+      retry.onclick = () => send(retry, () => command("/attempts/" + call.id + "/retry-interpretation", {}))
+      detail.append(el("div", "sub", "Interpretation stopped after three failures. Fix the reported cause, then retry this saved account; this button does not call the person again."), retry)
+    }
     if (call.answer) detail.append(el("div", "quote", '"' + call.answer + '"'))
+    if (current.kind === "information" && current.status === "open" && progress?.transport === "queued"
+      && !progress.claim_token && !call.call_id && !progress.report_received) {
+      const reason = draftField("cancel:" + call.id, "input")
+      reason.placeholder = "Reason for cancelling this queued call"
+      const cancel = el("button", "", "Cancel queued call")
+      cancel.onclick = () => send(cancel, async () => {
+        if (!reason.value.trim()) throw new Error("Give a reason for cancelling this call.")
+        await command("/attempts/" + call.id + "/cancel", {
+          expected_input_revision: current.input_revision, reason: reason.value.trim(),
+        })
+        drafts.delete("cancel:" + call.id)
+      })
+      detail.append(reason, cancel)
+    }
     if (state.simulate && call.outcome === null) detail.append(simulateBox(call.id))
     line.append(detail)
     body.append(line)
@@ -366,7 +608,7 @@ function caseSection(current) {
     body.append(line)
   }
 
-  body.append(dispatcherBox(current))
+  body.append(current.kind === "information" ? informationBox(current) : el("div", "muted", "Legacy history is read-only in this console."))
   node.append(body)
   return node
 }
@@ -380,7 +622,7 @@ function simulateBox(attemptId) {
   const button = el("button", "go", "Send")
   button.onclick = () => {
     if (!answer.value.trim()) { showError("answer is required"); return }
-    send(button, () => post("/calls/report", {
+    send(button, () => post("/simulation/report", {
       attempt_id: attemptId,
       answer: answer.value,
       concern: concern.value,
@@ -390,39 +632,193 @@ function simulateBox(attemptId) {
   return box
 }
 
-function dispatcherBox(current) {
+function decisionBlock(current) {
   const box = el("div")
-  box.append(el("h2", "", "Dispatcher"))
-  const text = el("textarea")
-  text.rows = 2
-  text.placeholder = "what should I do next? e.g. also ask the neighbours on Marengo"
-  box.append(text)
-  const bar = el("div", "bar")
-  const sendButton = el("button", "go", "Send")
-  sendButton.onclick = () => {
-    if (!text.value.trim()) { showError("text is required"); return }
-    const typed = text.value
-    text.value = ""
-    send(sendButton, () => post("/cases/" + current.id + "/input", { text: typed }))
+  const planning = (state.information_planning || []).find(row => row.support_case_id === current.id)
+  const decision = (state.information_decisions || []).filter(row => row.support_case_id === current.id)
+    .sort((a, b) => b.based_on_revision - a.based_on_revision)[0]
+  box.append(el("h2", "", "Coordinator"))
+  box.append(el("div", "sub", (current.status === "closed" ? "Closed · no new outreach" : planning?.enabled ? "Automatic questions enabled" : "Manual calls")
+    + (current.status !== "closed" && current.policy?.paused ? " · Paused" : "") + " · Input revision " + current.input_revision))
+  if (planning?.blocked_reason) box.append(el("div", "flag", planning.blocked_reason))
+  if (current.status !== "closed" && planning?.error && planning.failure_revision === current.input_revision) {
+    const retry = planning.retry_at_ms == null ? "No automatic retry scheduled; send a direction or update configuration after addressing the error."
+      : "Next retry eligible at " + new Date(planning.retry_at_ms).toLocaleTimeString()
+    box.append(el("div", "flag", "Planning failed: " + planning.error))
+    box.append(el("div", "sub", retry))
   }
-  const accept = el("button", "", "Accept — close case")
-  accept.disabled = current.status === "closed"
-  accept.onclick = () => { send(accept, () => post("/cases/" + current.id + "/close", {})) }
-  bar.append(sendButton, accept)
-  box.append(bar)
+  if (!decision) {
+    box.append(el("div", "muted", current.status === "closed" ? "No accepted decision was recorded." : planning?.enabled ? "No accepted decision yet. Waiting for the coordinator." : "No adaptive decision yet."))
+    return box
+  }
+  const plan = decision.plan
+  box.append(el("div", "sub", "Decision " + decision.id + " · Based on revision " + decision.based_on_revision
+    + (current.status === "closed" ? " · historical" : decision.based_on_revision === current.input_revision ? " · current" : " · stale: newer input awaits evaluation")
+    + " · " + clock(decision.created_at) + " · " + decision.model))
+  box.append(el("div", "", plan.summary))
+  if (plan.evidence_ids.length) box.append(el("div", "sub", "Evidence: " + plan.evidence_ids.join(", ")))
+  if (plan.open_questions.length) {
+    box.append(el("div", "sub", "Unanswered questions"))
+    const list = el("ul")
+    for (const question of plan.open_questions) list.append(el("li", "", question))
+    box.append(list)
+  }
+  for (const concern of plan.concerns) box.append(el("div", "flag", concern.explanation + " · " + concern.evidence_ids.join(", ")))
+  if (plan.wait_reason) box.append(el("div", "sub", "Waiting: " + plan.wait_reason))
+  if (plan.organizer_review) box.append(el("div", "flag", "Organizer review: " + plan.organizer_review))
+  for (const [index, call] of plan.calls.entries()) {
+    box.append(el("div", "sub", personName(call.profile_id) + " · Attempt #" + (decision.attempt_ids[index] ?? "not recorded") + ": " + call.question))
+    box.append(el("div", "sub", "Reason: " + call.reason + " · Evidence: " + call.evidence_ids.join(", ")))
+  }
+  for (const queued of plan.queued) box.append(el("div", "sub", "Attempt #" + queued.attempt_id + " · " + queued.disposition + ": " + queued.reason))
+  return box
+}
+
+function informationBox(current) {
+  const box = el("div")
+  if (current.status === "closed") {
+    box.append(el("div", "sub", "This investigation is closed. No new calls will start. Existing calls and late reports remain visible above."))
+    return box
+  }
+  const planning = (state.information_planning || []).find(row => row.support_case_id === current.id)
+  const prefix = "case:" + current.id + ":"
+  const paused = current.policy?.paused === true
+  const pause = el("button", "", paused ? "Resume this investigation" : "Pause this investigation")
+  pause.onclick = () => send(pause, () => command("/cases/" + current.id + "/configuration", {
+    expected_input_revision: current.input_revision, policy: { paused: !paused },
+  }))
+  box.append(pause, el("div", paused ? "flag" : "sub", paused
+    ? "Paused. Review the findings and scope before resuming. Existing calls continue."
+    : "Pause stops new calls; it does not hang up conversations already in progress."))
+  if (!planning?.enabled) box.append(manualCallBox(current, prefix))
+  else box.append(el("div", "sub", "Claude chooses calls within the permitted scope. Disable automatic questions before placing a manual call."))
+
+  box.append(el("h2", "", "Give the coordinator a direction or correction"))
+  const direction = draftField(prefix + "direction", "textarea")
+  direction.placeholder = "What should be investigated further? What needs correcting?"
+  const instruct = el("button", "go", "Save organizer input")
+  instruct.dataset.locked = String(current.status !== "open")
+  instruct.onclick = () => {
+    if (!direction.value.trim()) { showError("Write a direction or correction first."); return }
+    send(instruct, async () => {
+      await command("/cases/" + current.id + "/input", { expected_input_revision: current.input_revision, text: direction.value })
+      drafts.delete(prefix + "direction"); direction.value = ""
+    })
+  }
+  box.append(direction, instruct)
+  box.append(el("div", "sub", "Input is saved as organizer evidence. It triggers reconsideration when automatic questions are enabled and the case is not paused."))
+
+  box.append(el("h2", "", "Objective, scope and coordination"))
+  const configPrefix = prefix + "config:"
+  const objective = draftField(configPrefix + "objective", "textarea", current.goal)
+  const scope = draftField(configPrefix + "scope", "input", JSON.stringify(current.scope || { profile_ids: [] }))
+  const enabled = el("input"); enabled.type = "checkbox"; enabled.style.width = "auto"
+  enabled.checked = drafts.has(configPrefix + "enabled") ? drafts.get(configPrefix + "enabled") : planning?.enabled === true
+  enabled.onchange = () => drafts.set(configPrefix + "enabled", enabled.checked)
+  const enableLabel = el("label"); enableLabel.append(enabled, document.createTextNode(" Let Claude choose contacts and questions within this scope"))
+  const disclosure = draftField(configPrefix + "disclosure", "textarea", JSON.stringify(planning?.disclosure_facts || [], null, 2))
+  disclosure.rows = 4
+  const save = el("button", "", "Save configuration")
+  save.dataset.locked = String(current.status !== "open")
+  save.onclick = () => send(save, async () => {
+    await command("/cases/" + current.id + "/configuration", {
+      expected_input_revision: current.input_revision, objective: objective.value, scope: JSON.parse(scope.value),
+      coordination_enabled: enabled.checked, disclosure_facts: JSON.parse(disclosure.value || "[]"),
+    })
+    clearDrafts(configPrefix)
+  })
+  box.append(el("label", "", "Objective"), objective, el("label", "", "Permitted contact scope (JSON)"), scope, enableLabel)
+  box.append(el("div", "sub", "Enabling coordination may initiate calls. Existing conversations continue when it is disabled."))
+  box.append(el("label", "", "Approved disclosure facts (JSON)"), disclosure)
+  box.append(el("div", "sub", 'Example: [{"id":"briefing","text":"Approved information","profile_ids":null}]. Use profile IDs to limit recipients; null permits all contacts within scope.'))
+  box.append(save)
+  box.append(el("div", "sub", "Changes require reconsideration before queued work can start. Saving configuration does not resume a paused case."))
+
+  const contacts = el("div")
+  contacts.append(el("h2", "", "Contact permissions"), el("div", "sub", "These preferences apply across investigations. Record consent only when the person has agreed; it does not add them to this case's scope."))
+  for (const profile of state.profiles || []) {
+    const allowed = (state.profile_settings || []).find(item => item.profile_id === profile.id)?.call_consent === true
+    const change = el("button", "", allowed ? "Stop calls" : "Record consent to receive calls")
+    change.onclick = () => send(change, () => command("/cases/" + current.id + "/configuration", {
+      expected_input_revision: current.input_revision, preferences: [{ profile_id: profile.id, call_consent: !allowed }],
+    }))
+    const row = el("div", "row")
+    row.append(el("span", "name", profile.name), el("span", "sub", allowed ? "Calls allowed" : "Calls not allowed"), change)
+    contacts.append(row)
+  }
+  box.append(contacts)
+
+  box.append(el("h2", "", "Close investigation"))
+  const reason = draftField(prefix + "close", "textarea")
+  reason.rows = 2; reason.placeholder = "Reason for closing this investigation"
+  const close = el("button", "", "Close investigation")
+  close.onclick = () => send(close, async () => {
+    if (!reason.value.trim()) throw new Error("Give a reason for closing this investigation.")
+    await command("/cases/" + current.id + "/close", {
+      expected_input_revision: current.input_revision, reason: reason.value.trim(),
+    })
+    clearDrafts(prefix)
+  })
+  box.append(reason, close, el("div", "sub", "Closure cancels unsent queued work and stops new outreach. Active or uncertain calls remain tracked; this does not hang them up."))
+  return box
+}
+
+function manualCallBox(current, prefix) {
+  const box = el("div")
+  box.append(el("h2", "", "Organizer-directed information call"))
+  box.append(el("div", "sub", "Revision " + current.input_revision + ". Call the selected person with your question."))
+  const person = el("select")
+  for (const profile of state.profiles || []) {
+    const option = el("option", "", profile.name)
+    option.value = profile.id; person.append(option)
+  }
+  if (drafts.has(prefix + "person")) person.value = drafts.get(prefix + "person")
+  person.onchange = () => drafts.set(prefix + "person", person.value)
+  const question = draftField(prefix + "question", "textarea"); question.placeholder = "What should Tom ask?"
+  const context = draftField(prefix + "context", "textarea"); context.placeholder = "Context this person may be told (optional)"
+  const call = el("button", "go", state.simulate ? "Start simulated call" : "Call selected person")
+  call.dataset.locked = String(current.status !== "open" || current.policy?.paused === true)
+  call.onclick = () => {
+    if (!question.value.trim()) { showError("Write the question first."); return }
+    const queued = (state.attempt_progress || []).filter(p => p.support_case_id === current.id && p.transport === "queued")
+    if (queued.length) { showError("A call is already queued. Wait for its status before adding another in this manual console."); return }
+    send(call, async () => {
+      await command("/cases/" + current.id + "/calls", {
+        expected_input_revision: current.input_revision, profile_id: Number(person.value),
+        question: question.value, context: context.value, queued: [],
+      })
+      question.value = ""; context.value = ""
+      drafts.delete(prefix + "question"); drafts.delete(prefix + "context")
+    })
+  }
+  box.append(person, question, context, call)
   return box
 }
 
 // -------------------------------------------------------------------- boot
 
+document.getElementById("searchProfiles").onclick = event => send(event.currentTarget, async () => {
+  const filter = JSON.parse(document.getElementById("directoryFilter").value || "{}")
+  const response = await fetch("/profiles?filter=" + encodeURIComponent(JSON.stringify(filter)) + "&limit=100")
+  const result = await response.json()
+  if (!response.ok) throw new Error(result.error || "Search failed")
+  directory = result.profiles
+})
 document.getElementById("openIncident").onclick = (event) => {
   const text = els.newIncident.value
-  if (!text.trim()) { showError("text is required"); return }
-  els.newIncident.value = ""
+  const objective = els.newObjective.value
+  if (!text.trim() || !objective.trim()) { showError("Describe the incident and what you need to know."); return }
   send(event.currentTarget, async () => {
-    const result = await post("/incidents", { text })
+    const sharedText = document.getElementById("newDisclosure").value.trim()
+    const result = await command("/incidents", { text, objective, scope: { profile_ids: [...selectedProfiles] },
+      coordination_enabled: document.getElementById("newCoordination").checked,
+      disclosure_facts: sharedText ? [{ id: "briefing", text: sharedText, profile_ids: null }] : [],
+      ...(document.getElementById("contactConsent").checked ? { preferences: [...selectedProfiles].map(profile_id => ({profile_id,call_consent:true})) } : {}),
+    })
     selectedIncident = result.incident_id
-    selectedCase = result.case_ids && result.case_ids.length > 0 ? result.case_ids[0] : null
+    selectedCase = result.support_case_id
+    els.newIncident.value = ""; els.newObjective.value = ""; document.getElementById("contactConsent").checked = false
+    document.getElementById("newDisclosure").value = ""; document.getElementById("newCoordination").checked = false
   })
 }
 

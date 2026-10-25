@@ -12,7 +12,7 @@ type Snapshot = {
   calls: CallCard[];
   inbound: InboundReport | null;
   inboundLog: InboundReport[];
-  incident: Incident;
+  incident: Omit<Incident, "kind"> & { kind: Incident["kind"] | "information" };
   chat: ChatMessage[];
   tasks: CallTask[];
   started: boolean;
@@ -51,7 +51,7 @@ export async function downloadLog(snapshot: Snapshot) {
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-function buildLog({ place, houses, calls, inbound, inboundLog, incident, chat, tasks, started, running }: Snapshot, exportedAt: Date, audio: Map<string, string>) {
+function buildLog({ place, houses, calls, inbound, inboundLog, incident, chat, tasks, started, running, backend }: Snapshot, exportedAt: Date, audio: Map<string, string>) {
   const iso = (ms: number | null) => (ms ? new Date(ms).toISOString() : null);
   const callsFor = (id: number) => calls.filter((call) => call.householdId === id);
 
@@ -97,7 +97,7 @@ function buildLog({ place, houses, calls, inbound, inboundLog, incident, chat, t
       leadRequests: tasks.length,
     },
     households: houses.map((house) => {
-      const home = householdFor(house.id, house.name);
+      const home = backend ? { owner: house.name, address: null, people: null, vehicles: null, needs: null } : householdFor(house.id, house.name);
       return {
         householdId: house.id,
         owner: home.owner,
@@ -115,7 +115,7 @@ function buildLog({ place, houses, calls, inbound, inboundLog, incident, chat, t
       id: call.id,
       householdId: call.householdId ?? null,
       name: call.name,
-      requestedBy: call.id.startsWith("lead-") ? "lead_direct" : call.taskId ? "lead_via_facilitator" : call.purpose === "alert" ? "missing_child_alert" : "drill",
+      requestedBy: backend ? "backend" : call.id.startsWith("lead-") ? "lead_direct" : call.taskId ? "lead_via_facilitator" : call.purpose === "alert" ? "missing_child_alert" : "drill",
       voicemail: Boolean(call.voicemail),
       taskId: call.taskId ?? null,
       handledBy: call.handledBy ?? "agent",

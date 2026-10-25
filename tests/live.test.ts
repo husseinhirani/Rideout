@@ -45,8 +45,8 @@ describe("calls", () => {
     expect(second.transportLabel).toBe("Queued");
     expect(second.reportLabel).toBe("No report yet");
   });
-  it("puts the follow-up review ten seconds after acceptance", () => {
-    expect(followUpAt(base().attempt_progress[0])).toBe(15_000);
+  it("does not invent a follow-up deadline from acceptance", () => {
+    expect(followUpAt(base().attempt_progress[0])).toBeNull();
     expect(followUpAt(base().attempt_progress[1])).toBeNull();
   });
   it("labels unknown transport as unresolved and offers cancel only where the backend allows it", () => {
@@ -151,5 +151,21 @@ describe("closed coordination", () => {
     state.cases[0].status = "closed";
     state.coordination[0].input_revision = 9;
     expect(coordinationOf(state, 7, 0).text).toBe("Case closed. No further calls are planned.");
+  });
+});
+
+
+describe("generic state", () => {
+  it("handles absent incident area and masked phones without inventing locations or caller identity", () => {
+    const state = base();
+    state.read_model_version = 2;
+    state.incidents[0].area = null;
+    state.profiles = state.profiles.map(({ phone, ...p }) => ({ ...p, phone_last4: phone?.slice(-4) }));
+    state.incoming_requests = state.incoming_requests?.map(({ from_phone, ...r }) => ({ ...r, phone_last4: from_phone?.slice(-4) }));
+    const points = housesFrom(state, [], [], { south: 37, north: 38, west: -123, east: -122 });
+    expect(points[0]).toMatchObject({ id: 1, lat: state.profiles[0].lat, lng: state.profiles[0].lng });
+    expect(inboundFrom(state)[1].caller).toMatch(/identity unverified/);
+    expect(inboundFrom(state)[1].caller).not.toMatch(/Morgan/);
+    expect(sightingsFrom(state, 7)).toHaveLength(1);
   });
 });
