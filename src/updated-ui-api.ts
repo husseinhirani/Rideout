@@ -64,6 +64,7 @@ function creation(state: BackendState, text: string, objective: string, area?: {
 }
 export type CoordinatorAction =
   | { action: 'message'; text: string }
+  | { action: 'reopen_assessment'; profile_id: number; reason: string }
   | { action: 'approve' | 'reject' | 'cancel'; arrangement_id: string; reason?: string }
   | { action: 'pause' | 'resume' | 'retry_planning' }
   | { action: 'location_access'; location_id: string; access: 'community' | 'specialist' | 'unknown' };

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { IncidentMap, arrangementDistance, formatDistance } from "./IncidentMap";
 import { participantLocation } from "../server/shared/spatial";
-import type { Arrangement, AssistanceState, Participant, Task } from "../server/shared/assistance";
+import { requiresInformationReview, type Arrangement, type AssistanceState, type Participant, type Task } from "../server/shared/assistance";
 import type { CoordinatorAction } from "./updated-ui-api";
 import { Icon, type Opener } from "./Dashboard";
 
@@ -17,6 +17,8 @@ function personStatus(person: Participant, session: AssistanceState) {
   if (!person.consent) return "Contact stopped";
   if (person.contact_blocked) return "Contact unavailable";
   if (person.unreachable) return "Not reached";
+  if (requiresInformationReview(session, person.profile_id)) return "Information needs review";
+  if (session.tasks.some(task => task.profile_id === person.profile_id && task.review_reopened && ["pending", "delivered"].includes(task.status))) return "Reassessment pending";
   const arrangement = [...session.arrangements].reverse().find(a => a.recipient_id === person.profile_id && a.status !== "cancelled");
   if (arrangement) return STAGES[arrangement.status];
   if (person.facts.needs_transport === true) return "Needs a ride";
@@ -40,6 +42,7 @@ export function AssistanceBoard({ session, disabled, closed, now, compact = fals
   const [working, setWorking] = useState("");
   const [error, setError] = useState("");
   const [accessDraft, setAccessDraft] = useState<Record<string, "community" | "specialist" | "unknown">>({});
+  const [reviewNotes, setReviewNotes] = useState<Record<number, string>>({});
   const unavailable = disabled || closed || Boolean(working);
   const act = async (key: string, action: CoordinatorAction) => {
     if (unavailable) return false;
@@ -109,9 +112,18 @@ export function AssistanceBoard({ session, disabled, closed, now, compact = fals
       <section className="assistance-section"><h3>People and reported needs</h3><p className="assistance-note">Reports remain attributed to their source. Unknown information is left unknown.</p>
         <div className="assistance-people">{session.people.map(p => <article key={p.profile_id}>
           <header><b>{p.name}</b></header>
-          <strong className={p.unreachable || p.contact_blocked || p.facts.needs_transport ? "attention" : ""}>{personStatus(p, session)}</strong>
+          <strong className={p.unreachable || p.contact_blocked || requiresInformationReview(session, p.profile_id) || p.facts.needs_transport ? "attention" : ""}>{personStatus(p, session)}</strong>
           <p>{participantLocation(session, p).location?.label ?? "Location unknown"}{!participantLocation(session, p).confirmed && participantLocation(session, p).location ? " · assigned drill position, unconfirmed" : ""}</p>
           {p.contact_blocked && <p>{p.contact_blocked}</p>}
+          {requiresInformationReview(session, p.profile_id) && <details className="assistance-evidence">
+            <summary>Review unresolved information</summary>
+            <p>{p.review_reason || "An information task remains unresolved. Review the saved conversation before authorizing more outreach."}</p>
+            <p>Authorizes one new assessment task within existing contact limits and may place follow-up calls. Wait until this person's current call has finished. Earlier findings and withdrawn arrangements remain in the record.</p>
+            <label htmlFor={"review-note-" + p.profile_id}>Dispatcher review note</label>
+            <textarea id={"review-note-" + p.profile_id} rows={3} maxLength={1000} required style={{ width: "100%", boxSizing: "border-box", padding: 10, borderRadius: 10, border: "1px solid var(--line)", font: "inherit", resize: "vertical" }} value={reviewNotes[p.profile_id] ?? ""} placeholder="Explain what you reviewed and what the agent should clarify." disabled={unavailable || session.paused || !p.consent || Boolean(p.contact_blocked) || p.unreachable} onChange={event => setReviewNotes(notes => ({ ...notes, [p.profile_id]: event.target.value }))} />
+            {p.unreachable && <p>Not reached. Contact retry must be resolved separately.</p>}
+            <div className="call-actions"><button type="button" disabled={unavailable || session.paused || !p.consent || Boolean(p.contact_blocked) || p.unreachable || !(reviewNotes[p.profile_id] ?? "").trim()} onClick={() => void act("review-" + p.profile_id, { action: "reopen_assessment", profile_id: p.profile_id, reason: (reviewNotes[p.profile_id] ?? "").trim() }).then(saved => { if (saved) setReviewNotes(notes => { const next = { ...notes }; delete next[p.profile_id]; return next; }); })}>{working === "review-" + p.profile_id ? "Saving…" : "Authorize reassessment"}</button></div>
+          </details>}
           <div className="assistance-facts">
             {p.facts.party_size !== null && <span>{p.facts.party_size} passenger{p.facts.party_size === 1 ? "" : "s"}</span>}
             {p.facts.seats !== null && <span>{p.facts.seats} available seat{p.facts.seats === 1 ? "" : "s"}</span>}

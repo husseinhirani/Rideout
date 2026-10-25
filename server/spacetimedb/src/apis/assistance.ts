@@ -1,14 +1,14 @@
 import { t, SenderError, type ReducerCtx } from 'spacetimedb/server'
 import spacetimedb from '../models'
-import { addMessage, addTask, applyFinding, applyPlan, cancelArrangement, matchReasons, person, taskInstruction, touch, type AssistanceState, type VoiceUpdate } from '../../../shared/assistance'
+import { addMessage, addTask, applyFinding, applyPlan, cancelArrangement, matchReasons, person, requiresInformationReview, taskInstruction, touch, type AssistanceState, type VoiceUpdate } from '../../../shared/assistance'
 import { canonicalJson, commandId, object, text, contactEligibility, matchesScope, type InformationPolicy } from '../../../shared/information'
-import { decodeCoordinatorFailure } from '../../../shared/coordinator-errors'
+import { decodeCoordinatorFailure, hydrateLegacyCoordinatorFailure } from '../../../shared/coordinator-errors'
 type Ctx = ReducerCtx<typeof spacetimedb.schemaType>
 const now = (ctx: Ctx) => Number(ctx.timestamp.microsSinceUnixEpoch)/1000
 function read(ctx: Ctx, caseId: bigint) {
   const row = ctx.db.assistanceSession.case_id.find(caseId)
   if (!row) throw new SenderError('This case has no assistance coordinator')
-  return { row, state: JSON.parse(row.state_json) as AssistanceState }
+  return { row, state: hydrateLegacyCoordinatorFailure(JSON.parse(row.state_json) as AssistanceState) }
 }
 function write(ctx: Ctx, caseId: bigint, s: AssistanceState) {
   ctx.db.assistanceSession.case_id.update({ case_id: caseId, revision: BigInt(s.revision), state_json: JSON.stringify(s) })
@@ -148,6 +148,32 @@ export const assistanceOperator = spacetimedb.reducer({ case_id:t.u64(), command
       cancelArrangement(s,a,typeof input.reason === 'string' ? text(input.reason,'reason',1000) : 'The dispatcher withdrew the proposal',now(ctx))
       for(const proposal of s.arrangements.filter(item=>item.status==='proposed'))cancelArrangement(s,proposal,'Recompare remaining unapproved choices after the dispatcher withdrew an arrangement',now(ctx),true)
     }
+  } else if (input.action === 'reopen_assessment') {
+    open(ctx,args.case_id,s)
+    if(typeof input.profile_id!=='number')throw new SenderError('Invalid participant ID')
+    const participant=person(s,input.profile_id), note=text(input.reason,'dispatcher review note',1000)
+    if(!participant.consent || participant.contact_blocked)throw new SenderError('Contact permission must be resolved separately before reassessment')
+    permitted(ctx,args.case_id,s,participant.profile_id)
+    if(participant.unreachable)throw new SenderError('This participant was not reached; retrying contact needs a separate decision')
+    if(!requiresInformationReview(s,participant.profile_id))throw new SenderError('This participant has no information review hold to reopen')
+    const attempts=[...ctx.db.attempt.iter()].filter(a=>Number(a.profile_id)===participant.profile_id)
+    if(attempts.some(a=>['queued','dispatching','active','unknown'].includes(ctx.db.attemptProgress.attempt_id.find(a.id)?.transport??'unknown')))throw new SenderError('Wait until this participant’s outstanding call has finished before reassessment')
+    const reached=s.findings.some(f=>f.profile_id===participant.profile_id&&(f.text.trim()||Object.keys(f.changes).length))
+      || attempts.some(a=>a.support_case_id===args.case_id && a.outcome==='answered' && ctx.db.attemptProgress.attempt_id.find(a.id)?.report_processed)
+    if(!reached)throw new SenderError('No reached conversation is recorded; resolve contact separately before reassessment')
+    if(s.tasks.some(task=>task.profile_id===participant.profile_id&&['pending','delivered'].includes(task.status)))throw new SenderError('Review the participant’s outstanding task before authorizing reassessment')
+    const priorReview=participant.review_reason
+    for(const task of s.tasks.filter(task=>task.profile_id===participant.profile_id&&task.status==='blocked'&&['assess','needs','location','capability'].includes(task.kind))) {
+      task.status='cancelled';task.result=(task.result?task.result+'; ':'')+'Dispatcher authorized a new reassessment: '+note
+    }
+    delete participant.review_reason
+    const task=addTask(s,participant.profile_id,'assess',now(ctx),'Dispatcher-authorized reassessment: '+note)
+    if(!task)throw new SenderError('A reassessment cannot be queued within the current task limit; the review hold remains')
+    task.review_reopened=true
+    task.coordinator_brief={objective:'Resolve the dispatcher’s requested clarification: '+note,reason:'Dispatcher explicitly authorized reassessment after reviewing the prior hold.',focus_fields:[],evidence_ids:s.findings.filter(f=>f.profile_id===participant.profile_id).slice(-3).map(f=>f.id),revision:1,issued_at:now(ctx)}
+    const message='Dispatcher reviewed '+participant.name+' and authorized one new assessment task within existing contact limits. Follow-up calls may be placed. Note: '+note+(priorReview?' Previous review: '+priorReview:'')
+    if(s.review?.startsWith(participant.name))s.review=participant.name+': reassessment authorized; previous findings remain unverified until clarified.'
+    addMessage(s,message,now(ctx),'decision')
   } else if (input.action === 'pause' || input.action === 'resume') {
     s.paused=input.action==='pause'
     const policy=JSON.parse(c.policy_json) as InformationPolicy

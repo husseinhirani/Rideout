@@ -7,9 +7,10 @@ import { person, taskInstruction, type AssistanceState, type VoiceUpdate } from 
 import { voiceMission, informationGaps } from '../shared/voice-mission'
 import { answerCoordinator } from './assistance-agent'
 import { ServiceError } from './service'
+import { hydrateLegacyCoordinatorFailure, classifyCoordinatorError } from '../shared/coordinator-errors'
 
 export async function assistanceStates(): Promise<AssistanceState[]> {
-  return (await query('SELECT * FROM assistance_session')).map(row=>JSON.parse(asString(row.state_json)) as AssistanceState)
+  return (await query('SELECT * FROM assistance_session')).map(row=>hydrateLegacyCoordinatorFailure(JSON.parse(asString(row.state_json)) as AssistanceState))
 }
 export function publicAssistance(s: AssistanceState): AssistanceState {
   return {...s,people:s.people.map(({simulation,...p})=>p)}
@@ -41,6 +42,7 @@ function voiceUpdate(input: Record<string,unknown>): VoiceUpdate | null {
   if(input.result && input.result!=='pending')result.result=input.result as VoiceUpdate['result']
   if(input.confirmation && input.confirmation!=='none')result.confirmation=input.confirmation as VoiceUpdate['confirmation']
   if(input.do_not_call===true)result.do_not_call=true
+  if(input.mission_revision!==undefined)result.mission_revision=input.mission_revision as number
   if(typeof input.human_review==='string' && input.human_review.trim())result.human_review=input.human_review.trim()
   if(input.operation==='finish')result.finished=true
   return result
@@ -61,8 +63,10 @@ export async function nextVoiceTask(caseId:number,attemptId:number,callId:string
   if(p?.review_reason)return {status:'needs_review',next_sequence,instruction:'The participant’s concern is saved for dispatcher review. No new commitment or further ordinary questioning is authorized. Close naturally, and honor any immediate stop request.',review_reason:p.review_reason,known_facts:p.facts,revision:state.revision}
   if(task) {
     const instruction=taskInstruction(state,task)
+    const history=(await attempts()).filter(a=>a.support_case_id===caseId && a.profile_id===task.profile_id && a.id!==attemptId && (a.answer?.trim() || a.concern?.trim())).sort((a,b)=>a.id-b.id)
+    const prior_reports=history.slice(-3).map(a=>({source_id:'attempt:'+a.id,attempt_id:a.id,provenance:'prior_call_report',outcome:a.outcome,account:(a.answer??'').slice(0,1600),concern:(a.concern??'').slice(0,800),truncated:(a.answer?.length??0)>1600 || (a.concern?.length??0)>800}))
     return {status:'task',next_sequence,task_id:task.id,kind:task.kind,instruction,
-      mission:voiceMission(state,task,instruction),
+      mission:{...voiceMission(state,task,instruction),prior_reports,omitted_prior_reports:Math.max(0,history.length-prior_reports.length)},
       suggested_location:state.scenario.locations.find(l=>l.id===p?.start_location_id)??null,
       suggested_location_source:'Assigned scenario starting point; unconfirmed until the participant explicitly confirms it.',
       known_facts:person(state,task.profile_id).facts,locations:state.scenario.locations.map(l=>({id:l.id,label:l.label})),revision:state.revision}
@@ -88,10 +92,11 @@ export async function coordinatorCommand(caseId:number,body:unknown,actor:string
     await runInformationCommand('assistanceOperator',body,actor,caseId)
     const state=await assistanceState(caseId)
     if(state.messages.some(m=>m.id==='chat-reply:'+id))return {status:'recorded'}
+    if(state.planning_error?.blocked)throw new ServiceError(503,'Your message was saved. '+state.planning_error.message)
     try{
       const reply=await answerCoordinator(state,String(input.text))
       await callReducer('recordAssistanceChat',[caseId,id,reply])
-    }catch{throw new ServiceError(503,'Your message was saved, but the coordinator could not answer yet. Retry to request the reply without saving it twice.')}
+    }catch(error){const failure=classifyCoordinatorError(error);throw new ServiceError(503,'Your message was saved, but the coordinator could not answer. '+failure.message+' Retrying this message will not save it twice.')}
     return {status:'recorded'}
   })();chats.set(fingerprint,work)
   try{return await work}finally{chats.delete(fingerprint)}

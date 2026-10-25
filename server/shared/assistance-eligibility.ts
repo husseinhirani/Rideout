@@ -21,6 +21,7 @@ export function matchReasons(s: AssistanceState, recipientId: number, helperId: 
   if (!r.consent || !h.consent) reasons.push('Contact consent is withdrawn');
   for (const p of [r,h]) if (p.contact_blocked) reasons.push(p.name + ': ' + p.contact_blocked);
   if ([r,h].some(p=>requiresInformationReview(s,p.profile_id))) reasons.push('A participant needs human review after an unresolved information task');
+  if (s.tasks.some(t=>t.review_reopened && [recipientId,helperId].includes(t.profile_id) && ['pending','delivered','blocked'].includes(t.status))) reasons.push('A dispatcher-requested reassessment is not yet resolved');
   if (r.unreachable || h.unreachable) reasons.push('A participant has not been reached');
   if (!pickupStarted) {
     if (r.facts.needs_transport !== true) reasons.push('Transport need is unconfirmed');
