@@ -100,6 +100,10 @@ Step 5 associates clear updates, requests clarification for incomplete permitted
 intake, and leaves unfamiliar or ambiguous accounts in review. Final retries must
 repeat the same account; only a `needs_clarification` response permits a revised
 complete account under the same provider call ID.
+An inbound reporter need not provide an information objective: Claude may derive
+one from the reported incident/needs, with that inference recorded in the decision
+reason. This does not expand organizer scope or promise assistance. Explicit
+objectives remain required for organizer-created investigations via `/incidents`.
 
 ## Incoming configuration and review — Step 5
 

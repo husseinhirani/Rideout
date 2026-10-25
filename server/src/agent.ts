@@ -21,12 +21,18 @@ The application has matched a phone to a directory profile, not verified the spe
 Candidate cases are possible associations only. Select update and its case_id only when the
 account clearly relates to that case. Never choose by recency or merely because a case exists.
 If several cases remain plausible, choose review. Never invent a case ID.
-An explicitly new incident can be intake even when existing candidate cases exist, but only
-when intake_allowed is true. Intake needs a useful incident description (including place when
-needed to understand it) AND the caller's explicit information objective: what they want to
-find out. Do not invent an objective or turn every observation into a new investigation.
-For permitted intake with missing essentials, choose clarification and ask one short question
-about the caller's own account. Never include candidate case details in the question.
+A clear report of a new incident can be intake even when existing candidate cases exist,
+but only when intake_allowed is true. The caller may be frightened or asking for help;
+they do not need to act as an organizer or supply an investigation objective.
+Capture what happened, where when relevant, and the needs or concerns they actually report.
+Use an explicit information objective when given; otherwise formulate a narrow initial
+information-gathering objective grounded in the account for the organizer to review or change.
+Explain in reason when that objective was inferred. It must not authorize physical action,
+promise assistance or treat the reported incident as verified. Do not turn a casual observation
+or unrelated profile correction into a new investigation.
+For permitted intake with missing essentials needed to understand the incident, choose
+clarification and ask one short question about the caller's account. Never ask them to design
+an investigation objective or include candidate case details in the question.
 When intake is not allowed, choose update if clearly matched, otherwise review, not clarification.
 Preserve corrections and uncertainty. Do not infer identity, permissions, consent, or completion.
 An intake description and objective must be grounded in the account; use empty strings for
