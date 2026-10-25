@@ -149,9 +149,11 @@ export const deliverAssistanceTask = spacetimedb.reducer({ attempt_id:t.u64(), p
   if(!participant.consent || participant.contact_blocked)return
   const existing = s.tasks.find(t => t.profile_id === Number(a.profile_id) && t.attempt_id === Number(a.id) && t.status === 'delivered')
   if (existing) return
-  const task = s.tasks.find(t => t.profile_id === Number(a.profile_id) && t.status === 'pending' && t.due_at <= now(ctx) && (t.attempt_id === null || t.attempt_id === Number(a.id)))
+  const task = s.tasks.find(t => t.profile_id === Number(a.profile_id) && t.status === 'pending' && t.due_at <= now(ctx)
+    && (t.attempt_id === Number(a.id) || (t.attempt_id === null
+      && !(s.scenario.handoff_mode === 'callback' && ['helper_accept','recipient_confirm'].includes(t.kind)))))
   if (!task) return
-  try{taskInstruction(s,task)}catch(error){throw new SenderError(error instanceof Error?error.message:'Task is no longer available')} // Reject stale or held work.
+  try{taskInstruction(s,task,now(ctx))}catch(error){throw new SenderError(error instanceof Error?error.message:'Task is no longer available')} // Reject stale or held work.
   task.attempt_id=Number(a.id);task.status='delivered';task.delivered_at=now(ctx)
   addMessage(s,'Agent speaking with '+person(s,task.profile_id).name+' received: '+task.reason,now(ctx));write(ctx,a.support_case_id,s)
 })

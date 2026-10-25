@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { IncidentMap, arrangementDistance, formatDistance } from "./IncidentMap";
 import { participantLocation } from "../server/shared/spatial";
+import { arrangementRouteContext } from "../server/shared/assistance-routing";
 import { requiresInformationReview, type Arrangement, type AssistanceState, type Participant, type Task } from "../server/shared/assistance";
 import type { CoordinatorAction } from "./updated-ui-api";
 import { Icon, type Opener } from "./Dashboard";
@@ -13,6 +14,9 @@ const TASKS: Record<Task["kind"], string> = {
   assess: "Check in", needs: "Clarify assistance needed", location: "Confirm location", capability: "Check ability to help",
   helper_accept: "Ask helper to accept", recipient_confirm: "Confirm with recipient", pickup: "Confirm pickup", arrival: "Confirm arrival",
 };
+function arrangementStage(arrangement: Arrangement, session: AssistanceState) {
+  return session.scenario.follow_through === "arrangement" && arrangement.status === "confirmed" ? "Ride arranged" : STAGES[arrangement.status];
+}
 function personStatus(person: Participant, session: AssistanceState) {
   if (!person.consent) return "Contact stopped";
   if (person.contact_blocked) return "Contact unavailable";
@@ -20,7 +24,7 @@ function personStatus(person: Participant, session: AssistanceState) {
   if (requiresInformationReview(session, person.profile_id)) return "Information needs review";
   if (session.tasks.some(task => task.profile_id === person.profile_id && task.review_reopened && ["pending", "delivered"].includes(task.status))) return "Reassessment pending";
   const arrangement = [...session.arrangements].reverse().find(a => a.recipient_id === person.profile_id && a.status !== "cancelled");
-  if (arrangement) return STAGES[arrangement.status];
+  if (arrangement) return arrangementStage(arrangement, session);
   if (person.facts.needs_transport === true) return "Needs a ride";
   if (person.facts.needs_transport === false && person.facts.can_help === true) return "Willing to help";
   if (person.facts.needs_transport === false) return "Can leave independently";
@@ -32,6 +36,21 @@ function taskStatus(task: Task, now: number) {
   if (task.status === "pending") return task.attempt_id ? "Call queued" : "Waiting for delivery";
   if (task.status === "blocked") return "Needs review";
   return task.status === "completed" ? "Answered" : "Cancelled";
+}
+function ArrangementRouteNote({ session, arrangement, now }: { session: AssistanceState; arrangement: Arrangement; now: number }) {
+  if (!session.scenario.route_edges?.length || ["cancelled", "picked_up", "completed"].includes(arrangement.status)) return null;
+  const { route, accepted_at, estimated_pickup_at } = arrangementRouteContext(session, arrangement, now);
+  if (!route) return <p className="assistance-note">No current supplied route estimate is available.</p>;
+  const time = (at: number) => new Date(at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  return <div className="assistance-note">
+    {arrangement.helper_accepted
+      ? estimated_pickup_at !== null && accepted_at !== null
+        ? <p><b>{session.scenario.drill ? "Drill pickup estimate" : "Supplied pickup estimate"}: {time(estimated_pickup_at)}</b> · about {Math.ceil((estimated_pickup_at - now) / 60000)} min from now. Assumes departure when the helper accepted at {time(accepted_at)}. Movement has not been confirmed.</p>
+        : <p>No current pickup estimate is available. Elapsed time does not confirm pickup.</p>
+      : <p><b>{session.scenario.drill ? "Drill route estimate" : "Supplied route estimate"}: about {Math.ceil(route.approach_seconds / 60)} min to pickup.</b> Assumes departure after acceptance; the helper has not committed yet.</p>}
+    {route.pickup_on_route === true && <p>Pickup is on the modeled shortest route to the destination. This does not mean the helper is on the way.</p>}
+    <details className="assistance-evidence"><summary>Route estimate source</summary><p>{route.source.join("; ")}</p></details>
+  </div>;
 }
 
 export function AssistanceBoard({ session, disabled, closed, now, compact = false, onAction, onOpen }: {
@@ -52,11 +71,13 @@ export function AssistanceBoard({ session, disabled, closed, now, compact = fals
     finally { setWorking(""); }
   };
   const name = (id: number) => session.people.find(p => p.profile_id === id)?.name ?? "Unknown person";
+  const arrangementOnly = session.scenario.follow_through === "arrangement";
+  const resolved = session.arrangements.filter(a => a.status === "completed" || (arrangementOnly && ["confirmed", "picked_up"].includes(a.status)));
   const active = session.arrangements.filter(a => !["cancelled", "completed"].includes(a.status));
   const proposals = active.filter(a => a.status === "proposed");
   const shown = compact ? (proposals.length ? proposals : active).slice(0, 1) : [...active, ...session.arrangements.filter(a => ["cancelled", "completed"].includes(a.status)).reverse()];
   const liveTasks = session.tasks.filter(task => ["pending", "delivered", "blocked"].includes(task.status));
-  const needs = session.people.filter(p => p.facts.needs_transport === true && !session.arrangements.some(a => a.recipient_id === p.profile_id && a.status === "completed"));
+  const needs = session.people.filter(p => p.facts.needs_transport === true && !resolved.some(a => a.recipient_id === p.profile_id));
   const planningBlocked = Boolean(session.planning_error?.blocked) || session.failure_count >= 3;
   const planning = !closed && !session.paused && !planningBlocked && session.revision !== session.planned_revision;
 
@@ -66,9 +87,9 @@ export function AssistanceBoard({ session, disabled, closed, now, compact = fals
       {onOpen && <button className="assistance-expand" type="button" aria-label="Open assistance coordination" onClick={onOpen}><Icon name="expand" /></button>}
     </div>
     <div className="assistance-summary">
-      <span><b>{needs.length}</b> need transport</span>
+      <span><b>{needs.length}</b> {arrangementOnly ? "need a ride arranged" : "need transport"}</span>
       <span><b>{proposals.length}</b> awaiting approval</span>
-      <span><b>{session.arrangements.filter(a => a.status === "completed").length}</b> arrivals confirmed</span>
+      <span><b>{resolved.length}</b> {arrangementOnly ? "rides arranged" : "arrivals confirmed"}</span>
     </div>
     <div className="call-actions">
       <button type="button" disabled={unavailable} onClick={() => void act("pause", { action: session.paused ? "resume" : "pause" })}>{working === "pause" ? "Saving…" : session.paused ? "Resume outreach" : "Pause outreach"}</button>
@@ -80,17 +101,19 @@ export function AssistanceBoard({ session, disabled, closed, now, compact = fals
     {!compact && session.error && <details className="assistance-evidence"><summary>Planning issue</summary><p>{session.error}</p></details>}
 
     {shown.length ? <div className="arrangement-list">{shown.map(arrangement => <article key={arrangement.id} className={"arrangement " + arrangement.status}>
-      <header><span className="arrangement-stage">{STAGES[arrangement.status]}</span><small>{new Date(arrangement.updated_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</small></header>
+      <header><span className="arrangement-stage">{arrangementStage(arrangement, session)}</span><small>{new Date(arrangement.updated_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</small></header>
       <h3>{name(arrangement.helper_id)} <span aria-label="helping">→</span> {name(arrangement.recipient_id)}</h3>
       <p>{arrangement.reason}</p>
       {arrangementDistance(session, arrangement) !== null && <p className="assistance-note">Approximately {formatDistance(arrangementDistance(session, arrangement)!)} apart in a straight line · not a driving distance</p>}
+      <ArrangementRouteNote session={session} arrangement={arrangement} now={now} />
       <ol className="arrangement-milestones" aria-label="Arrangement progress">
         <li className={arrangement.status !== "proposed" && arrangement.status !== "cancelled" ? "done" : ""}>Approved</li>
         <li className={arrangement.helper_accepted ? "done" : ""}>Helper accepted</li>
         <li className={arrangement.recipient_confirmed ? "done" : ""}>Recipient confirmed</li>
-        <li className={arrangement.pickup_confirmations.includes(arrangement.helper_id) && arrangement.pickup_confirmations.includes(arrangement.recipient_id) ? "done" : ""}>Pickup</li>
-        <li className={arrangement.status === "completed" ? "done" : ""}>Arrival</li>
+        {!arrangementOnly && <><li className={arrangement.pickup_confirmations.includes(arrangement.helper_id) && arrangement.pickup_confirmations.includes(arrangement.recipient_id) ? "done" : ""}>Pickup</li>
+        <li className={arrangement.status === "completed" ? "done" : ""}>Arrival</li></>}
       </ol>
+      {arrangementOnly && arrangement.status === "confirmed" && <p className="assistance-note">The helper accepted and the recipient confirmed. This demo ends with the ride arranged. Pickup and arrival have not been confirmed.</p>}
       {arrangement.status === "proposed" && <><p className="assistance-note">Approval authorizes asking them to confirm this proposal. No pickup is agreed yet.</p><div className="call-actions">
         <button type="button" className="hot" disabled={unavailable || session.paused} onClick={() => void act(arrangement.id, { action: "approve", arrangement_id: arrangement.id })}>{working === arrangement.id ? "Saving…" : "Approve proposal"}</button>
         <button type="button" disabled={unavailable} onClick={() => void act(arrangement.id, { action: "reject", arrangement_id: arrangement.id, reason: "Dispatcher rejected the proposed arrangement" })}>Reject</button>

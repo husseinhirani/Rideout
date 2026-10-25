@@ -211,7 +211,7 @@ function authorized(ctx: Ctx, attemptId: bigint) {
     const state=JSON.parse(session.state_json) as AssistanceState
     const task=state.tasks.find(t=>t.attempt_id===Number(attemptId)&&['pending','delivered'].includes(t.status))
     if(state.paused||!task||!state.people.find(p=>p.profile_id===Number(row.attempt.profile_id))?.consent)fail('Coordinator task is no longer authorized')
-    taskInstruction(state,task!)
+    taskInstruction(state,task!,now(ctx))
     if(task!.arrangement_id){
       const arrangement=state.arrangements.find(a=>a.id===task!.arrangement_id)!
       eligible(ctx,c.id,BigInt(arrangement.recipient_id)); eligible(ctx,c.id,BigInt(arrangement.helper_id))
@@ -320,6 +320,7 @@ function drillProfiles(ctx: Ctx, input: Record<string, unknown>) {
 export const configureDrillParticipants = spacetimedb.reducer({ command_id: t.string(), payload_json: t.string(), actor: t.string() }, (ctx, args) => {
   const input = parse(args.payload_json)
   if (replay(ctx, args.command_id, "configure_drill_participants", input)) return
+  if (input.include_simulated !== undefined && typeof input.include_simulated !== "boolean") fail("include_simulated must be boolean")
   const people = drillProfiles(ctx, input)
   for (const person of people) if (!preference(ctx, person.id)) {
     ctx.db.profileSettings.insert({ profile_id: person.id, call_consent: true, availability: "unknown", tags_json: "[]",
@@ -332,8 +333,9 @@ export const configureDrillParticipants = spacetimedb.reducer({ command_id: t.st
 export const startWildfireDrill = spacetimedb.reducer({ command_id: t.string(), payload_json: t.string(), actor: t.string() }, (ctx, args) => {
   const input = parse(args.payload_json)
   if (replay(ctx, args.command_id, "wildfire_drill", input)) return
+  if (input.include_simulated !== undefined && typeof input.include_simulated !== "boolean") fail("include_simulated must be boolean")
   const realPeople = drillProfiles(ctx, input)
-  const simulated = SIMULATED_NEIGHBORS.map((p,index) => {
+  const simulated = (input.include_simulated === false ? [] : SIMULATED_NEIGHBORS).map((p,index) => {
     const phone = 'simulation:neighbor:' + index
     const existing = [...ctx.db.profile.iter()].find(row => row.phone === phone)
     return existing ?? ctx.db.profile.insert({ id:0n,name:p.name,phone,lat:0,lng:0,contact_profile_ids:[] })
@@ -343,7 +345,7 @@ export const startWildfireDrill = spacetimedb.reducer({ command_id: t.string(), 
   const context = "This is a consented RideOut wildfire evacuation drill, not a real emergency. The Rockridge incident and location are fictional. Coordination is enabled: fetch the current mission using coordinate_call after identity confirmation and the drill explanation, and share important discoveries during the conversation. Use the latest mission response to decide the next useful question or completion; do not add a redundant final check. Introduce yourself as Tom, an AI agent from RideOut, and confirm the person's name before discussing the situation. Then clearly say this is a drill. Listen naturally to the participant's imagined evacuation situation and save their account using report_call. Do not use record_check_in. Only an authorized arrangement task permits its specified proposal disclosures; do not promise a ride or instruct real-world action."
   const creation = {
     text: "Wildfire evacuation drill in Rockridge. Fictional incident; consenting participants receive real phone calls.",
-    objective: "Coordinate assistance in this fictional evacuation drill: discover needs and available help, propose suitable arrangements for human approval, and confirm acceptance, pickup and arrival separately.",
+    objective: "Coordinate assistance in this fictional evacuation drill: discover needs and available help, propose suitable arrangements for human approval, and finish after helper acceptance and recipient confirmation. Pickup and arrival are outside this drill; do not claim either occurred.",
     area, scope: { profile_ids: people.map(p => Number(p.id)) },
     policy: { max_concurrent_calls: Math.min(10,people.length), max_calls_total: people.length * 8, max_calls_per_destination: 8, paused: false },
     coordination_enabled: false,
@@ -536,7 +538,7 @@ export const queueAssistanceTask = spacetimedb.reducer({case_id:t.u64(),task_id:
   if(ready.call_count>=2)fail('Task callback budget exhausted')
   const current=getCase(ctx,args.case_id)
   const command_id='assistance:'+ready.id+':'+ready.call_count
-  const instruction=taskInstruction(s,ready)
+  const instruction=taskInstruction(s,ready,now(ctx))
   if(ready.arrangement_id){
     const arrangement=s.arrangements.find(a=>a.id===ready.arrangement_id)!
     eligible(ctx,args.case_id,BigInt(arrangement.recipient_id)); eligible(ctx,args.case_id,BigInt(arrangement.helper_id))

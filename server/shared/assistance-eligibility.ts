@@ -5,6 +5,11 @@ export function person(s: AssistanceState, id: number): Participant {
   const p = s.people.find(p => p.profile_id === id); if (!p) throw new Error('Person is outside this incident'); return p;
 }
 const reserved = (a: Arrangement) => ['proposed','approved','accepted','confirmed','picked_up'].includes(a.status);
+/** Arrangement-only sessions stop outreach once both parties agree; no travel is implied. */
+export function arrangementScopeResolved(s: AssistanceState, profileId: number): boolean {
+  return s.scenario.follow_through === 'arrangement' && s.arrangements.some(a =>
+    ['confirmed','picked_up','completed'].includes(a.status) && [a.recipient_id,a.helper_id].includes(profileId));
+}
 export function requiresInformationReview(s: AssistanceState, profileId: number): boolean {
   return Boolean(s.people.find(p=>p.profile_id===profileId)?.review_reason) || s.tasks.some(t=>t.profile_id===profileId && ['assess','needs','location','capability'].includes(t.kind) && t.status==='blocked');
 }

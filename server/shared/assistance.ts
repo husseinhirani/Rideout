@@ -1,7 +1,8 @@
-import { person, matchReasons, requiresInformationReview } from './assistance-eligibility';
-export { person, matchReasons, requiresInformationReview } from './assistance-eligibility';
+import { person, matchReasons, requiresInformationReview, arrangementScopeResolved } from './assistance-eligibility';
+export { person, matchReasons, requiresInformationReview, arrangementScopeResolved } from './assistance-eligibility';
 import { spatialMatching } from './spatial';
 import { informationGaps } from './voice-mission';
+import { routeEstimate, routeInstruction, type RouteEdge, type RouteEstimate } from './assistance-routing';
 /** Shared incident coordination contract. People and locations are data, never role rules. */
 export type Facts = {
   location_id: string | null; needs_transport: boolean | null; party_size: number | null;
@@ -10,13 +11,13 @@ export type Facts = {
 };
 export const emptyFacts = (): Facts => ({ location_id: null, needs_transport: null, party_size: null, wheelchair: null, pets: null, can_help: null, seats: null, wheelchair_space: null, pets_allowed: null });
 export type Location = { id: string; label: string; lat: number; lng: number; access: 'community' | 'specialist' | 'unknown'; zone_id?: string; source?: string };
-export type Scenario = { title: string; drill: boolean; context: string; locations: Location[]; community_routes: [string, string][]; destination: string; follow_up_ms: number; max_tasks_per_person: number };
+export type Scenario = { title: string; drill: boolean; context: string; locations: Location[]; community_routes: [string, string][]; destination: string; destination_location_id?: string; route_edges?: RouteEdge[]; handoff_mode?: 'callback' | 'in_call'; follow_through?: 'arrangement' | 'arrival'; follow_up_ms: number; max_tasks_per_person: number };
 export type Participant = { profile_id: number; name: string; mode: 'real' | 'simulated'; start_location_id?: string; facts: Facts; sources: Partial<Record<keyof Facts, string>>; consent: boolean; contact_blocked?: string | null; review_reason?: string; simulation?: Facts; unreachable: boolean };
 export type TaskKind = 'assess' | 'needs' | 'location' | 'capability' | 'helper_accept' | 'recipient_confirm' | 'pickup' | 'arrival';
 export type MissionUpdate = { task_id: string; objective: string; reason: string; evidence_ids: string[]; focus_fields: (keyof Facts)[] };
 export type CoordinatorBrief = Omit<MissionUpdate, 'task_id'> & { revision: number; issued_at: number };
 export type Task = { review_reopened?: boolean; coordinator_brief?: CoordinatorBrief; id: string; profile_id: number; kind: TaskKind; arrangement_id: string | null; reason: string; status: 'pending' | 'delivered' | 'completed' | 'cancelled' | 'blocked'; attempt_id: number | null; created_at: number; delivered_at: number | null; call_count: number; completed_revision?: number; due_at: number; result: string; };
-export type Arrangement = { id: string; recipient_id: number; helper_id: number; evidence_ids: string[]; reason: string; status: 'proposed' | 'approved' | 'accepted' | 'confirmed' | 'picked_up' | 'completed' | 'cancelled'; helper_accepted: boolean; recipient_confirmed: boolean; pickup_confirmations: number[]; arrival_confirmations: number[]; reconsiderable?: boolean; created_at: number; updated_at: number; };
+export type Arrangement = { id: string; recipient_id: number; helper_id: number; evidence_ids: string[]; reason: string; status: 'proposed' | 'approved' | 'accepted' | 'confirmed' | 'picked_up' | 'completed' | 'cancelled'; helper_accepted: boolean; helper_accepted_at?: number; accepted_route?: RouteEstimate; recipient_confirmed: boolean; pickup_confirmations: number[]; arrival_confirmations: number[]; reconsiderable?: boolean; created_at: number; updated_at: number; };
 export type Finding = { id: string; profile_id: number; attempt_id: number; text: string; changes: Partial<Facts>; human_review?: string; mission_revision?: number; at: number };
 export type CoordinatorMessage = { id: string; from: 'lead' | 'facilitator'; text: string; at: number; kind: 'update' | 'decision' | 'review' | 'chat' };
 export type AssistanceInboundReport = { id: string; request_id: number; request_revision: number; support_case_id: number; profile_id: number; source: 'automatic_update' | 'operator_attach' | 'intake'; verification: 'phone_association_only'; text: string; at: number };
@@ -68,6 +69,7 @@ function requiredMatchSources(s: AssistanceState, recipientId: number, helperId:
   return [...new Set(refs)];
 }
 function milestone(s: AssistanceState, task: Task): Arrangement {
+  if (s.scenario.follow_through === 'arrangement' && ['pickup','arrival'].includes(task.kind)) throw new Error('This session ends with a confirmed arrangement; travel follow-ups are outside its scope');
   const a = s.arrangements.find(a => a.id === task.arrangement_id);
   if (!a || !reserved(a) || !activeTask(task)) throw new Error('Arrangement is not authorized for this task');
   const participant = task.profile_id;
@@ -84,6 +86,7 @@ export function addTask(s: AssistanceState, profileId: number, kind: TaskKind, n
   const p = person(s, profileId);
   if (!taskKinds.includes(kind) || !Number.isFinite(now) || !Number.isFinite(due)) throw new Error('Invalid task');
   boundedText(reason,'task reason',2000);
+  if (!arrangementId && arrangementScopeResolved(s,profileId)) return null;
   if (!p.consent || p.contact_blocked || requiresInformationReview(s,p.profile_id)) { s.review = p.name + ' cannot be contacted; human review is required.'; return null; }
   if (s.tasks.some(t => t.profile_id === profileId && t.kind === kind && t.arrangement_id === arrangementId && activeTask(t))) return null;
   if (s.tasks.filter(t => t.profile_id === profileId).length >= s.scenario.max_tasks_per_person) {
@@ -94,19 +97,20 @@ export function addTask(s: AssistanceState, profileId: number, kind: TaskKind, n
   else if (arrangementId !== null) throw new Error('Information tasks cannot carry an arrangement');
   s.tasks.push(task); return task;
 }
-export function taskInstruction(s: AssistanceState, task: Task): string {
+export function taskInstruction(s: AssistanceState, task: Task, now = Date.now()): string {
   if (!activeTask(task) || !person(s,task.profile_id).consent || person(s,task.profile_id).contact_blocked || requiresInformationReview(s,task.profile_id)) throw new Error('Task is no longer available');
+  if (!task.arrangement_id && arrangementScopeResolved(s,task.profile_id)) throw new Error('The participant has a confirmed arrangement; the session outcome is resolved');
   const prefix = s.scenario.drill ? 'This is a fictional drill; do not instruct actual travel. ' : '';
-  if (task.kind === 'assess') return prefix + 'Understand whether this person needs evacuation assistance or could help someone else, and gather enough attributed information for the coordinator to compare suitable assistance. Resolve relevant gaps naturally; the participant may decline or not know.';
+  if (task.kind === 'assess') return prefix + 'Understand how this person plans to evacuate and whether that plan provides available transport, then establish any assistance needs or willingness and capacity to help someone else. Gather enough attributed information for the coordinator to compare suitable assistance. Vague reassurance alone does not establish independent evacuation. Resolve relevant gaps naturally; the participant may decline or not know.';
   if (task.kind === 'location') return prefix + 'Establish a participant-reported scenario location for geographic comparison. Supplied starting points are unconfirmed scenario context. A different or unknown location is a valid answer; never substitute directory coordinates.';
-  if (task.kind === 'needs') return prefix + 'Understand the person’s current assistance needs well enough to evaluate suitable help. Follow changed circumstances rather than an assumed role, and preserve needs outside the structured fields in the account for human review.';
+  if (task.kind === 'needs') return prefix + 'Understand how the person plans to evacuate and whether they have available transport, so their current assistance needs can be evaluated. Vague reassurance alone does not establish independent evacuation. Follow changed circumstances rather than an assumed role, and preserve needs outside the structured fields in the account for human review.';
   if (task.kind === 'capability') return prefix + 'Determine whether this person is willing and able to help, and what assistance their available vehicle capacity could support. This gathers options; it does not commit them to an arrangement. If their circumstances changed, establish their current needs instead.';
   const a = milestone(s,task), r = person(s,a.recipient_id), h = person(s,a.helper_id);
   const reasons = matchReasons(s,a.recipient_id,a.helper_id,a.id);
   if (reasons.length) throw new Error('Arrangement needs review: ' + reasons.join('; '));
   const location = s.scenario.locations.find(l => l.id === r.facts.location_id)?.label ?? 'unconfirmed location';
-  if (task.kind === 'helper_accept') return prefix + 'The human approved asking you about this proposed pickup: help ' + r.name + ' (' + r.facts.party_size + ' passenger(s)) at ' + location + ' reach ' + s.scenario.destination + '. Ask for explicit acceptance or refusal. It is not accepted until they agree. Requirements: wheelchair=' + r.facts.wheelchair + ', pets=' + r.facts.pets + '.';
-  if (task.kind === 'recipient_confirm') return prefix + h.name + ' accepted the proposed pickup at ' + location + ' for ' + s.scenario.destination + '. Confirm whether this arrangement works for the recipient. Do not invent an arrival time or say the helper has arrived.';
+  if (task.kind === 'helper_accept') return prefix + 'The human approved asking you about this proposed pickup: help ' + r.name + ' (' + r.facts.party_size + ' passenger(s)) at ' + location + ' reach ' + s.scenario.destination + '. Ask for explicit acceptance or refusal. It is not accepted until they agree. Requirements: wheelchair=' + r.facts.wheelchair + ', pets=' + r.facts.pets + '.' + routeInstruction(s,a,now);
+  if (task.kind === 'recipient_confirm') return prefix + h.name + ' accepted the proposed pickup at ' + location + ' for ' + s.scenario.destination + '. Confirm whether this arrangement works for the recipient. Do not invent an arrival time or say the helper has arrived.' + routeInstruction(s,a,now);
   if (task.kind === 'pickup') return prefix + 'Ask whether the agreed pickup involving ' + r.name + ' and ' + h.name + ' has actually happened in the scenario. Acceptance alone is not pickup. Accept uncertainty.';
   return prefix + 'Ask whether the agreed journey involving ' + r.name + ' and ' + h.name + ' has arrived at ' + s.scenario.destination + '. Pickup alone is not arrival. Accept uncertainty.';
 }
@@ -215,11 +219,19 @@ function applyFindingToDraft(s: AssistanceState, profileId: number, attemptId: n
     } else {
       task.status = 'completed'; task.completed_revision = s.revision + 1; task.result = update.confirmation;
       if (task.kind === 'helper_accept') {
-        a.helper_accepted = true; a.status = 'accepted';
+        a.helper_accepted = true; a.helper_accepted_at = now; a.status = 'accepted';
+        const acceptedRoute = routeEstimate(s,a.recipient_id,a.helper_id,now);
+        if (acceptedRoute) a.accepted_route = acceptedRoute;
         addTask(s,a.recipient_id,'recipient_confirm',now,'Confirm the accepted pickup with the recipient',a.id);
       } else if (task.kind === 'recipient_confirm') {
         a.recipient_confirmed = true; a.status = 'confirmed';
-        for (const id of [a.recipient_id,a.helper_id]) addTask(s,id,'pickup',now,'Check pickup separately from acceptance',a.id,now+s.scenario.follow_up_ms);
+        if (s.scenario.follow_through === 'arrangement') {
+          for (const pending of s.tasks.filter(t => [a.recipient_id,a.helper_id].includes(t.profile_id) && activeTask(t))) {
+            pending.status = 'cancelled'; pending.result = 'Both parties confirmed the arrangement; this session ends before travel follow-ups';
+          }
+        } else {
+          for (const id of [a.recipient_id,a.helper_id]) addTask(s,id,'pickup',now,'Check pickup separately from acceptance',a.id,now+s.scenario.follow_up_ms);
+        }
       } else if (task.kind === 'pickup') {
         if ([a.recipient_id,a.helper_id].every(id => a.pickup_confirmations.includes(id))) {
           a.status = 'picked_up'; for (const id of [a.recipient_id,a.helper_id]) addTask(s,id,'arrival',now,'Confirm arrival separately from pickup',a.id,now+s.scenario.follow_up_ms);
@@ -281,6 +293,7 @@ function applyPlanToDraft(s: AssistanceState, plan: AssistancePlan, now: number)
     const task=s.tasks.find(t=>t.id===update.task_id);
     if (!task || !activeTask(task) || task.arrangement_id || !['assess','needs','location','capability'].includes(task.kind)) throw new Error('Only active information missions can be revised');
     const participant=person(s,task.profile_id);
+    if (arrangementScopeResolved(s,participant.profile_id)) continue;
     if (!participant.consent || participant.contact_blocked || participant.unreachable || requiresInformationReview(s,participant.profile_id)) throw new Error('Mission participant is unavailable or needs human review');
     if (task.attempt_id !== null && s.closing_attempts?.includes(task.attempt_id)) throw new Error('Cannot revise a finishing conversation');
     const brief={objective:update.objective,reason:update.reason,evidence_ids:[...update.evidence_ids],focus_fields:[...update.focus_fields]};
@@ -296,6 +309,7 @@ function applyPlanToDraft(s: AssistanceState, plan: AssistancePlan, now: number)
     if (seenQuestions.has(key)) throw new Error('Duplicate question in plan');
     seenQuestions.add(key);
     const p = person(s,q.profile_id);
+    if (arrangementScopeResolved(s,p.profile_id)) continue;
     if (p.unreachable || !p.consent || p.contact_blocked || requiresInformationReview(s,p.profile_id)) continue;
     if (s.tasks.some(t=>t.profile_id===q.profile_id && !t.arrangement_id && activeTask(t))) continue;
     // Unknown/refused answers require review. A later correction can reopen an

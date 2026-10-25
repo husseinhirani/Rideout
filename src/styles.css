@@ -795,7 +795,7 @@ h2, h3 { margin: 0; font-weight: 600; }
 }
 
 /* Map overlay: numbers only */
-.left.stats { top: 22px; bottom: auto; width: min(400px, calc(100vw - 44px)); }
+.left.stats { top: 96px; bottom: auto; width: min(400px, calc(100vw - 44px)); }
 .area-summary { width: min(320px, calc(100vw - 44px)); padding: 0; overflow: hidden; }
 .area-summary summary { min-height: 48px; display: flex; align-items: center; justify-content: space-between; padding: 0 18px; font-size: 18px; font-weight: 650; cursor: pointer; list-style: none; }
 .area-summary summary::-webkit-details-marker { display: none; }

@@ -105,9 +105,17 @@ export const EVACUATION_DRILL: Scenario = {
     { id: 'east', label: 'East community pickup point', lat: 37.8464, lng: -122.2472, access: 'community' },
     ...DRILL_STARTING_LOCATIONS,
     { id: 'ridge', label: 'Ridge restricted area', lat: 37.853, lng: -122.245, access: 'specialist' },
+    { id: 'reception', label: 'Fictional community reception center', lat: 37.8458, lng: -122.251, zone_id: 'west', access: 'community', source: 'Fictional drill destination; not a live evacuation site' },
   ],
   community_routes: [['west','west'],['east','east'],['west','east']],
-  destination: 'the fictional community reception center', follow_up_ms: 60000, max_tasks_per_person: 12,
+  destination_location_id: 'reception',
+  route_edges: [
+    { from: 'drill-point-2', to: 'drill-point-1', duration_seconds: 780, source: 'Fictional drill route v1: 13-minute approach including simulated evacuation congestion and vehicle preparation; not live traffic or distance-derived timing' },
+    { from: 'drill-point-1', to: 'drill-point-2', duration_seconds: 780, source: 'Fictional drill route v1: reverse approach also assumes 13 minutes including simulated congestion and preparation; not live traffic' },
+    { from: 'drill-point-1', to: 'reception', duration_seconds: 300, source: 'Fictional drill route v1: five-minute journey to the simulated reception center; not live road guidance' },
+    { from: 'drill-point-2', to: 'reception', duration_seconds: 1080, source: 'Fictional drill route v1: 18-minute journey via position 1 to the simulated reception center; not live road guidance' },
+  ],
+  destination: 'the fictional community reception center', handoff_mode: 'callback', follow_through: 'arrangement', follow_up_ms: 60000, max_tasks_per_person: 12,
 }
 export const SIMULATED_NEIGHBORS: { name: string; facts: Facts }[] = [
   { name: 'Helen Cho', facts: { ...emptyFacts(), location_id:'west', needs_transport:true,party_size:1,wheelchair:true,pets:false } },

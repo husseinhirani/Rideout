@@ -9,6 +9,21 @@ and bounded planning retry state. The database remains the authority for transit
 `server/shared/assistance.ts` defines and validates these transitions; the process owns
 model/provider I/O. Existing cases without sessions retain their earlier behavior.
 
+New wildfire sessions use `follow_through: 'arrangement'`: one dispatcher approval
+authorizes the helper-acceptance call, then recipient confirmation ends the demo at
+`confirmed` / **Ride arranged**. No pickup/arrival tasks are created. Absent scope or
+`follow_through: 'arrival'` retains the full historical milestone workflow. They also use
+`handoff_mode: 'callback'`, which keeps acceptance and confirmation in separate bounded
+follow-up calls after assessment calls finish; absent mode retains in-call task delivery.
+
+Optional `route_edges` contain directed, sourced travel-duration assumptions, with an
+optional expiry. `shared/assistance-routing.ts` finds permitted routes and identifies
+whether pickup lies on a modeled shortest route to `destination_location_id`. The drill
+fixture supplies fictional congestion/preparation timing, never timing inferred from
+map distance. Helper acceptance records its time and route snapshot; a current pickup
+estimate is anchored to that original time. Changed route inputs or elapsed/expired
+estimates cannot restart the travel clock or claim departure, pickup or arrival.
+
 `POST /calls/coordinate` uses provider callback authentication and verifies the provider
 call ID, agent and destination against the saved attempt. `coordinate_call` lets the
 hosted voice agent check for tasks and report discoveries without ending a conversation.
@@ -24,7 +39,7 @@ supplied access/routes, and existing reservations. Each helper has at most one r
 pickup. A declined pairing is not automatically repeated. Changed approved pickup details
 withdraw the old approval and allow a fresh proposal. Old information planning remains off.
 
-The worker delivers pending tasks through ongoing calls, or atomically queues bounded
+Where the scenario permits in-call delivery, the worker delivers pending tasks through ongoing calls, or atomically queues bounded
 follow-up attempts after terminal status and cooldown. There is no speculative redial of
 an unknown provider state. A task permits at most two callback attempts and a participant
 at most eight calls in a drill. Consent withdrawal and task cancellation are checked at
@@ -38,14 +53,15 @@ availability restrictions remain separate from withdrawn consent. Deadline failu
 approve/reject/cancel arrangement, pause/resume, scenario location-access changes and
 planning retry. Messages are persisted and answered by Claude using the current incident;
 chat replies alone cannot execute actions. Proposal approval authorizes asking the helper,
-then recipient confirmation. Pickup and arrival each require both parties' reports.
-Completion means reported arrival in the scenario, not independently verified safety.
+then recipient confirmation. For arrival-scoped sessions, pickup and arrival each require
+both parties' reports, and completion means reported arrival in the scenario, not
+independently verified safety. Arrangement-scoped sessions stop at a confirmed ride.
 
 `GET /state` exposes `assistance_sessions` without hidden synthetic persona answers.
 The dashboard shows proposals/evidence, task progress, reported needs, explicit controls
 and persistent coordinator chat. Polling does not duplicate chat entries. Only a changed
 message advances the scroll position. New sessions do not use the old scripted UI wave.
-Every new wildfire drill includes 12 backend-simulated neighbors; their `mode=simulated` is checked
+When enabled by the saved roster configuration, new wildfire drills include 12 backend-simulated neighbors; their `mode=simulated` is checked
 before provider calls, and their non-dialable synthetic destinations also fail ordinary
 contact eligibility. Simulations follow the same task/report/milestone state transitions.
 
@@ -53,20 +69,29 @@ Deployment: publish the module without deleting data, restart API and Vite, then
 `npm --prefix server run setup-agent` to attach `coordinate_call` and its prompt. Do not
 apply the hosted prompt before the new callback route is running. No real call is made
 by database publication, startup or agent setup; an explicit Start action creates work.
-Existing active authorized work can resume after restart. Only saved real participants receive phone calls; the 12 simulated neighbors also
-participate in the same coordination workflow and remain labeled as simulated.
+Existing active authorized work can resume after restart. Only saved real participants receive phone calls; when enabled, the 12 simulated neighbors also
+participate in the same coordination workflow and remain recorded as simulated.
 
 ## Wildfire drill calling (foundation and compatibility)
 
 `POST /drills/participants` accepts an authenticated operator command ID and
-`participants: [{ name, phone }]`. The reducer upserts by normalized phone, updates
+either `participants: [{ name, phone }]` or `participant_names: string[]`, exclusively.
+Name selection resolves against the latest saved roster, rejecting missing or ambiguous
+matches without requiring a local phone-number file. Optional `include_simulated` is
+saved with the roster and defaults to `true` for compatibility. The reducer upserts by normalized phone, updates
 names, preserves existing consent, rejects duplicate destinations and records a
 private roster of profile IDs in the command log. Configuration places no calls. `npm --prefix server run configure-drill` submits this
 operator command from ignored `server/mock/drill-participants.json`; it does not seed
 predetermined needs, pairings, or start a drill.
-It supports 1–10 participants; real phone numbers are not committed as fixtures.
+It also accepts `--only 'Name One,Name Two' --no-neighbors` to persist a selected saved
+roster with simulated neighbors disabled. An explicit JSON path remains available to
+restore a larger private roster. It supports 1–10 participants; real phone numbers are
+not committed as fixtures. Roles and matching rules never depend on participant names.
 
-`POST /drills/wildfire` accepts an operator command ID. New drills always include 12 simulated neighbors; legacy `include_simulated` inputs cannot disable them. Existing command receipts replay their original roster and payload, preserving old successful drills without adding calls. The backend resolves
+`POST /drills/wildfire` accepts an operator command ID. New drills use the saved
+`include_simulated` choice; per-start legacy inputs do not override it. `wildfire_demo`
+in state exposes the selected real names/count and `include_simulated` so the Start menu
+can describe the saved scope. Existing command receipts replay their original roster and payload, preserving old successful drills without adding calls. The backend resolves
 the saved roster, with the earlier environment/prior-drill participant fallback
 for existing installations. The reducer atomically creates one case with the roster
 as its permitted scope, and queues one call for each person. Initial calls cover the roster; bounded follow-up calls are included in the
