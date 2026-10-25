@@ -75,6 +75,11 @@ export function parseToolFile(value: unknown, file: string): ToolDefinition {
   if (!body.required.every((item) => typeof item === "string")) {
     throw new Error(file + " request_body_schema.required must be strings")
   }
+  for (const [field, schema] of Object.entries(body.properties)) {
+    if (isObject(schema) && Object.prototype.hasOwnProperty.call(schema, "default")) {
+      throw new Error(file + " request_body_schema.properties." + field + ": Cartesia tool fields do not accept default; omit this property and handle missing optional values in the callback")
+    }
+  }
   return {
     name,
     description,
@@ -388,7 +393,7 @@ const PLACEHOLDERS: Record<string, string> = {
 // Read, merge, write. A PATCH that sent only these fields would risk dropping
 // the voice and the tool list that already work.
 async function writePrompt(agentId: string): Promise<void> {
-  const agent = await cartesiaJson("GET", "/v1/agents/" + encodeURIComponent(agentId))
+  const agent = await setupRequest("GET", "/v1/agents/" + encodeURIComponent(agentId))
   const config = isObject(agent.config) ? agent.config : {}
   const placeholders = isObject(config.dynamic_variable_placeholders)
     ? config.dynamic_variable_placeholders
@@ -411,8 +416,19 @@ async function writePrompt(agentId: string): Promise<void> {
     console.log("agent prompt unchanged")
     return
   }
-  await cartesiaJson("PATCH", "/v1/agents/" + encodeURIComponent(agentId), { config: next })
+  await setupRequest("PATCH", "/v1/agents/" + encodeURIComponent(agentId), { config: next })
   console.log("agent prompt updated")
+}
+
+async function setupRequest(method: "GET" | "POST" | "PATCH", path: string, body?: unknown): Promise<JsonObject> {
+  try {
+    return await cartesiaJson(method, path, body)
+  } catch (error) {
+    const status = error instanceof CartesiaServiceError && error.status ? " HTTP " + error.status : ""
+    const requestId = error instanceof CartesiaServiceError && error.requestId ? " (request " + error.requestId + ")" : ""
+    const message = error instanceof Error ? error.message : "request failed"
+    throw new Error(method + " " + path.split("?")[0] + status + ": " + message + requestId)
+  }
 }
 
 async function main(): Promise<void> {
@@ -429,12 +445,12 @@ async function main(): Promise<void> {
   for (const definition of definitions) {
     const existing = chooseTool(definition.name, all, attachedIds)
     if (existing) {
-      await cartesiaJson("PATCH", "/v1/agents/tools/" + encodeURIComponent(existing.id), toolRequest(definition, base, false, secret))
+      await setupRequest("PATCH", "/v1/agents/tools/" + encodeURIComponent(existing.id), toolRequest(definition, base, false, secret))
       chosen.set(definition.name, existing.id)
       console.log(definition.name + " " + existing.id + " updated " + base + definition.api_schema.url)
       continue
     }
-    const created = await cartesiaJson("POST", "/v1/agents/tools", toolRequest(definition, base, true, secret))
+    const created = await setupRequest("POST", "/v1/agents/tools", toolRequest(definition, base, true, secret))
     const id = createdId(created)
     chosen.set(definition.name, id)
     console.log(definition.name + " " + id + " created " + base + definition.api_schema.url)
@@ -443,8 +459,8 @@ async function main(): Promise<void> {
   if (sameIds(attached.map((tool) => tool.id), next)) {
     console.log("agent tools unchanged")
   } else {
-    const current = await cartesiaJson("GET", "/v1/agents/" + encodeURIComponent(agentId))
-    await cartesiaJson("PATCH", "/v1/agents/" + encodeURIComponent(agentId), {
+    const current = await setupRequest("GET", "/v1/agents/" + encodeURIComponent(agentId))
+    await setupRequest("PATCH", "/v1/agents/" + encodeURIComponent(agentId), {
       config: { ...(isObject(current.config) ? current.config : {}), tools: next.map((id) => ({ id })) },
     })
     console.log("agent tools " + next.join(" "))
@@ -472,7 +488,7 @@ async function listTools(agentId?: string): Promise<ListedTool[]> {
     const query = new URLSearchParams({ type: "webhook", limit: "100" })
     if (agentId) query.set("agent_id", agentId)
     if (startingAfter.length > 0) query.set("starting_after", startingAfter)
-    const payload = await cartesiaJson("GET", "/v1/agents/tools?" + query.toString())
+    const payload = await setupRequest("GET", "/v1/agents/tools?" + query.toString())
     const data = Array.isArray(payload.data) ? payload.data : []
     for (const item of data) {
       const tool = listedTool(item)
