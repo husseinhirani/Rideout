@@ -1,8 +1,13 @@
 # Running the server
 
-For a repeatable recording through the **actual persisted backend**, see
-[RECORDING.md](./RECORDING.md). It includes startup, replay and frontend field
-mapping. Model answers and calls are explicitly scripted in this mode.
+The current generic backend is described in [INFORMATION-API.md](INFORMATION-API.md).
+`npm run server:adaptive:sim` uses real Claude with simulated phones; live calls
+use `SIMULATE=0 AUTO_COORDINATE=1 COORDINATOR_SCRIPTED=0 npm run server` with the
+existing local database and credentials. Automatic calls require per-case opt-in.
+The old `server:recording` command is retired. [RECORDING.md](RECORDING.md) and
+the incident-specific runtime instructions below are historical, not startup
+instructions for this backend. The standalone snapshot command below remains
+available, but does not verify the HTTP/database/phone loop.
 
 ## Coordinator demo without phone/database setup
 

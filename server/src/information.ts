@@ -63,6 +63,7 @@ export const createInformationCase = (body: unknown, actor: string) => command("
 export const configureInformationCase = (caseId: number, body: unknown, actor: string) => command("configureInformationCase", body, actor, caseId)
 export const requestInformationCall = (caseId: number, body: unknown, actor: string) => command("requestInformationCall", body, actor, caseId)
 export const inputInformationCase = (caseId: number, body: unknown, actor: string) => command("inputInformationCase", body, actor, caseId)
+export const retryInformationReport = (attemptId: number, body: unknown, actor: string) => command("retryInformationReport", body, actor, attemptId)
 export async function receiveInformationReport(body: unknown) {
   let input: Record<string, unknown>, attemptId: number
   try { input = object(body, "report"); attemptId = id(typeof input.attempt_id === "string" && /^\d+$/.test(input.attempt_id) ? Number(input.attempt_id) : input.attempt_id, "attempt_id") } catch (error) { throw new ServiceError(400, (error as Error).message) }

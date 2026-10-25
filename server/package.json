@@ -21,7 +21,8 @@
     "agent:show": "tsx src/agent-show.ts",
     "server:sim": "SIMULATE=1 tsx src/server.ts",
     "seed:recording": "tsx src/seed-recording.ts",
-    "server:recording": "SIMULATE=1 AUTO_COORDINATE=1 COORDINATOR_SCRIPTED=1 tsx src/server.ts",
+    "server:recording": "node -e \"console.error('The scripted recording server is retired. For generic investigations with real Claude and simulated phones, use npm run server:adaptive:sim.'); process.exitCode = 1\"",
+    "server:adaptive:sim": "SIMULATE=1 AUTO_COORDINATE=1 COORDINATOR_SCRIPTED=0 tsx src/server.ts",
     "demo:recording": "tsx src/recording-demo.ts",
     "demo:case-inputs": "tsx src/recording-case-inputs.ts",
     "demo:inbound": "tsx src/recording-inbound.ts"

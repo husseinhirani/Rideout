@@ -15,6 +15,8 @@ sequential on Vien's VM. Inbound case association and timer follow-ups are not
 part of Step 4. See `ADAPTIVE-TEST-HANDOFF.md`. The older sections below describe
 legacy fixtures and must not introduce scenario rules into new product logic.
 Tony owns the backend and manual HTML console; Vien owns the product frontend.
+The legacy `server:recording` command is retired; `server:adaptive:sim` runs real
+Claude with simulated phones. The older recording descriptions below are history.
 
 
 Global context and working conventions. Read before making any change.

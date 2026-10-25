@@ -26,3 +26,4 @@ export { recordCaseIntake, recordCaseUpdate, recordReunionConfirmation } from ".
 export { receiveIncomingRequest, prepareIncomingRequest, finishIncomingRequest, failIncomingRequest } from "./apis/incoming-requests"
 export { createInformationCase, configureInformationCase, requestInformationCall, claimInformationAttempt, validateInformationClaim, releaseInformationClaim, recordInformationDispatch, receiveInformationReport, observeInformationTerminal, finishInformationReport, failInformationReport, recoverInformationClaims } from "./apis/information"
 export { inputInformationCase, recordInformationPlanFailure, commitInformationPlan } from "./apis/information"
+export { retryInformationReport } from "./apis/information"

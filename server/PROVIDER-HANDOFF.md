@@ -1,4 +1,8 @@
-# Pull and live-test handoff
+# Historical provider-integration handoff
+
+This describes an earlier incident-specific runtime. The branch order and
+scripted recording commands below are obsolete for the generic backend. Use
+the current entry points in [README.md](README.md); keep existing data intact.
 
 Tony's `tony/provider-integration` branch includes the stacked backend work and
 Vien's `6164944` changes. Review/merge PRs in dependency order (#9 → #10 → #11 →

@@ -5,7 +5,7 @@ import { authorizeRequest, readAccessConfig } from "./operator-auth"
 import { createLocalConsole } from "./local-console"
 import { getState } from "./loop"
 import { attempts, callReducer, incomingRequests, type ProfileRow, type AttemptProgressRow } from "./db"
-import { configureInformationCase, createInformationCase, directory, readInformationState, readInformationPlanning, receiveInformationReport, requestInformationCall, inputInformationCase } from "./information"
+import { configureInformationCase, createInformationCase, directory, readInformationState, readInformationPlanning, receiveInformationReport, requestInformationCall, inputInformationCase, retryInformationReport } from "./information"
 import { receiveInformationRequest } from "./information-incoming"
 import { startInformationWorker } from "./information-worker"
 import { asId, ServiceError } from "./service"
@@ -89,6 +89,8 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     await callReducer("observeInformationTerminal", [attempt.id, attempt.call_id, "completed", "simulation completed"])
     send(res, 200, receipt); return
   }
+  const retry = /^\/attempts\/(\d+)\/retry-interpretation$/.exec(path)
+  if (retry) { send(res, 200, await retryInformationReport(asId(retry[1], "attempt_id"), body, actor)); return }
   const route = /^\/cases\/(\d+)\/(configuration|calls|input)$/.exec(path)
   if (route) {
     const result = route[2] === "configuration" ? await configureInformationCase(Number(route[1]), body, actor)

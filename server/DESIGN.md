@@ -28,6 +28,12 @@ An organizer-review decision pauses new calls. Explicit configuration can resume
 it. The console displays reasons, evidence IDs and whether the summary is stale.
 Inbound association and final closure remain later checkpoints.
 
+After three interpretation failures, an operator can explicitly retry the same
+saved, matched account via `POST /attempts/:id/retry-interpretation` with a stable
+`command_id`. The reducer records the command and resets interpretation retries
+only. It cannot redial, replace the receipt, reopen the case or bypass binding.
+The console exposes this action only for exhausted, unprocessed matched reports.
+
 See `ADAPTIVE-TEST-HANDOFF.md` for the API and VM checks. This implementation has
 been inspected as code only; compilation and runtime checks await Vien's VM.
 
@@ -163,6 +169,10 @@ worker instances over retained rows. They do not prove SpacetimeDB deployment,
 real process/database restart recovery, Claude behavior, or phone delivery.
 
 ## Persisted recording replay
+
+Historical runtime description: the current generic server rejects scripted
+planning. `server:recording` now exits with a retirement message. Real-Claude
+simulation uses `server:adaptive:sim`; the old fixtures remain available.
 
 `COORDINATOR_SCRIPTED=1` selects explicit demonstration planner/interpreter fixtures,
 never an automatic fallback. Startup rejects this flag without both `SIMULATE=1`

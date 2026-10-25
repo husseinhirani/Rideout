@@ -438,6 +438,11 @@ function caseSection(current) {
     detail.append(el("div", "sub", "Attempt #" + call.id + " · Provider: " + (call.call_id || "not recorded")
       + " · Transport: " + (progress ? progress.transport : "not tracked by legacy call path")))
     if (binding) detail.append(el("div", "sub", "Binding: " + binding.binding_status + " · Provider outcome: " + (binding.provider_terminal_status || "not terminal") + (binding.interpretation_error ? " · Interpretation: " + binding.interpretation_error : "")))
+    if (progress?.report_received && !progress.report_processed && binding?.binding_status === "matched" && binding.interpretation_failure_count >= 3) {
+      const retry = el("button", "", "Retry saved report interpretation")
+      retry.onclick = () => send(retry, () => command("/attempts/" + call.id + "/retry-interpretation", {}))
+      detail.append(el("div", "sub", "Interpretation stopped after three failures. Fix the reported cause, then retry this saved account; this button does not call the person again."), retry)
+    }
     if (call.answer) detail.append(el("div", "quote", '"' + call.answer + '"'))
     if (state.simulate && call.outcome === null) detail.append(simulateBox(call.id))
     line.append(detail)

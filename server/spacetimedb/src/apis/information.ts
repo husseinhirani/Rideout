@@ -286,4 +286,16 @@ export const failInformationReport = spacetimedb.reducer({ attempt_id: t.u64(), 
   const count = metadata.interpretation_failure_count + 1
   ctx.db.informationAttempt.attempt_id.update({ ...metadata, interpretation_failure_count: count, interpretation_retry_at_ms: count < 3 ? now(ctx) + count * 2000 : undefined, interpretation_error: message.slice(0, 2000) })
 })
+export const retryInformationReport = spacetimedb.reducer({ attempt_id: t.u64(), command_id: t.string(), payload_json: t.string(), actor: t.string() }, (ctx, { attempt_id, command_id, payload_json, actor }) => {
+  const input = parse(payload_json), payload = { ...input, attempt_id: Number(attempt_id) }
+  if (replay(ctx, command_id, "retry_information_report", payload)) return
+  if (Object.keys(input).length) fail("Report retry accepts only command_id")
+  const { attempt, progress, metadata } = getAttempt(ctx, attempt_id)
+  if (!progress.report_received || metadata.binding_status !== "matched") fail("A saved matched report is required")
+  if (progress.report_processed || metadata.interpretation_failure_count < 3) fail("Interpretation is already processed or still eligible for automatic retry")
+  // Retry the same immutable receipt: never redial, replace its answer/binding,
+  // or reopen a closed case. Normal processing will wake planning if still open.
+  ctx.db.informationAttempt.attempt_id.update({ ...metadata, interpretation_failure_count: 0, interpretation_retry_at_ms: undefined, interpretation_error: "" })
+  save(ctx, command_id, "retry_information_report", payload, { support_case_id: Number(attempt.support_case_id), attempt_id: Number(attempt_id), status: "retry_queued" }, actor)
+})
 export const recoverInformationClaims = spacetimedb.reducer({}, ctx => { for (const m of ctx.db.informationAttempt.iter()) { if (!m.decision_command_id) continue; const p = ctx.db.attemptProgress.attempt_id.find(m.attempt_id); if (p?.transport === "dispatching" && p.claimed_at_ms !== undefined && p.claimed_at_ms + 60_000 <= now(ctx)) ctx.db.attemptProgress.attempt_id.update({ ...p, transport: "unknown", dispatch_error: "Dispatch claim expired; reconcile provider outcome before another call" }) } })
