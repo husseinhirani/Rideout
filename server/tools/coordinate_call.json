@@ -29,7 +29,7 @@
         },
         "sequence": {
           "type": "integer",
-          "description": "For updates, increment from 1 per call. Keep the same number and content for an exact retry. Use 0 for check."
+          "description": "For each new update use at least next_sequence and greater than every sequence already submitted, even interrupted ones. Reuse a number only for an exact retry with identical content. Corrections always get a new number. Use 0 for check."
         },
         "text": {
           "type": "string",
@@ -74,7 +74,7 @@
         },
         "mission_revision": {
           "type": "integer",
-          "description": "Revision of the latest coordinator_brief you have read and are responding to; 0 when none exists. For update/finish. Do not copy a newer revision and claim answered before actually addressing that objective."
+          "description": "Copy mission_revision from the latest tool response; 0 when no coordinator brief exists. Never use state_revision or the incident revision. For update/finish. Do not copy a newer revision and claim answered before actually addressing that objective."
         }
       },
       "required": [

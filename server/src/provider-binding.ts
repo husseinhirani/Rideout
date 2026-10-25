@@ -37,6 +37,26 @@ export function verifyOutboundCallBinding(call: CallRecord, expected: OutboundCa
   return { status: "matched", reason: "Provider call matches the configured agent, destination and attempt" }
 }
 
+/** Inbound history is disclosed only after provider metadata confirms the calling line. */
+export function verifyInboundCallBinding(call: CallRecord, expected: {
+  providerCallId: string; agentId: string; fromNumber: string;
+}): BindingResult {
+  const checks: [string, string | null | undefined, string][] = [
+    ["call ID", call.id, expected.providerCallId],
+    ["agent", call.agentId, expected.agentId],
+    ["direction", call.direction, "inbound"],
+    ["caller", normalizedPhone(call.fromNumber), normalizedPhone(expected.fromNumber) ?? ""],
+  ]
+  let missing = ""
+  for (const [field, actual, wanted] of checks) {
+    if (!wanted) return {status:"pending",reason:"Expected " + field + " is missing"}
+    if (!actual) missing ||= field
+    else if (actual !== wanted) return {status:"conflict",reason:"Provider " + field + " does not match this inbound call"}
+  }
+  return missing ? {status:"pending",reason:"Provider " + missing + " is unavailable"}
+    : {status:"matched",reason:"Provider confirms the configured agent and inbound calling line"}
+}
+
 function normalizedPhone(value: string | null | undefined): string | null {
   const phone = (value ?? "").replace(/[\s().-]/g, "")
   return /^\+[1-9]\d{1,14}$/.test(phone) ? phone : null

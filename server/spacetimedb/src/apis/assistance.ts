@@ -49,6 +49,33 @@ function reconcileContacts(ctx: Ctx, caseId: bigint, s: AssistanceState): boolea
   return changed
 }
 
+/** Accepted inbound accounts are separate evidence, never outbound findings or verified facts. */
+function synchronizeIncomingReports(ctx: Ctx, caseId: bigint, s: AssistanceState): boolean {
+  let changed=false
+  for(const resolution of ctx.db.informationIncomingResolution.iter()) {
+    if(resolution.support_case_id!==caseId || resolution.reporter_profile_id===undefined
+      || !['automatic_update','operator_attach','intake'].includes(resolution.kind))continue
+    const participant=s.people.find(p=>p.profile_id===Number(resolution.reporter_profile_id))
+    const request=ctx.db.incomingRequest.id.find(resolution.request_id)
+    // Unknown callers and reports awaiting association remain in the existing intake review.
+    if(!participant || !request || request.direction!=='inbound' || request.support_case_id!==caseId
+      || request.revision!==resolution.request_revision || !['recorded','attached'].includes(request.status))continue
+    const id='incoming:'+request.id+':'+resolution.request_revision
+    if(s.inbound_reports?.some(report=>report.id===id))continue
+    // Accepted requests are immutable today; revision is retained for provenance and replay safety.
+    const reports=s.inbound_reports??(s.inbound_reports=[])
+    reports.push({id,request_id:Number(request.id),request_revision:Number(resolution.request_revision),
+      support_case_id:Number(caseId),profile_id:participant.profile_id,
+      source:resolution.kind as 'automatic_update'|'operator_attach'|'intake',verification:'phone_association_only',
+      text:request.text,at:Number(resolution.created_at.microsSinceUnixEpoch)/1000})
+    const notice='An incoming caller associated with '+participant.name+' reported an update. Identity and account are unverified; review it before changing assistance decisions.'
+    addMessage(s,notice+' Request #'+request.id+': '+request.text.slice(0,2000)+(request.text.length>2000?' [Excerpt; full account is saved in the incoming report.]':''),now(ctx),'review')
+    if(!s.review)s.review=notice
+    changed=true
+  }
+  return changed
+}
+
 function receipt(ctx: Ctx, id: string, operation: string, payload: unknown, result?: unknown) {
   commandId(id)
   const old = ctx.db.operatorCommand.command_id.find(id)
@@ -211,6 +238,7 @@ export const synchronizeAssistance = spacetimedb.reducer({ case_id:t.u64() }, (c
     for(const a of s.arrangements.filter(a=>!['cancelled','completed'].includes(a.status))){cancelArrangement(s,a,'Case closed by dispatcher',now(ctx));changed=true}
   }
   changed=reconcileContacts(ctx,args.case_id,s)||changed
+  changed=synchronizeIncomingReports(ctx,args.case_id,s)||changed
   for(const a of ctx.db.attempt.support_case_id.filter(args.case_id)) {
     const p=ctx.db.attemptProgress.attempt_id.find(a.id), meta=ctx.db.informationAttempt.attempt_id.find(a.id)
     if(!p)continue

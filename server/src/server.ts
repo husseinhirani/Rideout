@@ -7,6 +7,8 @@ import { getState, registerProfile } from "./loop"
 import { profiles, attempts, callReducer, incomingRequests, type ProfileRow, type AttemptProgressRow } from "./db"
 import { configureInformationCase, createInformationCase, directory, readInformationState, readInformationPlanning, receiveInformationReport, requestInformationCall, inputInformationCase, retryInformationReport, readInformationIncomingState, configureInformationIntake, reviewInformationIncoming, closeInformationCase, cancelInformationAttempt } from "./information"
 import { receiveInformationRequest } from "./information-incoming"
+import { inboundContext } from "./inbound-context"
+import { VOICE_PROTOCOL_VERSION } from "../shared/voice-protocol"
 import { startInformationWorker } from "./information-worker"
 import { asId, asNumber, asString, ServiceError } from "./service"
 import { contactScope } from "../shared/information"
@@ -48,7 +50,7 @@ async function state() {
   const [legacy, information, incoming, coordination, inbound, drills] = await Promise.all([getState(false), readInformationState(), incomingRequests(), readInformationPlanning(), readInformationIncomingState(), wildfireDrills()])
   return {
     assistance_sessions: (await assistanceStates()).map(publicAssistance),
-    ...legacy, read_model_version: 2, assistance_protocol_version: 2, server_time_ms: Date.now(),
+    ...legacy, read_model_version: 2, assistance_protocol_version: VOICE_PROTOCOL_VERSION, server_time_ms: Date.now(),
     wildfire_demo: await wildfireDemo(),
     wildfire_drills: drills,
     profiles: (legacy.profiles as ProfileRow[]).map(({phone, ...profile}) => ({...profile, phone_last4: phone.slice(-4)})),
@@ -132,6 +134,8 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
   if (review) { send(res, 200, await reviewInformationIncoming(asId(review[1], "request_id"), body, actor)); return }
   if (path === "/calls/events") { send(res, 200, receiveCallEvent(body)); return }
   if (path === '/calls/coordinate') { send(res,200,await coordinateCall(body)); return }
+  if (path === '/calls/capabilities') { await assistanceStates(); send(res,200,{assistance_protocol_version:VOICE_PROTOCOL_VERSION,inbound_context:true,sequence_resync:true,inbound_reports_enabled:process.env.INBOUND_REQUESTS==='1'}); return }
+  if (path === '/calls/inbound-context') { send(res,200,await inboundContext(body)); return }
   const coordinator = /^\/cases\/(\d+)\/coordinator$/.exec(path)
   if(coordinator) { send(res,200,await coordinatorCommand(asId(coordinator[1],'case_id'),body,actor));return }
   if (path === "/calls/report") { send(res, 200, await receiveInformationReport(body)); return }

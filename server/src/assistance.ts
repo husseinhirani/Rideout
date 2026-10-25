@@ -29,7 +29,12 @@ export async function coordinateCall(body: unknown) {
   const attempt=(await attempts()).find(a=>a.id===attemptId)!
   if(!(await assistanceStates()).some(s=>s.case_id===attempt.support_case_id))return {status:'disabled',instruction:'This call has no live coordinator. Continue the assigned question and use report_call on completion.'}
   const update=voiceUpdate(input)
-  if(update)await callReducer('recordAssistanceUpdate',[attemptId,callId,JSON.stringify(update)])
+  if(update)try{await callReducer('recordAssistanceUpdate',[attemptId,callId,JSON.stringify(update)])}catch(error){
+    if(!/Stale update sequence|conflicts with another input|Update ID conflicts/i.test(error instanceof Error?error.message:''))throw error
+    const current=await nextVoiceTask(attempt.support_case_id,attemptId,callId)
+    if(!('next_sequence' in current) || ['paused','unavailable','finished'].includes(current.status))return {...current,update_saved:false,retry_allowed:false,instruction:current.instruction+' The rejected update was not saved. Do not retry the coordination update or restart questioning.'}
+    return {...current,status:'resync_required',retry_allowed:true,mission_status:current.status,update_saved:false,instruction:'This update was not saved because its sequence was already used or superseded. Use the larger of next_sequence and your last submitted sequence plus one for a new corrected account. Never reuse a sequence with changed content. This response shows what is persisted; preserve the caller’s unsaved corrections instead of discarding them. Do not restart questioning if the call is finishing, paused or unavailable; honor a stop request immediately.'}
+  }
   if(input.operation==='finish')return {status:'finished',instruction:'Your final update is saved. No further task will be delivered to this call. Submit report_call if appropriate and end normally; honor a stop request immediately.'}
   return nextVoiceTask(attempt.support_case_id,attemptId,callId)
 }
@@ -60,16 +65,17 @@ export async function nextVoiceTask(caseId:number,attemptId:number,callId:string
   const task=state.tasks.find(t=>t.attempt_id===attemptId&&t.status==='delivered')
   const p=state.people.find(p=>state.tasks.some(t=>t.attempt_id===attemptId&&t.profile_id===p.profile_id))
   if(p && (!p.consent || p.contact_blocked))return {status:'unavailable',next_sequence,instruction:'No further task is authorized for this participant. Do not disclose or repeat a previous arrangement instruction. Finish normally.'}
-  if(p?.review_reason)return {status:'needs_review',next_sequence,instruction:'The participant’s concern is saved for dispatcher review. No new commitment or further ordinary questioning is authorized. Close naturally, and honor any immediate stop request.',review_reason:p.review_reason,known_facts:p.facts,revision:state.revision}
+  if(p?.review_reason)return {status:'needs_review',next_sequence,instruction:'The participant’s concern is saved for dispatcher review. No new commitment or further ordinary questioning is authorized. Close naturally, and honor any immediate stop request.',review_reason:p.review_reason,known_facts:p.facts,mission_revision:0,state_revision:state.revision}
   if(task) {
     const instruction=taskInstruction(state,task)
     const history=(await attempts()).filter(a=>a.support_case_id===caseId && a.profile_id===task.profile_id && a.id!==attemptId && (a.answer?.trim() || a.concern?.trim())).sort((a,b)=>a.id-b.id)
     const prior_reports=history.slice(-3).map(a=>({source_id:'attempt:'+a.id,attempt_id:a.id,provenance:'prior_call_report',outcome:a.outcome,account:(a.answer??'').slice(0,1600),concern:(a.concern??'').slice(0,800),truncated:(a.answer?.length??0)>1600 || (a.concern?.length??0)>800}))
     return {status:'task',next_sequence,task_id:task.id,kind:task.kind,instruction,
+      mission_revision:task.coordinator_brief?.revision??0,
       mission:{...voiceMission(state,task,instruction),prior_reports,omitted_prior_reports:Math.max(0,history.length-prior_reports.length)},
       suggested_location:state.scenario.locations.find(l=>l.id===p?.start_location_id)??null,
       suggested_location_source:'Assigned scenario starting point; unconfirmed until the participant explicitly confirms it.',
-      known_facts:person(state,task.profile_id).facts,locations:state.scenario.locations.map(l=>({id:l.id,label:l.label})),revision:state.revision}
+      known_facts:person(state,task.profile_id).facts,locations:state.scenario.locations.map(l=>({id:l.id,label:l.label})),state_revision:state.revision}
   }
   const recent=state.tasks.filter(t=>t.attempt_id===attemptId).at(-1)
   const needsReview=Boolean(p?.review_reason) || recent?.status==='blocked' || Boolean(p && informationGaps('assess',p.facts).length && !state.arrangements.some(a=>[a.recipient_id,a.helper_id].includes(p.profile_id)&&a.status!=='cancelled'))
@@ -78,7 +84,7 @@ export async function nextVoiceTask(caseId:number,attemptId:number,callId:string
       ? 'The findings are saved, but unresolved information needs dispatcher review. Do not repeat declined or unavailable questions or imply assistance is arranged. Close naturally if the person is finished; an immediate stop request takes priority.'
       : 'The currently authorized conversation mission is resolved. Summarize the actual outcome briefly and close naturally; do not promise an unapproved arrangement or callback. Future milestones require their own authorization.',
     mission:recent?{...voiceMission(state,recent,recent.reason),completion:needsReview?'needs_review':'resolved'}:null,
-    known_facts:p?.facts??{},revision:state.revision}
+    known_facts:p?.facts??{},mission_revision:recent?.coordinator_brief?.revision??0,state_revision:state.revision}
 
 }
 const chats=new Map<string,Promise<unknown>>()
