@@ -445,7 +445,7 @@ database name and helper_ids. The runner refuses to write unless these match its
 explicit dedicated database and the helpers have fictional phone numbers.
 `seed:recording` inserts two fictional helpers, Morgan as the separate reporter,
 and Ava with an empty phone only
-into an empty database named rideout-recording-<name>.
+into an empty database named sealert-recording-<name>.
 
 ## Durable internal case inputs (issue #6)
 

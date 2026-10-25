@@ -2,10 +2,10 @@ import assert from "node:assert/strict"
 import { test } from "node:test"
 import { recordingCaseInputConfig, createRecordingCaseInputs } from "../src/recording-case-inputs"
 import type { RecordingState } from "../src/recording-demo"
-const config = { SPACETIMEDB_URL: "http://127.0.0.1:3000", SPACETIMEDB_DATABASE: "rideout-recording-test", RECORDING_DATABASE: "rideout-recording-test" }
+const config = { SPACETIMEDB_URL: "http://127.0.0.1:3000", SPACETIMEDB_DATABASE: "sealert-recording-test", RECORDING_DATABASE: "sealert-recording-test" }
 test("requires explicit matching dedicated database and local endpoint", () => {
   assert.equal(recordingCaseInputConfig(config).database, config.RECORDING_DATABASE)
-  for (const override of [{ SPACETIMEDB_URL: undefined }, { SPACETIMEDB_URL: "http://example.com" }, { SPACETIMEDB_URL: "https://127.0.0.1" }, { SPACETIMEDB_URL: "http://127.0.0.1/path" }, { SPACETIMEDB_DATABASE: undefined }, { SPACETIMEDB_DATABASE: "rideout" }, { RECORDING_DATABASE: "rideout-recording" }]) assert.throws(() => recordingCaseInputConfig({ ...config, ...override }))
+  for (const override of [{ SPACETIMEDB_URL: undefined }, { SPACETIMEDB_URL: "http://example.com" }, { SPACETIMEDB_URL: "https://127.0.0.1" }, { SPACETIMEDB_URL: "http://127.0.0.1/path" }, { SPACETIMEDB_DATABASE: undefined }, { SPACETIMEDB_DATABASE: "sealert" }, { RECORDING_DATABASE: "sealert-recording" }]) assert.throws(() => recordingCaseInputConfig({ ...config, ...override }))
 })
 function fixtures() {
   const profiles = [{ id: 1, name: "Blair", phone: "+15555550102" }, { id: 2, name: "Casey", phone: "+15555550103" }, { id: 4, name: "Morgan (recording)", phone: "+15555550104" }]

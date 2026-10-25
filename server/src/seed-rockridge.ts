@@ -25,7 +25,7 @@ async function seed(): Promise<void> {
   await callReducer("insertProfile", ["Morgan (reporter)", "+15555550299", 37.8466, -122.2528, []])
   const ids = await profiles()
   const id = (name: string) => ids.find(row => row.name === name)?.id
-  console.log(`Seeded ${residents.length} Rockridge residents and a reporter into ${process.env.SPACETIMEDB_DATABASE ?? "rideout"}.`)
+  console.log(`Seeded ${residents.length} Rockridge residents and a reporter into ${process.env.SPACETIMEDB_DATABASE ?? "sealert"}.`)
   console.log(`COORDINATOR_HELPER_IDS=${id("Daniel Ruiz")},${id("Andre Walsh")} COORDINATOR_REPORTER_ID=${id("Morgan (reporter)")}`)
 }
 seed().catch(error => { console.error(error instanceof Error ? error.message : "Rockridge seed failed"); process.exitCode = 1 })
