@@ -39,7 +39,12 @@ and approval remain held until that assessment is resolved.
 
 Legacy billing/authentication failures are classified when old session JSON is read, so
 new findings cannot erase the hold and the UI can explain the actual operational problem.
-Chat saves the human's message but avoids another model request while such a hold exists.
+An explicit chat send or Retry reply saves the human's message idempotently and attempts
+a fresh model request even while a planning hold exists. This revises the original
+chat-blocking behavior: otherwise a corrected key or replenished credit balance could
+never recover chat without also restarting autonomous planning. A successful reply does
+not clear the planning hold, create a plan, or authorize outreach; Retry planning remains
+a separate operator action. Background planning still stops on the hold.
 Restoring provider credits is an external prerequisite, not something code or retry can fix.
 
 Persisted additions are optional. The API exposes `assistance_protocol_version: 2` in

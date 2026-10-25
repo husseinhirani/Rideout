@@ -38,6 +38,10 @@ export function CaseCard({
   const status = caseStatus(row, intake);
   const brief = briefOf(row.brief);
   const coordination = coordinationOf(state, row.id, now);
+  const assistance = state.assistance_sessions?.find(session => session.case_id === row.id);
+  const coordinationText = assistance
+    ? assistance.planning_error?.message ?? (assistance.paused ? "Outreach is paused." : "Open Checks to review findings, coordinate help, and chat with the coordinator.")
+    : coordination.text;
   const calls = callsFor(state, row.id);
   const notes = notesFor(state, row.id);
   const child = state.profiles.find((profile) => profile.id === row.victim_profile_id);
@@ -53,13 +57,13 @@ export function CaseCard({
           <select value={row.id} onChange={(event) => onChoose(Number(event.target.value))} aria-label="Choose a case">
             {[...state.cases].sort((a, b) => b.id - a.id).map((item) => (
               <option key={item.id} value={item.id}>
-                #{item.id} · {state.profiles.find((profile) => profile.id === item.victim_profile_id)?.name ?? "Unknown"} · {item.status}
+                #{item.id} · {state.assistance_sessions?.find(session => session.case_id === item.id)?.scenario.title ?? (item.kind === "information" ? item.goal : state.profiles.find((profile) => profile.id === item.victim_profile_id)?.name ?? "Unknown")} · {item.status}
               </option>
             ))}
           </select>
         ) : null}
       </div>
-      <h3>{child?.name ?? "Unknown person"}</h3>
+      <h3>{assistance?.scenario.title ?? (row.kind === "information" ? "Incident coordination" : child?.name ?? "Unknown person")}</h3>
       <p className="case-goal">{row.goal}</p>
       {status.reunionAt ? <p className="case-note good">Reported at {new Date(status.reunionAt).toLocaleTimeString()}. Self-reported by the original reporter; RideOut did not verify it.</p> : null}
 
@@ -87,12 +91,12 @@ export function CaseCard({
       {brief.summary ? <p className="case-brief">{brief.summary}</p> : null}
 
       <p className={`case-note${coordination.kind === "blocked" ? " warn" : coordination.kind === "pending" || coordination.kind === "retrying" ? " hot" : ""}`}>
-        {coordination.text}
+        {coordinationText}
       </p>
 
       {calls.length ? (
         <div className="case-calls">
-          <h4>Helpers asked</h4>
+          <h4>{row.kind === "information" ? "Calls" : "Helpers asked"}</h4>
           {calls.map((call) => (
             <div key={call.attempt.id} className="case-call">
               <p>
@@ -129,7 +133,7 @@ export function CaseCard({
           <button type="button" className="close-case" onClick={() => onClose(row.id)}>
             Close case manually
           </button>
-          <small>Does not confirm reunion. Calls already active keep running.</small>
+          <small>{row.kind === "information" ? "Closing does not confirm everyone is safe." : "Does not confirm reunion."} Calls already active keep running.</small>
         </div>
       ) : null}
     </article>

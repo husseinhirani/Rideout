@@ -292,6 +292,21 @@ export function App() {
       recordingFor: ride.recordingFor,
     });
 
+  // Offline content is an explicit mode, never a fallback for a failed API read.
+  if (!preferOffline && !state) return (
+    <main className="connection-screen">
+      <section className="connection-card" aria-labelledby="connection-heading">
+        <p className="connection-brand">Sealert</p>
+        <h1 id="connection-heading">{backend.error ? "Unable to connect" : "Connecting to your workspace…"}</h1>
+        {backend.error ? <>
+          <p role="alert">{backend.error}</p>
+          <p>Check that the API is running. Your incidents will appear when the connection returns.</p>
+          <button type="button" onClick={() => void backend.refresh()}>Retry connection</button>
+        </> : <p role="status">Loading your saved incidents and directory.</p>}
+      </section>
+    </main>
+  );
+
   return (
     <main className={`${tab === "checks" ? "stage checks-on" : "stage"}${scene === "nodes" ? " nodes-on" : ""}${simple ? " simple-on" : ""}${live && assistance ? " incident-map-on" : ""}`}>
       {live && assistance ? (tab === "map" ? <div className="incident-map-scene"><IncidentMap session={assistance} selectedId={liveSelected} onSelect={setLiveSelected} /></div> : null) : <NeighborhoodMap
@@ -415,7 +430,7 @@ export function App() {
       </header>
 
       {createPortal(<div className="notification-stack" aria-label="Notifications">
-      {live && !backend.connected && <div className="live-notice" role="status"><p>Disconnected. Showing the last saved call state; reconnect before starting a call.</p></div>}
+      {live && !backend.connected && <div className="live-notice" role="status"><p>Disconnected. Showing the last saved call state; reconnect before starting a call.{backend.error ? ` ${backend.error}` : ""}</p><button type="button" onClick={() => void backend.refresh()}>Retry connection</button></div>}
       {notice ? (
         <div className="live-notice" role="status">
           <p>{notice}</p>

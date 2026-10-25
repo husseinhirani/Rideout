@@ -203,6 +203,12 @@ should be available once the saved roster is ready.
 7. Pause outreach when finished. Existing calls can finish; paused work should not start
    new calls. Starting an API against an existing active database can resume authorized work.
 
+Before a drill, the Map view shows the 3D neighborhood. Starting or selecting an
+assistance incident switches to its flat coordination map. An open incident can be
+selected automatically when the page reconnects. This is intentional; a fresh database
+has no incident history until a drill is started. The app reports backend connection
+failures explicitly instead of silently treating offline demo content as live data.
+
 See [the assistance walkthrough](assistance-demo.md) for correction/reassessment and
 location-based matching examples. An unfunded planning API cannot demonstrate autonomous
 coordination; fix billing/access before using Retry planning.
@@ -225,6 +231,7 @@ The roster is persisted and does not need re-registering unless you change it or
 | Invalid provider input | Check agent/model/key access and the setup error details; preserve the exact error without sharing secrets |
 | No transcripts or tool saves | Check ngrok, callback secret, event webhook URL, and API logs |
 | Phones ring but planning fails | Check Anthropic credits/model access; fix the cause then Retry planning |
+| Chat still shows an earlier billing failure | Restart the API after changing the key, then Send or Retry reply to make a fresh chat request. Planning remains held until Retry planning. |
 | Returning caller has no history | Check phone→agent routing, same calling number, stated name, and an open associated incident in this database |
 
 Local code checks (no phone calls):

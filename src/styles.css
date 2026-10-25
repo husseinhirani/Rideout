@@ -9,6 +9,14 @@
 html, body, #root { margin: 0; height: 100%; }
 button, time { font: inherit; color: inherit; }
 
+.connection-screen { min-height: 100%; display: grid; place-items: center; padding: 24px; background: #eeede9; color: #111214; }
+.connection-card { width: min(100%, 560px); padding: clamp(24px, 5vw, 48px); border-radius: 32px; background: #fff; }
+.connection-brand { font-weight: 700; }
+.connection-card h1 { font-size: clamp(24px, 4vw, 36px); line-height: 1.2; }
+.connection-card p { line-height: 1.5; overflow-wrap: anywhere; }
+.connection-card button { border: 0; border-radius: 999px; padding: 14px 22px; background: #d5f55b; color: #111214; font-weight: 700; cursor: pointer; }
+.connection-card button:focus-visible { outline: 3px solid #111214; outline-offset: 4px; }
+
 .stage { position: relative; height: 100%; overflow: hidden; overflow: clip; background: #120e0c; }
 .scene, .view-host { position: absolute; inset: 0; }
 .map-selection-box { position: absolute; z-index: 1; border: 1px solid #ffb347; background: rgba(255, 179, 71, 0.18); pointer-events: none; }

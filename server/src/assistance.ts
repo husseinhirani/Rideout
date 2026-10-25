@@ -98,7 +98,8 @@ export async function coordinatorCommand(caseId:number,body:unknown,actor:string
     await runInformationCommand('assistanceOperator',body,actor,caseId)
     const state=await assistanceState(caseId)
     if(state.messages.some(m=>m.id==='chat-reply:'+id))return {status:'recorded'}
-    if(state.planning_error?.blocked)throw new ServiceError(503,'Your message was saved. '+state.planning_error.message)
+    // A saved planning failure must not permanently block an explicit chat retry.
+    // Chat cannot execute plans; leave the planning hold for Retry planning to clear.
     try{
       const reply=await answerCoordinator(state,String(input.text))
       await callReducer('recordAssistanceChat',[caseId,id,reply])
