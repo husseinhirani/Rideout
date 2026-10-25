@@ -9,7 +9,7 @@ export type AccessConfig = {
   operatorOrigins: ReadonlySet<string>
 }
 
-const CALLBACK_PATHS = new Set(["/requests", "/calls/report", "/calls/events", "/check-ins"])
+const CALLBACK_PATHS = new Set(["/requests", "/calls/report", "/calls/events", "/calls/coordinate", "/check-ins"])
 
 export function isCallbackPath(path: string): boolean {
   return CALLBACK_PATHS.has(path)

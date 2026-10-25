@@ -1,3 +1,4 @@
+import type { AssistanceState } from "../server/shared/assistance";
 import type { ContactScope, InformationPolicy, ProfileSettingsRow, InformationAttemptRow, CreateInformationInput, ConfigureInformationInput, RequestInformationCallInput, InformationCommandResult } from "../server/shared/information";
 import type { InformationPlanningRow, InformationDecisionRow } from "../server/shared/information-plan";
 import type { InformationIntakeConfiguration, InformationIncomingResolution } from "../server/shared/information-incoming";
@@ -121,6 +122,7 @@ export type InformationCase = SupportCaseRow & { kind: "information"; objective:
 export function informationCases(state: BackendState): InformationCase[] { return state.cases.filter((row): row is InformationCase => row.kind === "information"); }
 export type DirectoryResult = { profiles: (ProfileRow & { eligible: boolean; eligibility_reasons: string[]; call_consent: boolean; availability: string })[]; next_after_id: number | null };
 export type BackendState = {
+  assistance_sessions?: AssistanceState[];
   wildfire_demo?: { name: string; names?: string[]; count?: number; ready: boolean };
   wildfire_drills?: { case_id: number; profile_id: number; started_at: string }[];
   read_model_version?: number;

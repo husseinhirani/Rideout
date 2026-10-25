@@ -250,7 +250,7 @@ export function FacilitatorTile({
       {suggestions.length ? (
         <div className="agent-chips">
           {suggestions.map((suggestion) => (
-            <button key={suggestion} type="button" onClick={(event) => onAsk(suggestion, event)}>
+            <button key={suggestion} type="button" disabled={busy} onClick={(event) => onAsk(suggestion, event)}>
               {suggestion}
             </button>
           ))}
@@ -261,14 +261,14 @@ export function FacilitatorTile({
         onSubmit={(event) => {
           event.preventDefault();
           const text = draft.trim();
-          if (!text) return;
+          if (!text || busy) return;
           setDraft("");
           onAsk(text, event);
         }}
       >
         <Icon name="spark" />
         <input value={draft} onChange={(event) => setDraft(event.target.value)} placeholder={placeholder} aria-label="Ask the facilitator" />
-        <button type="submit" disabled={!draft.trim()} aria-label="Send to the facilitator">
+        <button type="submit" disabled={busy || !draft.trim()} aria-label="Send to the facilitator">
           <Icon name="arrow" />
         </button>
       </form>

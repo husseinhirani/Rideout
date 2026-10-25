@@ -6,6 +6,7 @@ import { readInformationState, readInformationPlanning } from "./information"
 import { buildInformationSnapshot, planInformationSnapshot } from "./information-planner"
 import { verifyOutboundCallBinding } from "./provider-binding"
 import { normalizePhone } from "../shared/information"
+import { assistanceStates } from "./assistance"
 import { collectPendingInformationRequests } from "./information-incoming"
 
 // Separate activities: an interpreting model request must not hold up transport
@@ -151,8 +152,10 @@ export function startInformationWorker(): () => void {
         nextStartAt = Date.now() + 1000
         let callId = ""
         try {
-          callId = await placeCall(normalizePhone(person.phone), {
-            attempt_id: String(attempt.id), person_name: person.name, ask: attempt.ask, context: work.context,
+          const session=(await assistanceStates()).find(s=>s.case_id===attempt.support_case_id)
+          const participant=session?.people.find(p=>p.profile_id===person.id)
+          callId = participant?.mode === 'simulated' ? 'sim_assistance_' + attempt.id : await placeCall(normalizePhone(person.phone), {
+            attempt_id: String(attempt.id), person_name: person.name, ask: attempt.ask, context: progress.context,
           })
           await db.callReducer("recordInformationDispatch", [attempt.id, token, callId, ""])
         } catch (error) {

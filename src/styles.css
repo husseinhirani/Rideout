@@ -1603,3 +1603,73 @@ button.tile:hover { transform: translateY(-3px); box-shadow: 0 16px 34px rgba(17
   pointer-events: auto;
 }
 .notification-stack button { flex: none; }
+
+/* The coordinator shows decisions beside calls; detailed records stay in its focus view. */
+.start-simulation-option { display: flex; align-items: flex-start; gap: 10px; padding: 14px; color: #fff; font-size: 14px; line-height: 1.4; cursor: pointer; }
+.start-simulation-option input { width: 16px; height: 16px; margin: 2px 0 0; accent-color: #d4f25c; }
+.start-simulation-option small { display: block; }
+.has-assistance .dash-grid { min-height: 700px; }
+.has-assistance .dash-col > .tile.calls { min-height: 280px; }
+.assistance-board { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.assistance-board.compact { flex: 0 1 auto; max-height: 430px; overflow-y: auto; }
+.assistance-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
+.assistance-heading h2 { margin: 0; font-size: 22px; font-weight: 650; letter-spacing: -.025em; }
+.assistance-heading p { margin: 5px 0 0; color: var(--muted); font-size: 13px; line-height: 1.4; }
+.assistance-expand { display: grid; place-items: center; padding: 3px; border: 0; background: none; cursor: pointer; }
+.assistance-summary { display: flex; gap: 10px 18px; flex-wrap: wrap; font-size: 13px; color: var(--muted); }
+.assistance-summary b { color: var(--ink); font-size: 17px; font-weight: 650; margin-right: 4px; }
+.assistance-board .call-actions { margin-bottom: 0; }
+.assistance-review { display: grid; gap: 5px; margin: 0; padding: 13px 15px; background: #fff0df; border-radius: 15px; color: #8b4b00; font-size: 14px; line-height: 1.5; }
+.assistance-note { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
+.arrangement-list { display: grid; gap: 14px; }
+.arrangement { display: flex; flex-direction: column; gap: 12px; padding: 18px; border: 1px solid var(--line); border-radius: 20px; background: #fff; }
+.arrangement.proposed { border-color: #c2d66f; background: #fcfff1; }
+.arrangement.completed { background: #f1f8e5; }
+.arrangement.cancelled { background: var(--soft); }
+.arrangement header { display: flex; justify-content: space-between; gap: 10px; align-items: center; }
+.arrangement header small { color: var(--muted); font-size: 12px; }
+.arrangement-stage { color: #50631e; font-size: 12px; font-weight: 700; }
+.arrangement.cancelled .arrangement-stage { color: var(--muted); }
+.arrangement h3 { margin: 0; font-size: 19px; letter-spacing: -.025em; }
+.arrangement h3 span { padding: 0 5px; color: var(--muted); }
+.arrangement > p { margin: 0; font-size: 14px; line-height: 1.5; }
+.arrangement-milestones { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.arrangement-milestones li { border-radius: 20px; padding: 5px 9px; color: var(--muted); background: #f1f1ed; font-size: 11px; }
+.arrangement-milestones li.done { color: #394a0b; background: #d4f25c; }
+.assistance-evidence { font-size: 12px; color: var(--muted); }
+.assistance-evidence summary { cursor: pointer; padding: 4px 0; }
+.assistance-evidence blockquote { margin: 10px 0 0; border-left: 3px solid #d4f25c; padding: 4px 0 4px 12px; }
+.assistance-evidence p { line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+.assistance-evidence blockquote p { margin: 5px 0; color: var(--ink); }
+.assistance-more { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; padding: 12px 0 0; border: 0; border-top: 1px solid var(--line); background: none; text-align: left; cursor: pointer; }
+.assistance-more .icon { transform: rotate(-90deg); }
+.assistance-section { display: grid; gap: 12px; padding-top: 20px; border-top: 1px solid var(--line); }
+.assistance-section > h3 { margin: 0; font-size: 19px; }
+.assistance-people { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; }
+.assistance-people article { display: flex; flex-direction: column; gap: 8px; min-width: 0; background: var(--soft); padding: 16px; border-radius: 18px; }
+.assistance-people header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.assistance-people header small { font-size: 10px; padding: 3px 6px; border: 1px solid #d6d6d0; border-radius: 15px; color: var(--muted); }
+.assistance-people strong { font-size: 13px; font-weight: 600; color: #526328; }
+.assistance-people strong.attention { color: #965016; }
+.assistance-people p { margin: 0; font-size: 13px; line-height: 1.4; color: var(--muted); }
+.assistance-facts { display: flex; flex-wrap: wrap; gap: 5px; }
+.assistance-facts span { font-size: 11px; background: #fff; padding: 5px 7px; border-radius: 10px; }
+.assistance-task-list { display: grid; gap: 9px; margin: 0; padding: 0; list-style: none; }
+.assistance-task-list li { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; padding: 14px; border-radius: 14px; background: var(--soft); }
+.assistance-task-list li.blocked { background: #fff0df; }
+.assistance-task-list div { display: grid; gap: 5px; }
+.assistance-task-list span { font-size: 14px; }
+.assistance-task-list p { margin: 0; font-size: 12px; line-height: 1.5; color: var(--muted); }
+.assistance-task-list small { flex-shrink: 0; font-size: 11px; max-width: 130px; padding: 4px 8px; border-radius: 12px; background: #fff; }
+.assistance-access { display: grid; gap: 10px; }
+.assistance-access > div { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 12px; background: var(--soft); border-radius: 12px; }
+.assistance-access label { flex: 1; min-width: 160px; font-size: 14px; }
+.assistance-access select, .assistance-access button { border: 1px solid var(--line); background: #fff; border-radius: 10px; padding: 8px 10px; color: var(--ink); font: inherit; font-size: 13px; }
+.assistance-access button { cursor: pointer; }
+.assistance-board button:disabled { opacity: .45; cursor: default; }
+@media (max-width: 700px) {
+  .assistance-people { grid-template-columns: 1fr; }
+  .assistance-heading h2 { font-size: 20px; }
+  .assistance-task-list li { flex-direction: column; }
+  .assistance-board.compact { max-height: 480px; }
+}

@@ -214,5 +214,9 @@ const informationDecision = table({ name: "information_decision", public: true }
   id: t.string().primaryKey(), support_case_id: t.u64().index("btree"), based_on_revision: t.u64(), created_at: t.timestamp(), model: t.string(), request_id: t.string(), plan_json: t.string(), attempt_ids: t.array(t.u64()),
 })
 
-const spacetimedb = schema({ profile, incident, incidentPerson, supportCase, attempt, note, caseProgress, attemptProgress, caseIntake, caseInput, incomingRequest, informationIncident, informationCase, profileSettings, informationLine, operatorCommand, informationAttempt, informationPlanning, informationDecision, informationIntakeConfiguration, informationIncomingResolution })
+const assistanceSession = table({ name: "assistance_session", public: true }, {
+  case_id: t.u64().primaryKey(), revision: t.u64(), state_json: t.string(),
+})
+
+const spacetimedb = schema({ assistanceSession, profile, incident, incidentPerson, supportCase, attempt, note, caseProgress, attemptProgress, caseIntake, caseInput, incomingRequest, informationIncident, informationCase, profileSettings, informationLine, operatorCommand, informationAttempt, informationPlanning, informationDecision, informationIntakeConfiguration, informationIncomingResolution })
 export default spacetimedb

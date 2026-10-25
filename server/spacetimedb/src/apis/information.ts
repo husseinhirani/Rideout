@@ -4,6 +4,8 @@ import { nextCaseId, nextIncidentId } from "../ids"
 import { canonicalJson, commandId, contactEligibility, contactScope, informationPolicy, matchesScope, normalizePhone, object, profilePreferences, revision, text, id, areaFilter, type ContactScope, type InformationPolicy, type ProfileSettingsRow } from "../../../shared/information"
 import { disclosureFacts, parseInformationPlan, type DisclosureFact } from "../../../shared/information-plan"
 import { incomingCandidateIds, parseInformationIncomingAssessment, type InformationIncomingProposal, type InformationIncomingResolution } from "../../../shared/information-incoming"
+import { EVACUATION_DRILL, SIMULATED_NEIGHBORS } from '../../../mock/evacuation'
+import { addTask, emptyFacts, taskInstruction, type AssistanceState } from '../../../shared/assistance'
 type Ctx = ReducerCtx<typeof spacetimedb.schemaType>
 const now = (ctx: Ctx) => Number(ctx.timestamp.microsSinceUnixEpoch) / 1000
 const fail = (message: string): never => { throw new SenderError(message) }
@@ -29,7 +31,9 @@ function eligible(ctx: Ctx, caseId: bigint, profileId: bigint) {
   const p = all.find(p => p.id === Number(profileId)), pref = preference(ctx, profileId)
   if (!p) return fail("Profile not found")
   if (!matchesScope(p, JSON.parse(c.scope_json) as ContactScope, all, pref)) fail("Profile is outside authorized scope")
-  const reasons = contactEligibility(p, pref); if (reasons.length) fail(reasons.join("; "))
+  const session = ctx.db.assistanceSession.case_id.find(caseId)
+  const simulated = session && (JSON.parse(session.state_json) as AssistanceState).people.some(person => person.profile_id === Number(profileId) && person.mode === 'simulated')
+  const reasons = contactEligibility(p, pref).filter(reason => !(simulated && reason === 'No dialable phone number')); if (reasons.length) fail(reasons.join("; "))
   return p
 }
 function resetPlanningFailure(ctx: Ctx, caseId: bigint, inputRevision: bigint) {
@@ -202,6 +206,17 @@ function validateCommittedIntent(ctx: Ctx, row: ReturnType<typeof getAttempt>) {
 function authorized(ctx: Ctx, attemptId: bigint) {
   const row = getAttempt(ctx, attemptId), c = getCase(ctx, row.attempt.support_case_id), policy = JSON.parse(c.policy_json) as InformationPolicy
   if (c.status !== "open" || policy.paused || c.input_revision !== c.evaluated_revision || row.metadata.authorized_revision !== c.input_revision) fail("Attempt is not currently authorized")
+  const session=ctx.db.assistanceSession.case_id.find(c.id)
+  if(session){
+    const state=JSON.parse(session.state_json) as AssistanceState
+    const task=state.tasks.find(t=>t.attempt_id===Number(attemptId)&&['pending','delivered'].includes(t.status))
+    if(state.paused||!task||!state.people.find(p=>p.profile_id===Number(row.attempt.profile_id))?.consent)fail('Coordinator task is no longer authorized')
+    taskInstruction(state,task!)
+    if(task!.arrangement_id){
+      const arrangement=state.arrangements.find(a=>a.id===task!.arrangement_id)!
+      eligible(ctx,c.id,BigInt(arrangement.recipient_id)); eligible(ctx,c.id,BigInt(arrangement.helper_id))
+    }
+  }
   validateCommittedIntent(ctx, row)
   eligible(ctx, c.id, row.attempt.profile_id); budget(ctx, c.id, row.attempt.profile_id, attemptId)
   if ([...ctx.db.attemptProgress.support_case_id.filter(c.id)].some(p => p.report_received && !p.report_processed)) fail("Received reports must be processed first")
@@ -222,6 +237,7 @@ export const createInformationCase = spacetimedb.reducer({ command_id: t.string(
 export const configureInformationCase = spacetimedb.reducer({ case_id: t.u64(), command_id: t.string(), payload_json: t.string(), actor: t.string() }, (ctx, { case_id, command_id, payload_json, actor }) => {
   const input = parse(payload_json), payload = { ...input, case_id: Number(case_id) }; if (replay(ctx, command_id, "configure_information", payload)) return
   const c = getCase(ctx, case_id); if (c.status === "closed" || c.input_revision !== BigInt(revision(input.expected_input_revision))) fail("Stale revision or closed case; refresh")
+  if(ctx.db.assistanceSession.case_id.find(case_id) && input.coordination_enabled===true)fail('This case uses the assistance coordinator; the information planner cannot run alongside it')
   preferences(ctx, input.preferences, case_id)
   const updated = { ...c, objective: input.objective === undefined ? c.objective : text(input.objective, "objective"), scope_json: input.scope === undefined ? c.scope_json : canonicalJson(contactScope(input.scope)), policy_json: input.policy === undefined ? c.policy_json : canonicalJson(informationPolicy(input.policy, JSON.parse(c.policy_json))), input_revision: c.input_revision + 1n }
   ctx.db.informationCase.id.update(updated)
@@ -315,19 +331,29 @@ export const configureDrillParticipants = spacetimedb.reducer({ command_id: t.st
 export const startWildfireDrill = spacetimedb.reducer({ command_id: t.string(), payload_json: t.string(), actor: t.string() }, (ctx, args) => {
   const input = parse(args.payload_json)
   if (replay(ctx, args.command_id, "wildfire_drill", input)) return
-  const people = drillProfiles(ctx, input)
+  const realPeople = drillProfiles(ctx, input)
+  const simulated = input.include_simulated === true ? SIMULATED_NEIGHBORS.map((p,index) => {
+    const phone = 'simulation:neighbor:' + index
+    const existing = [...ctx.db.profile.iter()].find(row => row.phone === phone)
+    return existing ?? ctx.db.profile.insert({ id:0n,name:p.name,phone,lat:0,lng:0,contact_profile_ids:[] })
+  }) : []
+  const people = [...realPeople,...simulated]
   const area = { lat: 37.8462, lng: -122.2499, radius_m: 400 }
-  const context = "This is a consented RideOut wildfire evacuation drill, not a real emergency. The Rockridge incident and location are fictional. Introduce yourself as Tom, an AI agent from RideOut, and confirm the person's name before discussing the situation. Then clearly say this is a drill. Ask about the participant's imagined evacuation situation, listen naturally, and save their answer using report_call. Do not use record_check_in. Do not promise a ride or instruct real-world action."
+  const context = "This is a consented RideOut wildfire evacuation drill, not a real emergency. The Rockridge incident and location are fictional. Coordination is enabled: use coordinate_call after identity confirmation, after important discoveries, and before finishing. Introduce yourself as Tom, an AI agent from RideOut, and confirm the person's name before discussing the situation. Then clearly say this is a drill. Ask about the participant's imagined evacuation situation, listen naturally, and save their answer using report_call. Do not use record_check_in. Do not promise a ride or instruct real-world action."
   const creation = {
     text: "Wildfire evacuation drill in Rockridge. Fictional incident; consenting participants receive real phone calls.",
-    objective: "Learn whether each participant could evacuate independently in this drill, what help they would need, and report that to the dispatcher.",
+    objective: "Coordinate assistance in this fictional evacuation drill: discover needs and available help, propose suitable arrangements for human approval, and confirm acceptance, pickup and arrival separately.",
     area, scope: { profile_ids: people.map(p => Number(p.id)) },
-    policy: { max_concurrent_calls: people.length, max_calls_total: people.length, max_calls_per_destination: 1, paused: false },
+    policy: { max_concurrent_calls: Math.min(10,people.length), max_calls_total: people.length * 8, max_calls_per_destination: 8, paused: false },
     coordination_enabled: false,
     preferences: people.filter(p => !preference(ctx, p.id)).map(p => ({ profile_id: Number(p.id), call_consent: true, location_source: "Fictional Rockridge drill location; not the participant's real location" })),
   }
   createCase(ctx, { command_id: args.command_id + ":case", payload_json: canonicalJson(creation), actor: args.actor })
   const created = JSON.parse(ctx.db.operatorCommand.command_id.find(args.command_id + ":case")!.result_json)
+  const state: AssistanceState = { case_id:created.support_case_id,revision:1,planned_revision:0,paused:false,
+    scenario:EVACUATION_DRILL,people:people.map((p,index)=>({profile_id:Number(p.id),name:p.name,mode:index < realPeople.length ? 'real' : 'simulated',facts:emptyFacts(),sources:{},consent:true,unreachable:false,...(index < realPeople.length ? {} : {simulation:SIMULATED_NEIGHBORS[index-realPeople.length].facts})})),
+    findings:[],tasks:[],arrangements:[],messages:[{id:'started:'+created.support_case_id,from:'facilitator',text:'I’m checking who needs assistance and who may be able to help. Proposed arrangements will need your approval. This is a fictional drill.',at:now(ctx),kind:'update'}],review:null,failure_count:0,retry_at:0,error:'',processed_reports:[] }
+  ctx.db.assistanceSession.insert({case_id:BigInt(created.support_case_id),revision:1n,state_json:JSON.stringify(state)})
   const attemptIds: number[] = []
   for (const [index, person] of people.entries()) {
     const callCommand = args.command_id + ":call:" + index
@@ -337,8 +363,12 @@ export const startWildfireDrill = spacetimedb.reducer({ command_id: t.string(), 
         queued: attemptIds.map(attempt_id => ({ attempt_id, disposition: "retain" })), context,
         question: "For this wildfire drill, imagine you need to leave your neighborhood. Could you leave on your own, or what assistance would you need?" }),
     })
-    attemptIds.push(JSON.parse(ctx.db.operatorCommand.command_id.find(callCommand)!.result_json).attempt_id)
+    const attemptId=JSON.parse(ctx.db.operatorCommand.command_id.find(callCommand)!.result_json).attempt_id
+    attemptIds.push(attemptId)
+    const task=addTask(state,Number(person.id),'assess',now(ctx),'Discover current needs and ability to help')!
+    task.attempt_id=attemptId
   }
+  ctx.db.assistanceSession.case_id.update({case_id:BigInt(created.support_case_id),revision:1n,state_json:JSON.stringify(state)})
   save(ctx, args.command_id, "wildfire_drill", input, { ...created, attempt_id: attemptIds[0], attempt_ids: attemptIds,
     profile_id: Number(people[0].id), profile_ids: people.map(p => Number(p.id)), status: "queued" }, args.actor)
 })
@@ -460,6 +490,14 @@ export const finishInformationReport = spacetimedb.reducer({ attempt_id: t.u64()
   for (const note of notes) insert(note, "call_unverified")
   const combined = [...new Set([progress.raw_concern, concern].filter(s => s.trim()))].join("; "); if (combined) insert(combined, "concern")
   ctx.db.attempt.id.update({ ...attempt, outcome: reached ? "answered" : "not_reached", concern: combined }); ctx.db.attemptProgress.attempt_id.update({ ...progress, report_processed: true }); ctx.db.informationAttempt.attempt_id.update({ ...metadata, interpretation_error: "", interpretation_retry_at_ms: undefined })
+  const session=ctx.db.assistanceSession.case_id.find(attempt.support_case_id)
+  if(session && do_not_call){
+    const s=JSON.parse(session.state_json) as AssistanceState
+    const person=s.people.find(p=>p.profile_id===Number(attempt.profile_id))
+    if(person)person.consent=false
+    s.revision++;s.failure_count=0;s.retry_at=0
+    ctx.db.assistanceSession.case_id.update({...session,revision:BigInt(s.revision),state_json:JSON.stringify(s)})
+  }
   if (do_not_call) {
     const phone = normalizePhone(ctx.db.profile.id.find(attempt.profile_id)!.phone)
     preferences(ctx, [...ctx.db.profile.iter()].filter(p => normalizePhone(p.phone) === phone)
@@ -486,3 +524,25 @@ export const retryInformationReport = spacetimedb.reducer({ attempt_id: t.u64(),
   save(ctx, command_id, "retry_information_report", payload, { support_case_id: Number(attempt.support_case_id), attempt_id: Number(attempt_id), status: "retry_queued" }, actor)
 })
 export const recoverInformationClaims = spacetimedb.reducer({}, ctx => { for (const m of ctx.db.informationAttempt.iter()) { if (!m.decision_command_id) continue; const p = ctx.db.attemptProgress.attempt_id.find(m.attempt_id); if (p?.transport === "dispatching" && p.claimed_at_ms !== undefined && p.claimed_at_ms + 60_000 <= now(ctx)) ctx.db.attemptProgress.attempt_id.update({ ...p, transport: "unknown", dispatch_error: "Dispatch claim expired; reconcile provider outcome before another call" }) } })
+
+/** A task and its follow-up call are authorized in one transaction. */
+export const queueAssistanceTask = spacetimedb.reducer({case_id:t.u64(),task_id:t.string()},(ctx,args)=>{
+  const row=ctx.db.assistanceSession.case_id.find(args.case_id)
+  if(!row)fail('Coordinator case not found')
+  const s=JSON.parse(row!.state_json) as AssistanceState,task=s.tasks.find(t=>t.id===args.task_id)
+  if(!task || task.status!=='pending' || task.attempt_id!==null || task.due_at>now(ctx) || s.paused)fail('Task is not ready')
+  const ready=task!
+  if(ready.call_count>=2)fail('Task callback budget exhausted')
+  const current=getCase(ctx,args.case_id)
+  const command_id='assistance:'+ready.id+':'+ready.call_count
+  const instruction=taskInstruction(s,ready)
+  if(ready.arrangement_id){
+    const arrangement=s.arrangements.find(a=>a.id===ready.arrangement_id)!
+    eligible(ctx,args.case_id,BigInt(arrangement.recipient_id)); eligible(ctx,args.case_id,BigInt(arrangement.helper_id))
+  }
+  const context=s.scenario.context+' Coordination is enabled; use coordinate_call for the current task and updates. '
+  requestCall(ctx,{case_id:args.case_id,command_id,actor:'incident coordinator',payload_json:canonicalJson({expected_input_revision:Number(current.input_revision),profile_id:ready.profile_id,question:instruction,context,queued:[...ctx.db.attemptProgress.support_case_id.filter(args.case_id)].filter(p=>p.transport==='queued').map(p=>({attempt_id:Number(p.attempt_id),disposition:'retain'}))})})
+  ready.attempt_id=JSON.parse(ctx.db.operatorCommand.command_id.find(command_id)!.result_json).attempt_id
+  ready.call_count++
+  ctx.db.assistanceSession.case_id.update({...row!,state_json:JSON.stringify(s)})
+})

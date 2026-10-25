@@ -597,7 +597,7 @@ export function FacilitatorChat({
   }, [latestMessage?.id, latestMessage?.text, busy]);
 
   const send = (text: string) => {
-    if (!text.trim()) return;
+    if (!text.trim() || busy) return;
     onAsk(text);
     setDraft("");
   };
@@ -619,7 +619,7 @@ export function FacilitatorChat({
       </div>
       <div className="chat-chips">
         {suggestions.map((suggestion) => (
-          <button key={suggestion} type="button" onClick={() => send(suggestion)}>
+          <button key={suggestion} type="button" disabled={busy} onClick={() => send(suggestion)}>
             {suggestion}
           </button>
         ))}
@@ -637,7 +637,7 @@ export function FacilitatorChat({
           placeholder={placeholder}
           aria-label="Message the facilitator"
         />
-        <button type="submit" disabled={!draft.trim()}>
+        <button type="submit" disabled={busy || !draft.trim()}>
           Send
         </button>
       </form>

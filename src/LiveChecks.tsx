@@ -1,3 +1,5 @@
+import { AssistanceBoard } from "./AssistanceBoard";
+import type { CoordinatorAction } from "./updated-ui-api";
 import { useState } from "react";
 import { CallTranscript } from "./CallTranscript";
 import { CallAudio } from "./CallAudio";
@@ -32,9 +34,10 @@ export type LiveActions = {
   checkIn: (incidentId: number, profileId: number, result: "safe" | "victim") => Promise<void>;
   inbound: (fromPhone: string, text: string, providerCallId: string) => Promise<string>;
   ask: (text: string) => void;
+  coordinator: (expectedRevision: number, action: CoordinatorAction) => Promise<void>;
 };
 
-type Focus = "outgoing" | "followups" | "incoming" | "checkins" | "need" | "help" | "links" | "facilitator";
+type Focus = "assistance" | "outgoing" | "followups" | "incoming" | "checkins" | "need" | "help" | "links" | "facilitator";
 
 /**
  * The same board as the offline drill, reading the backend instead of a script.
@@ -67,6 +70,8 @@ export function LiveChecks({
   actions: LiveActions;
 }) {
   const row = currentCase(state, caseId);
+  const assistance = state.assistance_sessions?.find(session => session.case_id === row?.id);
+  const suggestions = assistance ? ["Who still needs help?", "Explain the current plan", "What needs my attention?"] : briefOf(row?.brief ?? "").suggestions.slice(0, 3);
   const calls = (row ? callsFor(state, row.id) : []).sort((a, b) => Number(b.person?.id === firstProfileId) - Number(a.person?.id === firstProfileId));
   const mockActive = mockCalls.filter(call => call.phase === "live").length;
   const mockPending = mockCalls.filter(call => call.phase === "live" || call.phase === "calling").length;
@@ -130,17 +135,21 @@ export function LiveChecks({
     { id: "links", label: "Accepted", value: links.length, icon: "link", detail: links[0] ? `${links[0].from} → ${links[0].to}` : "No helper has accepted yet" },
     { id: "facilitator", label: "Facilitator agent", value: null, icon: "spark", agent: true, detail: busy ? "Working…" : row ? `Case #${row.id}` : "No case" },
   ];
+  if (assistance) {
+    rail.splice(2, 0, { id: "assistance", label: "Coordinate help", value: assistance.arrangements.filter(item => item.status === "proposed").length, icon: "link", detail: assistance.paused ? "Outreach paused" : assistance.review ?? "People, proposed help and follow-through" });
+  }
+  const visibleRail = assistance ? rail.filter(item => !["checkins", "need", "help", "links"].includes(item.id)) : rail;
   const focused = focus ? rail.find((item) => item.id === focus.id) : undefined;
 
   return (
-    <section className={`dash${visible ? "" : " is-hidden"}${focus ? " focusing" : ""}`} aria-hidden={!visible} aria-label="Checks">
-      <DashRail items={rail} active={focus?.id ?? null} onOpen={open} />
+    <section className={`dash${assistance ? " has-assistance" : ""}${visible ? "" : " is-hidden"}${focus ? " focusing" : ""}`} aria-hidden={!visible} aria-label="Checks">
+      <DashRail items={visibleRail} active={focus?.id ?? null} onOpen={open} />
 
       <div className={focus ? "dash-body blurred" : "dash-body"}>
         <header className="dash-head">
           <div>
-            <h1>Checks</h1>
-            <p>{incident?.type ? incident.type[0].toUpperCase() + incident.type.slice(1) : incident ? "Incident" : "No incident yet"} · live backend</p>
+            <h1>{assistance ? "Community coordination" : "Checks"}</h1>
+            {assistance ? <p>{assistance.scenario.title} · {assistance.scenario.drill ? "Fictional drill" : "Incident"}</p> : <p>{incident?.type ? incident.type[0].toUpperCase() + incident.type.slice(1) : incident ? "Incident" : "No incident yet"} · live backend</p>}
           </div>
         </header>
 
@@ -172,7 +181,8 @@ export function LiveChecks({
                 <span><i className="k-done" />Ended</span>
               </span>
             </button>
-            {followUpItems.length > 0 && <section className="tile follow-up-inbox" aria-label="Follow-up inbox">
+            {assistance && <AssistanceBoard session={assistance} disabled={operatorBusy} closed={row?.status === "closed"} now={now} compact onAction={actions.coordinator} onOpen={event => open("assistance", event)} />}
+            {!assistance && followUpItems.length > 0 && <section className="tile follow-up-inbox" aria-label="Follow-up inbox">
               <button type="button" className="follow-up-heading" onClick={event => open("followups", event)}>
                 <span>Needs your attention <small>{followUpItems.length}</small></span><Icon name="expand" />
               </button>
@@ -190,12 +200,12 @@ export function LiveChecks({
             <FacilitatorTile
               chat={chat}
               name="Jonah Reid"
-              kicker={row ? `Case #${row.id}` : "No case"}
-              lead={row ? brief?.summary || row.goal : "Open a case first, or describe the incident when the backend can use Claude."}
+              kicker={assistance ? assistance.paused ? "Paused" : "Coordinator" : row ? `Case #${row.id}` : "No case"}
+              lead={assistance ? "I coordinate the voice agents, bring you proposals, and follow up on what happens." : row ? brief?.summary || row.goal : "Open a case first, or describe the incident when the backend can use Claude."}
               live={busy}
               busy={busy}
-              suggestions={brief?.suggestions.slice(0, 3) ?? []}
-              placeholder={row ? "Share an update or instruction for this incident…" : "Describe what is happening…"}
+              suggestions={suggestions}
+              placeholder={assistance ? "Ask about the incident or give the coordinator an update…" : row ? "Share an update or instruction for this incident…" : "Describe what is happening…"}
               onOpen={(from) => open("facilitator", from)}
               onAsk={(text) => actions.ask(text)}
             />
@@ -205,8 +215,9 @@ export function LiveChecks({
 
       {focus && focused ? (
         <FocusView focus={focus} title={focused.label} kicker={focus.id === "facilitator" ? "Manager agent" : status} icon={focused.icon} agent={focus.id === "facilitator"} onClose={close}>
+          {focus.id === "assistance" && assistance && <AssistanceBoard session={assistance} disabled={operatorBusy} closed={row?.status === "closed"} now={now} onAction={actions.coordinator} />}
           {focus.id === "followups" && <>
-            <p className="focus-note">Across open cases. These items remain here until a later call resolves them or the case is closed. No automatic retry or text message has been sent.</p>
+            <p className="focus-note">Across open cases. These items remain here until a later call resolves them or the case is closed. Coordinator tasks and any queued follow-up calls are shown in Coordinate help. Text messaging is not enabled.</p>
             {followUpItems.length === 0 ? <p className="focus-empty">No calls awaiting follow-up.</p> :
               <ul className="call-list">{followUpItems.map(item => <li key={item.call.attempt.id} className="follow-up-item">
                 <p className="focus-note">Case #{item.call.attempt.support_case_id} · {item.reason}{item.retrying ? " Another call is already in progress." : ""}</p>
@@ -314,7 +325,7 @@ export function LiveChecks({
                 <p>{row ? `Case #${row.id}` : "No case"}</p>
                 <span>{row ? brief?.summary || row.goal : "Open a case first, or describe the incident below when the backend can use Claude."}</span>
               </div>
-              {coordination ? (
+              {coordination && !assistance ? (
                 <ul className="agent-notes">
                   <li className={coordination.kind === "blocked" || coordination.kind === "retrying" ? "warn" : ""}>{coordination.text}</li>
                 </ul>
@@ -323,10 +334,10 @@ export function LiveChecks({
                 chat={chat}
                 busy={busy}
                 onAsk={actions.ask}
-                suggestions={brief?.suggestions.slice(0, 3) ?? []}
-                empty="What you send is saved as dispatcher input on the case. It is not verified."
-                busyText="Sending to the backend…"
-                placeholder={row ? "Share an update or instruction for this incident…" : "Describe what is happening…"}
+                suggestions={suggestions}
+                empty={assistance ? "Ask about current needs, proposed help, or the next step. Agent updates will appear here automatically." : "What you send is saved as dispatcher input on the case. It is not verified."}
+                busyText={assistance ? "The coordinator is reviewing the incident…" : "Sending to the backend…"}
+                placeholder={assistance ? "Ask about the incident or give the coordinator an update…" : row ? "Share an update or instruction for this incident…" : "Describe what is happening…"}
               />
             </>
           ) : null}

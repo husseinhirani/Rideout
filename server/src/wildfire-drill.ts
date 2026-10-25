@@ -49,7 +49,8 @@ export async function configureDrillParticipants(body: unknown, actor: string) {
 export async function startWildfireDrill(body: unknown, actor: string) {
   const input = object(body, "request"), command_id = commandId(input.command_id)
   if (command_id.length > 150) throw new ServiceError(400, "Drill command ID is too long")
+  if (!process.env.ANTHROPIC_API_KEY?.trim()) throw new ServiceError(503, "Configure the coordinator model before starting an assistance drill.")
   const participants = await drillParticipants()
   if (!participants.length || participants.some(p => !dialablePhone(p.phone))) throw new ServiceError(503, "Configure the saved drill participants before starting.")
-  return runInformationCommand("startWildfireDrill", { command_id, participants }, actor)
+  return runInformationCommand("startWildfireDrill", { command_id, participants, include_simulated: input.include_simulated === true }, actor)
 }

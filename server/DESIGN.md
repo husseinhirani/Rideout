@@ -1,6 +1,62 @@
 # design.md
 
-## Wildfire drill calling
+## Assistance coordination (current)
+
+New drills atomically create `assistance_session` and initial assessment tasks alongside
+the existing case and attempts. A JSON session holds its revision, attributed findings,
+reported participant facts and source IDs, tasks, arrangements, messages, human review,
+and bounded planning retry state. The database remains the authority for transitions.
+`server/shared/assistance.ts` defines and validates these transitions; the process owns
+model/provider I/O. Existing cases without sessions retain their earlier behavior.
+
+`POST /calls/coordinate` uses provider callback authentication and verifies the provider
+call ID, agent and destination against the saved attempt. `coordinate_call` lets the
+hosted voice agent check for tasks and report discoveries without ending a conversation.
+Sequence numbers make exact retries idempotent and reject out-of-order overwrites.
+The response includes current known facts, an authorized task and the next sequence.
+No assignment is delivered after pause, closure, loss of permission or a final report.
+A delayed callback may preserve facts but cannot resurrect a cancelled task.
+
+The coordinator wakes on meaningful session revisions. It selects supported information
+questions or proposes eligible arrangements, citing current finding sources. Hard gates
+check consent/scope, reported location, need, willingness, capacity, vehicle requirements,
+supplied access/routes, and existing reservations. Each helper has at most one reserved
+pickup. A declined pairing is not automatically repeated. Changed approved pickup details
+withdraw the old approval and allow a fresh proposal. Old information planning remains off.
+
+The worker delivers pending tasks through ongoing calls, or atomically queues bounded
+follow-up attempts after terminal status and cooldown. There is no speculative redial of
+an unknown provider state. A task permits at most two callback attempts and a participant
+at most eight calls in a drill. Consent withdrawal and task cancellation are checked at
+claim and immediately before provider dispatch. Calls without final reports receive a 15-second grace period, then block their
+unfinished tasks for review. Late reports are still processed without restarting blocked
+work. Finishing calls cannot receive new tasks. Current permissions for both arrangement
+parties are checked again before dispatch, delivery, and milestone acceptance. Temporary
+availability restrictions remain separate from withdrawn consent. Deadline failures and unresolved milestones remain visible.
+
+`POST /cases/:id/coordinator` accepts revisioned/idempotent operator actions: message,
+approve/reject/cancel arrangement, pause/resume, scenario location-access changes and
+planning retry. Messages are persisted and answered by Claude using the current incident;
+chat replies alone cannot execute actions. Proposal approval authorizes asking the helper,
+then recipient confirmation. Pickup and arrival each require both parties' reports.
+Completion means reported arrival in the scenario, not independently verified safety.
+
+`GET /state` exposes `assistance_sessions` without hidden synthetic persona answers.
+The dashboard shows proposals/evidence, task progress, reported needs, explicit controls
+and persistent coordinator chat. Polling does not duplicate chat entries. Only a changed
+message advances the scroll position. New sessions do not use the old scripted UI wave.
+The Start menu can include 12 backend-simulated neighbors; their `mode=simulated` is checked
+before provider calls, and their non-dialable synthetic destinations also fail ordinary
+contact eligibility. Simulations follow the same task/report/milestone state transitions.
+
+Deployment: publish the module without deleting data, restart API and Vite, then run
+`npm --prefix server run setup-agent` to attach `coordinate_call` and its prompt. Do not
+apply the hosted prompt before the new callback route is running. No real call is made
+by database publication, startup or agent setup; an explicit Start action creates work.
+Existing active authorized work can resume after restart. The first live test should use
+only the saved real roster; simulated neighbors are optional after that loop is confirmed.
+
+## Wildfire drill calling (foundation and compatibility)
 
 `POST /drills/participants` accepts an authenticated operator command ID and
 `participants: [{ name, phone }]`. The reducer upserts by normalized phone, updates
@@ -8,14 +64,14 @@ names, preserves existing consent, rejects duplicate destinations and records a
 private roster of profile IDs in the command log. Configuration places no calls.
 It supports 1–10 participants; real phone numbers are not committed as fixtures.
 
-`POST /drills/wildfire` accepts only an operator command ID. The backend resolves
+`POST /drills/wildfire` accepts an operator command ID and optional `include_simulated` flag. The backend resolves
 the saved roster, with the earlier environment/prior-drill participant fallback
 for existing installations. The reducer atomically creates one case with the roster
-as its permitted scope, and queues one call for each person. Concurrent and total
-call limits match the roster size. Existing destination locks, withdrawn consent
+as its permitted scope, and queues one call for each person. Initial calls cover the roster; bounded follow-up calls are included in the
+assistance session policy. Existing destination locks, withdrawn consent
 and exact command replay remain enforced. The worker staggers provider requests
 without waiting for other conversations to end; the calls can run concurrently.
-Automatic follow-up planning remains off for this drill slice.
+The old information planner remains off; assistance sessions now own bounded follow-up planning.
 
 Each call receives a fictional wildfire drill context. The hosted Tom prompt
 introduces the AI assistant and confirms the recipient's name before disclosing

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { api, presentationState, savedConversation, directoryEdges } from "./updated-ui-api";
+import { api, presentationState, savedConversation, directoryEdges, type CoordinatorAction } from "./updated-ui-api";
 import { useBackend } from "./backend";
 import { BlockGraph } from "./BlockGraph";
 import { CaseCard } from "./CaseCard";
@@ -56,6 +56,9 @@ export function App() {
   const [liveSelected, setLiveSelected] = useState<number | null>(null);
   const [outside, setOutside] = useState<{ session: OperatorSession; call: LiveCall } | null>(null);
   const [startingDrill, setStartingDrill] = useState(false);
+  const [includeSimulated, setIncludeSimulated] = useState(false);
+  const [coordinatorBusy, setCoordinatorBusy] = useState(false);
+  const [retryChat, setRetryChat] = useState<{ caseId: number; text: string } | null>(null);
   const drillLock = useRef(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [dismissedConcern, setDismissedConcern] = useState("");
@@ -90,7 +93,8 @@ export function App() {
   );
   const liveCase = state ? currentCase(state, caseId) : null;
   const liveDrill = state?.wildfire_drills?.find(drill => drill.case_id === liveCase?.id);
-  const mockCalls = liveDrill ? wildfireMockCalls(Date.parse(liveDrill.started_at), now.getTime()) : [];
+  const assistance = state?.assistance_sessions?.find(session => session.case_id === liveCase?.id);
+  const mockCalls = liveDrill && !assistance ? wildfireMockCalls(Date.parse(liveDrill.started_at), now.getTime()) : [];
   const savedChat = savedConversation(state, liveCase?.id ?? null);
   const conversation = [...savedChat, ...liveChat.filter(message => !savedChat.some(saved => saved.from === message.from && saved.text === message.text))].sort((a,b) => a.at - b.at);
   useEffect(() => { setLiveChat([]); }, [liveCase?.id]);
@@ -110,7 +114,9 @@ export function App() {
     if (!state) return;
     if (newestSeen.current === null) {
       const ongoing = [...state.attempt_progress].reverse().find(call => ["queued", "dispatching", "active", "unknown"].includes(call.transport));
-      setCaseId(current => current === 0 && ongoing ? ongoing.support_case_id : current);
+      const openCoordination = [...(state.assistance_sessions ?? [])].reverse().find(session =>
+        state.cases.some(row => row.id === session.case_id && row.status !== "closed"));
+      setCaseId(current => current === 0 ? ongoing?.support_case_id ?? openCoordination?.case_id ?? current : current);
     } else if (newestCase > newestSeen.current) setCaseId(newestCase);
     newestSeen.current = newestCase;
   }, [state, newestCase]);
@@ -125,7 +131,27 @@ export function App() {
 
   const fail = (error: unknown) => setNotice(error instanceof Error ? error.message : "The backend refused that");
 
+  const sendCoordinatorMessage = async (selectedCaseId: number, text: string) => {
+    const session = state?.assistance_sessions?.find(item => item.case_id === selectedCaseId);
+    if (!session || chatBusy) return;
+    setChatBusy(true);
+    setRetryChat(null);
+    try {
+      await backend.run(() => api.coordinator(selectedCaseId, session.revision, { action: "message", text }));
+      setNotice(null);
+    } catch (error) {
+      setRetryChat({ caseId: selectedCaseId, text });
+      setNotice(error instanceof Error ? error.message : "The coordinator could not answer. Retry to check the saved message.");
+    } finally { setChatBusy(false); }
+  };
+
   const liveActions = {
+    coordinator: async (expectedRevision: number, action: CoordinatorAction) => {
+      if (!liveCase || coordinatorBusy) return;
+      setCoordinatorBusy(true);
+      try { await backend.run(() => api.coordinator(liveCase.id, expectedRevision, action)); }
+      finally { setCoordinatorBusy(false); }
+    },
     cancel: async (attemptId: number) => {
       try {
         const result = await backend.run(() => api.cancel(attemptId));
@@ -157,7 +183,8 @@ export function App() {
       return `${result.reply} (${result.status})`;
     },
     ask: async (text: string) => {
-      if (!state) return;
+      if (!state || !text.trim() || chatBusy) return;
+      if (assistance && liveCase) { await sendCoordinatorMessage(liveCase.id, text); return; }
       say("lead", text);
       setChatBusy(true);
       try {
@@ -184,10 +211,14 @@ export function App() {
     setStartingDrill(true);
     try {
       const key = "rideout:wildfire-command";
-      const commandId = sessionStorage.getItem(key) || crypto.randomUUID();
+      const pendingId = sessionStorage.getItem(key);
+      const commandId = pendingId || crypto.randomUUID();
+      const include = pendingId ? sessionStorage.getItem(key + ":simulation") === "true" : includeSimulated;
       sessionStorage.setItem(key, commandId);
-      const result = await backend.run(() => api.wildfireDrill(commandId));
+      sessionStorage.setItem(key + ":simulation", String(include));
+      const result = await backend.run(() => api.wildfireDrill(commandId, include));
       sessionStorage.removeItem(key);
+      sessionStorage.removeItem(key + ":simulation");
       setCaseId(result.support_case_id);
       setNotice(`Calls are queued for ${(state?.wildfire_demo?.names ?? [state?.wildfire_demo?.name ?? "Demo participant"]).join(", ")}. Open Outgoing calls to follow them.`);
       setTab("checks");
@@ -312,15 +343,19 @@ export function App() {
                   onClick={() => {
                     setMenu(false);
                     if (!state.wildfire_demo?.ready) {
-                      setNotice("No saved drill participant is available. Set WILDFIRE_DEMO_PHONE in .env.local and restart the API for the first drill.");
+                      setNotice("No saved drill participant is available. Configure the private participant roster before starting.");
                       return;
                     }
                     void startWildfire();
                   }}
                 >
-                  <b>{startingDrill ? "Starting call…" : "Wildfire drill"}</b>
-                  <small>{state.wildfire_demo?.ready ? `${state.demo_mode.simulate ? "Simulated calls" : "Call"} ${(state.wildfire_demo.names ?? [state.wildfire_demo.name]).join(", ")}` : "Configure the demo participant on the backend"}</small>
+                  <b>{startingDrill ? "Starting calls…" : "Wildfire drill"}</b>
+                  <small>{state.wildfire_demo?.ready ? `${state.demo_mode.simulate ? "Simulated calls" : "Call"} ${(state.wildfire_demo.names ?? [state.wildfire_demo.name]).join(", ")}` : "Configure the private drill roster"}</small>
                 </button>
+                <label className="start-simulation-option">
+                  <input type="checkbox" checked={includeSimulated} disabled={startingDrill} onChange={event => setIncludeSimulated(event.target.checked)} />
+                  <span>Include 12 simulated neighbors<small>They participate in coordination without phone calls.</small></span>
+                </label>
                 <button
                   type="button"
                   role="menuitem"
@@ -358,6 +393,7 @@ export function App() {
       {notice ? (
         <div className="live-notice" role="status">
           <p>{notice}</p>
+          {retryChat && <button type="button" disabled={chatBusy || !backend.connected} onClick={() => void sendCoordinatorMessage(retryChat.caseId, retryChat.text)}>{chatBusy ? "Retrying…" : "Retry reply"}</button>}
           <button type="button" onClick={() => setNotice(null)}>
             Dismiss
           </button>
@@ -422,7 +458,7 @@ export function App() {
             firstProfileId={liveDrill?.profile_id}
             chat={conversation}
             busy={chatBusy}
-            operatorBusy={Boolean(outside)}
+            operatorBusy={Boolean(outside) || coordinatorBusy || !backend.connected}
             now={now.getTime()}
             actions={liveActions}
           />

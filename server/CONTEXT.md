@@ -1,14 +1,28 @@
 # Context
 
+## Live assistance coordinator
+
+The approved next slice turns call discoveries into proposed assistance arrangements.
+New wildfire drills create an assistance session and run a coordinator that selects
+information tasks and proposes suitable pairings. Humans approve proposals, voice
+agents obtain explicit commitments, and follow-ups separately confirm pickup and
+arrival. All physical situations and routes remain fictional drill data. Real phone
+participants' needs and capabilities come from their answers; no named roles are fixed.
+Optional simulated neighbors use backend attempts and findings, not visual-only calls.
+See `docs/adr/0003-live-assistance-coordination.md` at the repository root and the current
+section of `DESIGN.md`. Historical statements below that exclude dispatch describe
+prior milestones; the approved demo now includes coordination with human approval.
+
 ## Wildfire drill with real participants
 
 The Start menu offers the wildfire drill and neighbor registration. The hardcoded
 missing-child shortcut is removed. The drill uses a saved private participant
 roster, configured separately from dispatch; initial single-person environment
 configuration and prior drill records remain fallback sources for migration.
-One click queues one call per participant, with capacity for overlapping calls.
-The existing 12-neighbor mock wave and scripted follow-ups remain explicitly
-simulated. Only the saved real participants receive phone calls.
+One click queues one initial call per participant, with capacity for overlapping calls.
+New drills permit bounded coordinator follow-ups. The optional 12 simulated neighbors
+produce backend findings and tasks; they never dial a phone. Old cases retain their
+visual simulation history. Only the saved real participants receive phone calls.
 
 Every outgoing conversation introduces Tom as an AI assistant and confirms the
 recipient's name before discussing the situation, unless the person asks to stop.

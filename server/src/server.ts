@@ -14,6 +14,9 @@ import { startWildfireDrill, wildfireDemo, wildfireDrills, configureDrillPartici
 import { attemptAudio } from "./call-audio"
 import { attemptTranscript, receiveCallEvent } from "./call-transcript"
 
+import { assistanceStates, publicAssistance, coordinateCall, coordinatorCommand } from './assistance'
+import { startAssistanceWorker } from './assistance-worker'
+
 const BODY_LIMIT = 1_000_000
 loadEnv()
 const access = readAccessConfig()
@@ -35,6 +38,7 @@ const server = createServer((req, res) => {
 server.listen(port, "127.0.0.1", () => {
   console.log("API/callbacks listening on http://127.0.0.1:" + port)
   startInformationWorker()
+  startAssistanceWorker()
 })
 createLocalConsole({ port: consolePort, apiPort: port, operatorSecret: access.operatorSecret,
   htmlPath: resolve(import.meta.dirname, "ui.html"),
@@ -43,6 +47,7 @@ createLocalConsole({ port: consolePort, apiPort: port, operatorSecret: access.op
 async function state() {
   const [legacy, information, incoming, coordination, inbound, drills] = await Promise.all([getState(false), readInformationState(), incomingRequests(), readInformationPlanning(), readInformationIncomingState(), wildfireDrills()])
   return {
+    assistance_sessions: (await assistanceStates()).map(publicAssistance),
     ...legacy, read_model_version: 2, server_time_ms: Date.now(),
     wildfire_demo: await wildfireDemo(),
     wildfire_drills: drills,
@@ -126,6 +131,9 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
   const review = /^\/incoming-requests\/(\d+)\/review$/.exec(path)
   if (review) { send(res, 200, await reviewInformationIncoming(asId(review[1], "request_id"), body, actor)); return }
   if (path === "/calls/events") { send(res, 200, receiveCallEvent(body)); return }
+  if (path === '/calls/coordinate') { send(res,200,await coordinateCall(body)); return }
+  const coordinator = /^\/cases\/(\d+)\/coordinator$/.exec(path)
+  if(coordinator) { send(res,200,await coordinatorCommand(asId(coordinator[1],'case_id'),body,actor));return }
   if (path === "/calls/report") { send(res, 200, await receiveInformationReport(body)); return }
   if (path === "/requests") {
     if (process.env.INBOUND_REQUESTS !== "1") throw new ServiceError(503, "Inbound receipt is not enabled")

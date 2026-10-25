@@ -169,7 +169,7 @@ export function callsFor(state: BackendState, caseId: number | null): LiveCall[]
         transportLabel: progress ? transportLabel(progress.transport) : legacyTransport(attempt),
         reportLabel: reportLabel(progress, attempt),
         followUpAt: followUpAt(progress),
-        simulated: attempt.call_id?.startsWith("sim_") === true,
+        simulated: attempt.call_id?.startsWith("sim_") === true || state.assistance_sessions?.some(session => session.case_id === attempt.support_case_id && session.people.some(person => person.profile_id === attempt.profile_id && person.mode === "simulated")) === true,
       };
     });
 }
