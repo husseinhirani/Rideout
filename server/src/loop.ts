@@ -32,7 +32,7 @@ import {
 import { DEMO_LOCATIONS } from "../shared/locations"
 import { createCaseFromIntake } from "./case-inputs"
 import { ServiceError } from "./service"
-import { recordingMode, scriptedPlan, scriptedInterpret } from "./recording-model"
+import { recordingMode, scriptedPlan, scriptedInterpret, scriptedRidePlan } from "./recording-model"
 
 // Legacy cases replan on dispatcher input. Opt-in coordinated cases instead use
 // the durable worker below; both paths share dial() and the provider adapter.
@@ -289,7 +289,9 @@ export async function onCheckIn(input: {
     (row) => row.incident_id === input.incident_id && row.victim_profile_id === input.profile_id,
   )
   if (!opened) throw new Error("recordCheckIn did not open a support case")
-  background("case " + String(opened.id), startCase(opened.id))
+  // A ride case is not the missing-child scenario the coordinator is built for,
+  // so it always uses the dispatcher-reviewed planner.
+  background("case " + String(opened.id), startCase(opened.id, false))
   return { result: VICTIM, support_case_id: opened.id }
 }
 
@@ -332,8 +334,8 @@ export async function closeCase(
   return { support_case_id: supportCaseId, status: CLOSED }
 }
 
-async function startCase(supportCaseId: number): Promise<void> {
-  if (automatic()) {
+async function startCase(supportCaseId: number, coordinated = true): Promise<void> {
+  if (coordinated && automatic()) {
     await callReducer("enableCoordination", [supportCaseId, configuredHelperIds()])
     startCoordinatorWorker()
   }
@@ -399,7 +401,8 @@ export async function onReport(input: {
     throw new ServiceError(409, "Coordinated inbound updates need an explicitly matched case; inbound integration is pending")
   }
   const facts = await caseFacts(supportCaseId)
-  const learned = await interpretAnswer(
+  const interpret = recordingMode() ? scriptedInterpret : interpretAnswer
+  const learned = await interpret(
     {
       goal: facts.supportCase.goal,
       victim: facts.victim?.name ?? "",
@@ -488,7 +491,7 @@ async function runPlan(
     return { planned: 0, reason: "No one left to call on this case." }
   }
   const contacts = new Set(facts.victim?.contact_profile_ids ?? [])
-  const result = await plan(
+  const result = await (recordingMode() ? scriptedRidePlan : plan)(
     {
       goal: facts.supportCase.goal,
       instruction,
@@ -600,9 +603,15 @@ async function expire(attemptId: number): Promise<void> {
 // ------------------------------------------------------------------- briefs
 
 async function refreshBriefs(supportCaseId: number): Promise<void> {
-  if (recordingMode()) return
   if ((await caseProgress()).some(row => row.support_case_id === supportCaseId)) return
   const facts = await caseFacts(supportCaseId)
+  if (recordingMode()) {
+    // Same template coordinated cases use, so a scripted run makes no Claude call.
+    const latest = facts.caseNotes.slice(-6).map(row => row.text)
+    const summary = `${facts.supportCase.goal} Latest reports (not verified): ${latest.length ? latest.join("; ") : "None yet."}`
+    await callReducer("setBrief", [supportCaseId, JSON.stringify({ summary, suggestions: [] })])
+    return
+  }
   const result = await brief(
     {
       scope: "one case",
