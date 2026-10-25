@@ -1,5 +1,5 @@
-import { t } from "spacetimedb/server"
-import spacetimedb, { CHECKING_IN, OPEN, SAFE, VICTIM, ACTIVE } from "../models"
+import { SenderError, t } from "spacetimedb/server"
+import spacetimedb, { CHECKING_IN, OPEN, SAFE, VICTIM, ACTIVE, UNKNOWN } from "../models"
 
 const EARTH_RADIUS_M = 6_371_000
 
@@ -42,7 +42,8 @@ export const recordCheckIn = spacetimedb.reducer(
       (row) => row.profile_id === profile_id,
     )
     if (!person) throw new Error("Profile is not on this incident")
-    if (person.status !== CHECKING_IN) throw new Error("Check-in is already recorded")
+    // A late answer still lands after the no-answer deadline wrote unknown.
+    if (person.status !== CHECKING_IN && person.status !== UNKNOWN) throw new Error("Check-in is already recorded")
     ctx.db.incidentPerson.id.update({ ...person, status: result })
     if (result !== VICTIM) return
     const existing = [...ctx.db.supportCase.incident_id.filter(incident_id)].some(
@@ -57,6 +58,18 @@ export const recordCheckIn = spacetimedb.reducer(
       brief: "",
       status: OPEN,
     })
+  },
+)
+
+export const markCheckInUnanswered = spacetimedb.reducer(
+  { incident_id: t.u64(), profile_id: t.u64() },
+  (ctx, { incident_id, profile_id }) => {
+    const person = [...ctx.db.incidentPerson.incident_id.filter(incident_id)].find(
+      (row) => row.profile_id === profile_id,
+    )
+    if (!person) throw new SenderError("Profile is not on this incident")
+    if (person.status !== CHECKING_IN) return
+    ctx.db.incidentPerson.id.update({ ...person, status: UNKNOWN })
   },
 )
 

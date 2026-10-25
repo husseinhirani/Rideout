@@ -1,6 +1,6 @@
 export { default } from "./models"
 export { insertProfile, setContacts } from "./apis/profiles"
-export { createIncident, recordCheckIn, setIncidentBrief } from "./apis/incidents"
+export { createIncident, markCheckInUnanswered, recordCheckIn, setIncidentBrief } from "./apis/incidents"
 export {
   addAttempt,
   addNote,
@@ -20,6 +20,7 @@ export {
   markCoordinationEnded,
   tickCoordination,
   recordCoordinationFailure,
+  cancelAttempt,
 } from "./apis/coordination"
 export { recordCaseIntake, recordCaseUpdate, recordReunionConfirmation } from "./apis/case-inputs"
 

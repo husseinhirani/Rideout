@@ -6,6 +6,7 @@ import { checkCallbackAuth } from "./callback-auth"
 import { receiveIncoming, startIncomingWorker } from "./incoming-runtime"
 import { recordingMode } from "./recording-model"
 import {
+  cancelCall,
   closeCase,
   getState,
   onCheckIn,
@@ -15,6 +16,7 @@ import {
   openIncidentFromText,
   openDispatcherIntake,
   openIncidentStructured,
+  registerProfile,
   startCoordinatorWorker,
 } from "./loop"
 import { asId, asNumber, asString, optionalId, optionalString, ServiceError } from "./service"
@@ -117,6 +119,23 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
   const caseInput = /^\/cases\/(\d+)\/input$/.exec(path)
   if (caseInput) {
     send(res, 200, await onDispatcherInput(Number(caseInput[1]), asString(body.text, "text")))
+    return
+  }
+  const attemptCancel = /^\/attempts\/(\d+)\/cancel$/.exec(path)
+  if (attemptCancel) {
+    send(res, 200, await cancelCall(Number(attemptCancel[1])))
+    return
+  }
+  if (path === "/profiles") {
+    const contacts = body.contact_profile_ids ?? []
+    if (!Array.isArray(contacts)) throw new ServiceError(400, "contact_profile_ids must be an array")
+    send(res, 200, await registerProfile({
+      name: asString(body.name, "name"),
+      phone: optionalString(body.phone, "phone"),
+      lat: asNumber(body.lat, "lat"),
+      lng: asNumber(body.lng, "lng"),
+      contact_profile_ids: contacts.map((id, index) => asId(id, "contact_profile_ids[" + String(index) + "]")),
+    }))
     return
   }
   const caseClose = /^\/cases\/(\d+)\/close$/.exec(path)

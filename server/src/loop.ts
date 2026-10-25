@@ -45,6 +45,7 @@ const PLACEHOLDER_PHONE_PREFIX = "+1555555"
 const CHECKING_IN = "checking_in"
 const SAFE = "safe"
 const VICTIM = "victim"
+const UNKNOWN = "unknown"
 const ANSWERED = "answered"
 const NO_ANSWER = "no_answer"
 const CLOSED = "closed"
@@ -265,11 +266,23 @@ async function triage(incident: IncidentRow): Promise<void> {
           // check-in rather than a case answer.
           attempt_id: "",
         })
+        watchCheckIn(incident.id, profile.id)
       } catch (error) {
         console.error("check-in " + profile.name + ": " + errorMessage(error))
       }
     }),
   )
+}
+
+// Same deadline as a case call. Nobody answering is "unknown", which is
+// neither safe nor cleared; a late answer still lands afterwards.
+function watchCheckIn(incidentId: number, profileId: number): void {
+  setTimeout(() => {
+    background("check-in deadline " + String(profileId), (async () => {
+      await callReducer("markCheckInUnanswered", [incidentId, profileId])
+      await refreshIncidentBrief(incidentId)
+    })())
+  }, NO_ANSWER_MS).unref()
 }
 
 export async function onCheckIn(input: {
@@ -364,6 +377,62 @@ async function requireCase(supportCaseId: number): Promise<SupportCaseRow> {
   const row = (await supportCases()).find((item) => item.id === supportCaseId)
   if (!row) throw new ServiceError(404, "Support case not found")
   return row
+}
+
+// The dispatcher stops a call that has not started, or a simulated one. A real
+// call that may already be ringing is left alone: RideOut cannot hang it up.
+export async function cancelCall(
+  attemptId: number,
+): Promise<{ attempt_id: number; cancelled: boolean; reason: string }> {
+  const attempt = (await attempts()).find(row => row.id === attemptId)
+  if (!attempt) throw new ServiceError(404, "Attempt not found")
+  const progress = (await attemptProgress()).find(row => row.attempt_id === attemptId)
+  const refusal = cancelRefusal(attempt, progress?.transport)
+  if (refusal) return { attempt_id: attemptId, cancelled: false, reason: refusal }
+  try {
+    await callReducer("cancelAttempt", [attemptId])
+  } catch (error) {
+    // The worker can claim the call between our read and the reducer.
+    return { attempt_id: attemptId, cancelled: false, reason: errorMessage(error) }
+  }
+  const simulated = attempt.call_id?.startsWith("sim_") === true
+  return { attempt_id: attemptId, cancelled: true, reason: simulated ? "Simulated call ended." : "Call cancelled before dialing." }
+}
+
+export function cancelRefusal(attempt: AttemptRow, transport: string | undefined): string {
+  const simulated = attempt.call_id?.startsWith("sim_") === true
+  if (transport === undefined) {
+    if (attempt.outcome != null) return "Call already has an outcome."
+    return attempt.call_id && !simulated ? "A live call cannot be ended from RideOut." : ""
+  }
+  if (transport === "queued" || (transport === "active" && simulated)) return ""
+  if (transport === "ended" || transport === "cancelled") return "Call already finished."
+  if (transport === "dispatching") return "The call is being placed and cannot be cancelled safely."
+  return "A live or unresolved call cannot be ended from RideOut."
+}
+
+// ----------------------------------------------------------------- profiles
+
+export async function registerProfile(input: {
+  name: string
+  phone: string
+  lat: number
+  lng: number
+  contact_profile_ids: number[]
+}): Promise<{ profile_id: number }> {
+  const name = input.name.trim()
+  const phone = input.phone.trim()
+  if (name.length === 0) throw new ServiceError(400, "name is required")
+  if (phone && !E164.test(phone)) throw new ServiceError(400, "phone must be E.164, such as +14155550123, or empty")
+  const known = await profiles()
+  const missing = input.contact_profile_ids.find(id => !known.some(row => row.id === id))
+  if (missing !== undefined) throw new ServiceError(400, "Contact profile " + String(missing) + " not found")
+  const before = new Set(known.map(row => row.id))
+  await callReducer("insertProfile", [name, phone, input.lat, input.lng, []])
+  const created = (await profiles()).find(row => !before.has(row.id))
+  if (!created) throw new Error("insertProfile did not insert a profile")
+  if (input.contact_profile_ids.length) await callReducer("setContacts", [created.id, input.contact_profile_ids])
+  return { profile_id: created.id }
 }
 
 // ------------------------------------------------------------------ reports
@@ -655,6 +724,7 @@ async function refreshIncidentBrief(incidentId: number): Promise<void> {
       triage: {
         safe: people.filter((row) => row.status === SAFE).length,
         still_checking_in: people.filter((row) => row.status === CHECKING_IN).length,
+        no_answer: people.filter((row) => row.status === UNKNOWN).length,
         needs_help: people.filter((row) => row.status === VICTIM).length,
       },
       cases: cases.map((row) => ({

@@ -4,6 +4,8 @@ export const CHECKING_IN = "checking_in"
 export const SAFE = "safe"
 export const VICTIM = "victim"
 export const ACTIVE = "active"
+// A check-in call nobody answered before the deadline. Not safe, not cleared.
+export const UNKNOWN = "unknown"
 
 export const OPEN = "open"
 export const NEEDS_DISPATCHER = "needs_dispatcher"
@@ -12,6 +14,7 @@ export const CLOSED = "closed"
 export const ANSWERED = "answered"
 export const NO_ANSWER = "no_answer"
 export const SUPERSEDED = "superseded"
+export const CANCELLED = "cancelled"
 
 export const CALL = "call"
 export const DISPATCHER = "dispatcher"
