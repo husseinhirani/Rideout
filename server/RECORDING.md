@@ -76,6 +76,24 @@ needs to simulate progress locally.
 | Follow-up due time | `accepted_at_ms + 10000`; eligibility still depends on transport and remaining budget |
 | Planning pending/blocked | `coordination`: compare `input_revision`/`evaluated_revision`, display `blocked_reason` |
 | Recording label | `demo_mode.scripted` and `demo_mode.simulate` |
+| Demo points on the map | `locations` (from `shared/locations.ts`, on the frontend's Rockridge block) |
+| Intake and reported reunion | `case_intakes`; reunion only when `reunion_confirmed` (still self-reported) |
+| Inbound calls and review queue | `incoming_requests`: `status`, `reply`, `support_case_id`; `needs_review` and `needs_clarification` need a person |
+| Configured reporter, inbound on | `demo_mode.reporter_id`, `demo_mode.inbound` |
+
+Dispatcher routes used by the frontend:
+
+- `POST /intake` `{event_key, reporter_profile_id?, child, reporter}`: the
+  dispatcher's missing-child form, through the same `createCaseFromIntake` as an
+  inbound call. Returns `recorded` or `needs_clarification` with questions. The
+  event key makes a retried submit idempotent. Requires `AUTO_COORDINATE=1`.
+- `POST /attempts/:id/cancel`: cancels a queued call or ends a simulated one.
+  Anything that may be ringing for real is refused with `{cancelled: false, reason}`.
+- `POST /profiles` `{name, phone, lat, lng, contact_profile_ids}`: registration.
+
+A check-in nobody answers within 90 s becomes `incident_people.status = "unknown"`
+(not safe, not cleared). Victim cases opened by a check-in use the
+dispatcher-reviewed planner, never the missing-child coordinator.
 
 Transport is `queued`, `dispatching`, `active`, `ended`, `unknown` or `cancelled`.
 An answered report is not proof of call completion. `unknown` means unresolved,
@@ -83,9 +101,10 @@ not safe to retry. “Not seen” is not a cleared search area. A possible match
 not confirmed identity. Don't show a successful reunion merely because an
 operator used the close route.
 
-No stored assignment/location object exists yet: the actual authorized question
-is in `ask`. Do not infer new map regions or separate assignments from prose.
-Current routes are same-origin; this change does not add browser CORS policy.
+No stored assignment object exists yet: the actual authorized question is in
+`ask`. Draw only the `locations` the backend lists; do not infer new map regions
+or separate assignments from prose. Routes stay same-origin; the frontend's Vite
+dev server proxies them and adds the callback bearer for local requests.
 
 ## Verification recorded for this change
 
