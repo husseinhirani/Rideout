@@ -23,6 +23,11 @@ case association nor operator decisions. Existing provider bindings are unchange
 
 Implementation is source-reviewed; compilation and live verification await Vien's VM.
 
+Tom's hosted instructions guide calm, situation-sensitive acknowledgment and short
+questions, without scripted sympathy or promises of safety/help. Immediate danger
+must not be mistaken for a dispatched emergency response. This prompt change needs
+Vien to run `setup-agent` after active calls finish; tone remains live-unverified.
+
 ## Adaptive information path — Step 4
 
 On the separate Step 4 branch, an organizer explicitly enables coordination for
