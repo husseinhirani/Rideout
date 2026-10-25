@@ -1,6 +1,6 @@
 {
   "name": "record_check_in",
-  "description": "Record this person's check-in. Call it once they say they are safe or that they need help.",
+  "description": "Only for a check-in call, meaning a call where attempt_id is empty. Record whether this person is safe or needs help. If attempt_id has any value, this tool will fail: use report_call instead, even when the person says they are safe.",
   "pre_tool_speech": "auto",
   "execution_mode": "immediate",
   "response_timeout_secs": 45,
