@@ -79,13 +79,7 @@
       },
       "required": [
         "operation",
-        "sequence",
-        "text",
-        "facts_json",
-        "task_id",
-        "result",
-        "confirmation",
-        "do_not_call"
+        "sequence"
       ]
     }
   }
