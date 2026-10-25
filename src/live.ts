@@ -1,5 +1,6 @@
 import type { AttemptProgressRow, AttemptRow, BackendState, CaseIntakeRow, IncidentRow, IncomingRequestRow, NoteRow, ProfileRow, SupportCaseRow, Transport } from "./api";
 import type { CallCard, House, HouseStatus, Sighting } from "./types";
+import type { Finding } from "../server/shared/assistance";
 
 /**
  * Pure adapters from GET /state to what the views draw. No timers and no local
@@ -38,17 +39,18 @@ export function transportLabel(transport: Transport | undefined): string {
   return transport ? TRANSPORT[transport] ?? transport : "Not tracked";
 }
 
-export function reportLabel(progress: AttemptProgressRow | undefined, attempt: AttemptRow): string {
+export function reportLabel(progress: AttemptProgressRow | undefined, attempt: AttemptRow, hasSavedFindings = false): string {
+  const summaryStatus = progress?.transport === "ended" ? "Final summary missing" : "Final summary pending";
   if (progress) {
     if (progress.report_processed) return progress.accepted_at_ms !== null ? "Report processed · accepted" : "Report processed";
     if (progress.report_received) return "Report saved · processing";
-    return "No report yet";
+    return hasSavedFindings ? `Findings saved · ${summaryStatus.toLowerCase()}` : summaryStatus;
   }
   if (attempt.outcome === "answered") return "Report processed";
   if (attempt.outcome === "no_answer") return "No answer";
   if (attempt.outcome === "cancelled") return "Cancelled";
   if (attempt.outcome === "superseded") return "Superseded";
-  return "No report yet";
+  return hasSavedFindings ? "Findings saved · final summary pending" : "Final summary pending";
 }
 
 // A due review lets the coordinator reconsider; it does not promise another call.
@@ -114,6 +116,7 @@ export type LiveCall = {
   transport: Transport | undefined;
   transportLabel: string;
   reportLabel: string;
+  savedFindings: Finding[];
   followUpAt: number | null;
   simulated: boolean;
 };
@@ -150,7 +153,10 @@ export function followUps(state: BackendState): FollowUp[] {
     const reason = call.transport === "unknown" ? "Call status is unconfirmed. Review it before attempting another call."
       : notReached(call) ? "Not reached. Their situation is still unknown; another contact method or follow-up is needed."
       : call.attempt.concern || (call.transport === "ended" && !call.progress?.report_received && !call.attempt.answer
-        ? "The call ended without a report. Their situation is still unknown." : "");
+        ? call.savedFindings.length
+          ? "Findings from the call are saved, but the final summary is missing. Review the saved findings and any unresolved needs."
+          : "The call ended without a final summary or new findings. Review any earlier information and follow up on unresolved questions."
+        : "");
     return reason ? [{ call, reason, retrying }] : [];
   }).sort((a, b) => b.call.attempt.id - a.call.attempt.id);
 }
@@ -161,13 +167,17 @@ export function callsFor(state: BackendState, caseId: number | null): LiveCall[]
     .sort((a, b) => a.id - b.id)
     .map((attempt) => {
       const progress = state.attempt_progress.find((row) => row.attempt_id === attempt.id);
+      const savedFindings = state.assistance_sessions?.find(session => session.case_id === attempt.support_case_id)?.findings
+        .filter(finding => finding.attempt_id === attempt.id && finding.profile_id === attempt.profile_id)
+        .sort((a, b) => a.at - b.at) ?? [];
       return {
         attempt,
         progress,
         person: state.profiles.find((row) => row.id === attempt.profile_id),
         transport: progress?.transport,
         transportLabel: progress ? transportLabel(progress.transport) : legacyTransport(attempt),
-        reportLabel: reportLabel(progress, attempt),
+        reportLabel: reportLabel(progress, attempt, savedFindings.length > 0),
+        savedFindings,
         followUpAt: followUpAt(progress),
         simulated: attempt.call_id?.startsWith("sim_") === true || state.assistance_sessions?.some(session => session.case_id === attempt.support_case_id && session.people.some(person => person.profile_id === attempt.profile_id && person.mode === "simulated")) === true,
       };
