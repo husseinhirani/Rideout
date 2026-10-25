@@ -47,7 +47,7 @@ export function IncidentMap({ session, selectedId, onSelect, compact = false }: 
   const scaleWidth = scaleMeters / 111195 * scale;
 
   return <section className={'incident-geography' + (compact ? ' compact' : '')} aria-label="Incident locations and proposed help">
-    <header><div><h3>People and nearby help</h3><p>{session.scenario.drill ? 'Real neighborhood geography · simulated incident' : 'Incident geography'}</p></div><div className="incident-map-tools"><button type="button" onClick={() => setWholeIncident(value => !value)}>{wholeIncident ? "Focus people" : "Whole incident"}</button><span className="incident-north" aria-label="North is up">↑ N</span></div></header>
+    <header><div><h3>People and nearby help</h3><p>{session.scenario.drill ? 'Neighborhood geography · Wildfire drill' : 'Incident geography'}</p></div><div className="incident-map-tools"><button type="button" onClick={() => setWholeIncident(value => !value)}>{wholeIncident ? "Focus people" : "Whole incident"}</button><span className="incident-north" aria-label="North is up">↑ N</span></div></header>
     <svg className="incident-geography-map" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Geographic map. Numbered markers identify participants listed below; dashed lines show proposed help, not road routes.">
       <defs><clipPath id={clipId}><rect width={width} height={height} rx="18" /></clipPath></defs>
       <g clipPath={`url(#${clipId})`}>
@@ -66,11 +66,11 @@ export function IncidentMap({ session, selectedId, onSelect, compact = false }: 
         })}
         {located.filter(p => p.location).map(p => {
           const point = project(p.location!.lng, p.location!.lat), isSelected = selected === p.person.profile_id;
-          return <g key={p.person.profile_id} transform={`translate(${point.x} ${point.y})`} role="button" tabIndex={0} aria-label={p.person.name + ': ' + (p.confirmed ? 'reported location' : 'unconfirmed simulation starting point')} onClick={() => select(p.person.profile_id)} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); select(p.person.profile_id); } }} className="incident-person-marker">
+          return <g key={p.person.profile_id} transform={`translate(${point.x} ${point.y})`} role="button" tabIndex={0} aria-label={p.person.name + ': ' + (p.confirmed ? 'reported location' : 'unconfirmed assigned drill position')} onClick={() => select(p.person.profile_id)} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); select(p.person.profile_id); } }} className="incident-person-marker">
             {isSelected && <circle r="22" fill="none" stroke="#111214" strokeWidth="2" />}
             <circle r="16" fill={p.confirmed ? p.person.facts.needs_transport ? '#ffb59f' : '#d5f45c' : '#fff'} stroke="#22251d" strokeWidth="2" strokeDasharray={p.confirmed ? undefined : '3 3'} />
             <text textAnchor="middle" dominantBaseline="central" fontSize="13" fontWeight="700" fill="#151714">{p.index}</text>
-            <title>{p.person.name} · {p.location!.label} · {p.confirmed ? 'reported during call' : 'simulation start, awaiting confirmation'}</title>
+            <title>{p.person.name} · {p.location!.label} · {p.confirmed ? 'reported during call' : 'assigned drill position, awaiting confirmation'}</title>
           </g>;
         })}
       </g>
@@ -78,10 +78,10 @@ export function IncidentMap({ session, selectedId, onSelect, compact = false }: 
     </svg>
     <div className="incident-map-key"><span><i className="start" />Unconfirmed start</span><span><i className="reported" />Reported location</span><span><i className="proposal" />Proposed help</span><span><i className="agreed" />Approved arrangement</span></div>
     <div className="incident-person-list">{located.map(p => <button type="button" key={p.person.profile_id} className={selected === p.person.profile_id ? 'selected' : ''} onClick={() => select(p.person.profile_id)}>
-      <b>{p.index}</b><span><strong>{p.person.name}</strong><small>{p.location ? p.confirmed ? 'Reported: ' + p.location.label : 'Simulation start · awaiting confirmation' : 'Location unknown · not placed on map'}</small></span>
+      <b>{p.index}</b><span><strong>{p.person.name}</strong><small>{p.location ? p.confirmed ? 'Reported: ' + p.location.label : 'Assigned drill position · awaiting confirmation' : 'Location unknown · not placed on map'}</small></span>
     </button>)}</div>
-    {chosen && <p className="incident-selected-location"><b>{chosen.person.name}:</b> {chosen.location ? `${chosen.location.label} · ${chosen.location.lat.toFixed(5)}, ${chosen.location.lng.toFixed(5)} · ${chosen.confirmed ? 'participant-reported' : 'simulation start, not a current-location report'}` : 'Current location is unknown. Earlier starting coordinates are not used for matching.'}</p>}
-    {chosen?.location?.source && <p className="incident-map-note">Location source: {chosen.location.source.replace(" in src/data/buildings.json", "")}</p>}
+    {chosen && <p className="incident-selected-location"><b>{chosen.person.name}:</b> {chosen.location ? `${chosen.location.label} · ${chosen.location.lat.toFixed(5)}, ${chosen.location.lng.toFixed(5)} · ${chosen.confirmed ? 'participant-reported' : 'assigned drill position, not yet confirmed'}` : 'Current location is unknown. Earlier starting coordinates are not used for matching.'}</p>}
+    {chosen?.location?.source && <p className="incident-map-note">Location source: {chosen.location.source.replace(" in src/data/buildings.json", "").replace("simulated participant placement", "assigned drill position")}</p>}
     <p className="incident-map-note">{wholeIncident ? "Showing all supplied incident locations." : "Map focused on participant positions. Choose Whole incident to include every supplied location."}</p>
     <div className="incident-access-key">{areaLocations.map(location => <span key={location.id}><b>{location.label}</b> · {location.access === 'community' ? 'Community access' : location.access === 'specialist' ? 'Specialist only' : 'Access unknown'}</span>)}</div>
     <p className="incident-map-note">Distances and connecting lines are straight-line comparisons, not driving routes or travel times. Street geometry does not establish safe access. © OpenStreetMap contributors.</p>

@@ -94,7 +94,7 @@ export function AssistanceBoard({ session, disabled, closed, now, compact = fals
       <details className="assistance-evidence"><summary>Reports behind this proposal ({arrangement.evidence_ids.length})</summary>
         {arrangement.evidence_ids.map(id => {
           const finding = session.findings.find(f => f.id === id);
-          return <blockquote key={id}><b>{finding ? name(finding.profile_id) : "Earlier report"}</b><p>{finding?.text || "Report text is unavailable."}</p>{finding && <small>{new Date(finding.at).toLocaleTimeString()} · {session.people.find(p => p.profile_id === finding.profile_id)?.mode === "simulated" ? "Simulated report" : "Participant report"}</small>}</blockquote>;
+          return <blockquote key={id}><b>{finding ? name(finding.profile_id) : "Earlier report"}</b><p>{finding?.text || "Report text is unavailable."}</p>{finding && <small>{new Date(finding.at).toLocaleTimeString()} · {session.people.find(p => p.profile_id === finding.profile_id)?.mode === "simulated" ? "Drill report" : "Participant report"}</small>}</blockquote>;
         })}
       </details>
     </article>)}</div> : <p className="assistance-note">{session.people.some(p => p.facts.needs_transport === true) ? "The coordinator is checking needs and suitable help. No arrangement is confirmed." : "Conversations will reveal who needs assistance and who can help."}</p>}
@@ -106,9 +106,9 @@ export function AssistanceBoard({ session, disabled, closed, now, compact = fals
       <IncidentMap session={session} compact />
       <section className="assistance-section"><h3>People and reported needs</h3><p className="assistance-note">Reports remain attributed to their source. Unknown information is left unknown.</p>
         <div className="assistance-people">{session.people.map(p => <article key={p.profile_id}>
-          <header><b>{p.name}</b>{p.mode === "simulated" && <small>Simulated</small>}</header>
+          <header><b>{p.name}</b></header>
           <strong className={p.unreachable || p.contact_blocked || p.facts.needs_transport ? "attention" : ""}>{personStatus(p, session)}</strong>
-          <p>{participantLocation(session, p).location?.label ?? "Location unknown"}{!participantLocation(session, p).confirmed && participantLocation(session, p).location ? " · simulation start, unconfirmed" : ""}</p>
+          <p>{participantLocation(session, p).location?.label ?? "Location unknown"}{!participantLocation(session, p).confirmed && participantLocation(session, p).location ? " · assigned drill position, unconfirmed" : ""}</p>
           {p.contact_blocked && <p>{p.contact_blocked}</p>}
           <div className="assistance-facts">
             {p.facts.party_size !== null && <span>{p.facts.party_size} passenger{p.facts.party_size === 1 ? "" : "s"}</span>}
@@ -126,7 +126,7 @@ export function AssistanceBoard({ session, disabled, closed, now, compact = fals
           <small>{taskStatus(task, now)}</small>
         </li>)}</ul> : <p className="assistance-note">No pending tasks.</p>}
       </section>
-      <section className="assistance-section"><h3>Incident access</h3><p className="assistance-note">{session.scenario.drill ? "These are supplied simulation assumptions, not live road guidance. Changing access can withdraw an incompatible arrangement." : "Use confirmed incident information. Unknown access does not permit a community pickup."}</p>
+      <section className="assistance-section"><h3>Incident access</h3><p className="assistance-note">{session.scenario.drill ? "These are supplied drill assumptions, not live road guidance. Changing access can withdraw an incompatible arrangement." : "Use confirmed incident information. Unknown access does not permit a community pickup."}</p>
         <div className="assistance-access">{session.scenario.locations.map(location => <div key={location.id}>
           <label htmlFor={"access-" + location.id}>{location.label}</label>
           <select id={"access-" + location.id} value={accessDraft[location.id] ?? location.access} disabled={unavailable} onChange={event => setAccessDraft(current => ({ ...current, [location.id]: event.target.value as typeof location.access }))}>

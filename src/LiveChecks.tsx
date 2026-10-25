@@ -78,7 +78,6 @@ export function LiveChecks({
   const mockActive = mockCalls.filter(call => call.phase === "live").length;
   const mockPending = mockCalls.filter(call => call.phase === "live" || call.phase === "calling").length;
   const total = calls.length + mockCalls.length;
-  const realCount = calls.filter(call => !call.simulated).length;
   const sweep = !row || row.kind === "information" ? null : latestIncident(state, true);
   const inbound = inboundFrom(state);
   const review = inbound.filter((item) => item.review);
@@ -117,7 +116,7 @@ export function LiveChecks({
       label: "Outgoing calls",
       value: total,
       icon: "phoneOut",
-      detail: mockCalls.length ? `${realCount} real · ${total - realCount} simulated · ${active.length + mockActive} on the line` : calls.length ? `${reach}% reported · ${active.length} on the line${current?.person ? ` · ${current.person.name.split(" ")[0]}` : ""}` : row ? "No calls planned yet" : "Calls appear once a case opens",
+      detail: mockCalls.length ? `${total} drill calls · ${active.length + mockActive} on the line` : calls.length ? `${reach}% reported · ${active.length} on the line${current?.person ? ` · ${current.person.name.split(" ")[0]}` : ""}` : row ? "No calls planned yet" : "Calls appear once a case opens",
     },
     {
       id: "incoming",
@@ -175,7 +174,7 @@ export function LiveChecks({
                 </span>
                 {pending.length + mockPending ? <em className="chip">{pending.length + mockPending} in progress</em> : null}
               </span>
-              <Bars bars={[...liveBars(calls, now, current), ...mockCalls.map(call => ({ id: call.id, tone: mockTone(call), height: call.phase === "calling" ? 34 : barHeight(seconds(call.answeredAt ?? call.startedAt, call.endedAt ?? now), 42), title: `${call.name} · Simulated` }))]} empty={row ? "No calls planned for this case yet" : "Calls appear once a case opens"} />
+              <Bars bars={[...liveBars(calls, now, current), ...mockCalls.map(call => ({ id: call.id, tone: mockTone(call), height: call.phase === "calling" ? 34 : barHeight(seconds(call.answeredAt ?? call.startedAt, call.endedAt ?? now), 42), title: `${call.name} · Drill` }))]} empty={row ? "No calls planned for this case yet" : "Calls appear once a case opens"} />
               <span className="legend-row">
                 <span><i className="k-live" />Active</span>
                 <span><i className="k-ring" />Placing</span>
@@ -235,7 +234,7 @@ export function LiveChecks({
                 <span><strong>{reported}</strong>reports in</span>
                 <span><strong>{calls.filter((call) => call.transport === "unknown").length}</strong>unresolved</span>
               </div>
-              <p className="focus-note">{mockCalls.length ? `${realCount} real call${realCount === 1 ? "" : "s"} · ${total - realCount} simulated calls. Scripted neighbors do not contribute saved reports.` : "Call status comes from the phone provider. Reports are saved separately."}</p>
+              <p className="focus-note">{mockCalls.length ? "Drill activity. Only saved reports contribute to coordination." : "Call progress and saved reports are tracked separately."}</p>
               {total === 0 ? (
                 <p className="focus-empty">{row ? "No calls planned for this case yet." : "Calls appear once a case opens."}</p>
               ) : (
@@ -422,7 +421,7 @@ function LiveCallRow({
   const stamp = (ms: number | null) => (ms && created ? mmss(seconds(created, ms)) : "");
 
   const lines: TimelineLine[] = [{ at: "0:00", who: "Assigned question", text: call.attempt.ask, kind: "system" }];
-  if (placed) lines.push({ at: stamp(placed), who: "", text: call.simulated ? "Simulated call placed." : "Call placed.", kind: "system" });
+  if (placed) lines.push({ at: stamp(placed), who: "", text: call.simulated ? "Drill call started." : "Call placed.", kind: "system" });
   if (call.attempt.answer) lines.push({ at: stamp(reportedAt), who: `Call report · ${first}`, text: call.attempt.answer, kind: "them" });
   if (call.attempt.concern) lines.push({ at: stamp(reportedAt), who: "Concern", text: call.attempt.concern, kind: "warn" });
   if (call.progress?.dispatch_error) lines.push({ at: "", who: "Dispatch", text: call.progress.dispatch_error, kind: "warn" });
@@ -444,7 +443,7 @@ function LiveCallRow({
           <b>{name}</b>
           <small>
             {created ? new Date(created).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "Not dialed"}
-            {call.simulated ? " · simulated" : ""} · {call.reportLabel}
+            {" · "}{call.reportLabel}
           </small>
         </span>
         <em className="call-state">
@@ -458,7 +457,7 @@ function LiveCallRow({
         <div>
           <div className="call-meta">
             <span>
-              <small>Phone provider</small>
+              <small>{call.simulated ? "Call status" : "Phone provider"}</small>
               {call.transportLabel}
             </span>
             <span>
@@ -493,9 +492,9 @@ function LiveCallRow({
                 }
               }}
             >
-              <small>Simulated helper report · what {name} says on the call</small>
-              <input value={answer} onChange={(event) => setAnswer(event.target.value)} placeholder="Yes, I can check the park bench." aria-label="Simulated helper answer" />
-              <input value={concern} onChange={(event) => setConcern(event.target.value)} placeholder="Concern, if any" aria-label="Simulated concern" />
+              <small>Drill report · what {name} says on the call</small>
+              <input value={answer} onChange={(event) => setAnswer(event.target.value)} placeholder="Yes, I can check the park bench." aria-label="Drill participant answer" />
+              <input value={concern} onChange={(event) => setConcern(event.target.value)} placeholder="Concern, if any" aria-label="Drill concern" />
               <button type="submit" disabled={!answer.trim()}>
                 Send report
               </button>
@@ -517,7 +516,7 @@ function MockCallRow({ call, now }: { call: CallCard; now: number }) {
   return <li className={`dash-call t-${mockTone(call)}${open ? " open" : ""}`}>
     <button type="button" className="call-head" onClick={() => setOpen(!open)} aria-expanded={open}>
       <span className="face">{initials(call.name)}</span>
-      <span className="call-name"><b>{call.name}</b><small>Simulated · wildfire drill</small></span>
+      <span className="call-name"><b>{call.name}</b><small>Wildfire drill</small></span>
       <em className="call-state"><i />{label}</em>
       <span className="call-time">{mmss(seconds(call.answeredAt ?? call.startedAt, call.endedAt ?? now))}</span>
       <Icon name="chevron" />
@@ -525,7 +524,7 @@ function MockCallRow({ call, now }: { call: CallCard; now: number }) {
     <div className="call-drop"><div>
       <p className="focus-note">Scripted demo call. This neighbor has not been phoned.</p>
       <Timeline lines={[
-        { at: "0:00", who: "Agent · simulated", text: "Are you safe, and can you leave on your own?", kind: "you" },
+        { at: "0:00", who: "Agent · drill", text: "Are you safe, and can you leave on your own?", kind: "you" },
         ...(call.transcript ? [{ at: mmss(seconds(call.startedAt, call.answeredAt ?? now)), who: call.name, text: call.transcript, kind: "them" as const }] : []),
         { at: mmss(seconds(call.startedAt, call.endedAt ?? now)), who: "", text: label, kind: "system" },
       ]} />
@@ -588,7 +587,7 @@ function CheckIns({
   if (waiting.length === 0) return <p className="focus-empty">Everyone in the sweep has answered.</p>;
   return (
     <>
-      <p className="focus-note">Simulated answers stand in for the resident on the phone.</p>
+      <p className="focus-note">Drill answers stand in for the resident on the phone.</p>
       <ul className="people-list">
         {waiting.map((person) => {
           const profile = state.profiles.find((row) => row.id === person.profile_id);
@@ -641,15 +640,15 @@ function SimulatedInbound({ state, onSend }: { state: BackendState; onSend: Live
         }
       }}
     >
-      <small>Simulated inbound call · fictional caller metadata</small>
-      <select value={phone} onChange={(event) => setPhone(event.target.value)} aria-label="Simulated caller">
+      <small>Drill inbound call · supplied caller details</small>
+      <select value={phone} onChange={(event) => setPhone(event.target.value)} aria-label="Drill caller">
         {callers.map((profile) => (
           <option key={profile.id} value={profile.phone}>
             {profile.name} · {profile.phone}
           </option>
         ))}
       </select>
-      <input value={text} onChange={(event) => setText(event.target.value)} placeholder="What the caller says…" aria-label="Simulated caller words" />
+      <input value={text} onChange={(event) => setText(event.target.value)} placeholder="What the caller says…" aria-label="Drill caller words" />
       <button type="submit" disabled={!text.trim() || !phone}>
         Send call
       </button>

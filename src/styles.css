@@ -1618,9 +1618,6 @@ button.tile:hover { transform: translateY(-3px); box-shadow: 0 16px 34px rgba(17
 .notification-stack button { flex: none; }
 
 /* The coordinator shows decisions beside calls; detailed records stay in its focus view. */
-.start-simulation-option { display: flex; align-items: flex-start; gap: 10px; padding: 14px; color: #fff; font-size: 14px; line-height: 1.4; cursor: pointer; }
-.start-simulation-option input { width: 16px; height: 16px; margin: 2px 0 0; accent-color: #d4f25c; }
-.start-simulation-option small { display: block; }
 .has-assistance .dash-grid { min-height: 700px; }
 .has-assistance .dash-col > .tile.calls { min-height: 280px; }
 .assistance-board { display: flex; flex-direction: column; gap: 16px; min-width: 0; }

@@ -45,10 +45,11 @@ resume when the API restarts. The coordinator requires `ANTHROPIC_API_KEY`, and 
 require the existing Cartesia and callback configuration. Do not set `SIMULATE=1` for the
 real-phone run. Never place provider keys in frontend variables.
 
-## First run: three consenting phone participants
+## First run: saved phone participants and 12 simulated neighbors
 
-1. Refresh the browser. Leave **Include 12 simulated neighbors** unchecked. Select
-   **Start → Wildfire drill** once. Each saved participant receives an initial call.
+1. Refresh the browser and select **Start → Wildfire drill** once. Each saved participant
+   receives an initial call. Twelve drill neighbors join the same incident
+   automatically; their conversations do not dial real phones.
 2. Tom introduces himself, confirms each person's name, and explains the fictional drill.
    Speak naturally; important reported facts appear in the coordinator while calls continue.
 3. To exercise a possible match, one participant can report needing a ride for one person,
@@ -82,8 +83,10 @@ conversation. Missed calls and unanswered milestones remain in human review.
   services or claim a specialist team was dispatched.
 - Pause outreach: no new tasks or calls are authorized; already active calls may finish
   reporting what they learned.
-- On a later run, optionally include 12 simulated neighbors. They produce reports through
-  the same backend workflow, are marked as simulated, and never dial phone numbers.
+- The 12 simulated neighbors produce reports through the same backend workflow,
+  retain their simulated mode internally, and never dial phone numbers. The interface uses
+  one drill roster without per-person mode badges. Their reported needs and capabilities
+  also affect matching, so the coordinator may propose a suitable simulated helper.
 
 ## What has been validated locally
 
@@ -101,14 +104,16 @@ actual addresses. Tom first asks each participant to confirm or correct the star
 Confirming it supplies the exact coordinate-backed location to the matching calculation;
 simply displaying the initial marker does not authorize a match.
 
-For two nearby pairs, Tony and Shehryar can each report a ride needed for one person, no
+To exercise the four real participants, Tony and Shehryar can each report a ride needed for one person, no
 wheelchair or pets. Vien and Hussein can each report independent evacuation, willingness
 to help and one passenger seat (answer the wheelchair/pet capability questions too).
 The configured starting points put Tony about 42 m from Vien, and Shehryar about 24 m from
 Hussein. Cross-pair separations are about 247–275 m. These are straight-line distances,
 not driving distances or arrival estimates.
 
-Wait for both proposals, then approve them. The coordinator waits for outstanding
+The 12 simulated neighbors participate too, so those two nearby pairs are examples, not
+guaranteed assignments. Review the actual proposals, then approve the ones you want to
+exercise. The coordinator waits for outstanding
 relevant information so an early report does not reserve the only suitable helper before
 comparing the group. The map shows the same reported positions used in this comparison.
 A location correction changes the matching inputs; swapping names alone does not.

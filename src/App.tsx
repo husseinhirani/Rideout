@@ -62,7 +62,6 @@ export function App() {
   const [liveSelected, setLiveSelected] = useState<number | null>(null);
   const [outside, setOutside] = useState<{ session: OperatorSession; call: LiveCall } | null>(null);
   const [startingDrill, setStartingDrill] = useState(false);
-  const [includeSimulated, setIncludeSimulated] = useState(false);
   const [coordinatorBusy, setCoordinatorBusy] = useState(false);
   const [retryChat, setRetryChat] = useState<{ caseId: number; text: string } | null>(null);
   const drillLock = useRef(false);
@@ -108,7 +107,7 @@ export function App() {
     const { location, confirmed } = participantLocation(assistance, person);
     return location ? [{ id: person.profile_id, name: person.name, lat: location.lat, lng: location.lng,
       status: (person.unreachable ? "unknown" : person.facts.needs_transport ? "needs_ride" : "waiting") as HouseStatus,
-      note: (confirmed ? "Participant-reported incident location: " : "Unconfirmed simulation starting point: ") + location.label }] : [];
+      note: (confirmed ? "Participant-reported incident location: " : "Assigned drill position (unconfirmed): ") + location.label }] : [];
   }) : state ? housesFrom(state, residents, spots, GEO) : [], [state, assistance, residents, spots]);
   const liveCalls = useMemo(() => (state && liveCase ? callsFor(state, liveCase.id) : []), [state, liveCase?.id]);
   const liveSightings = useMemo(() => (state ? sightingsFrom(state, liveCase?.id ?? null) : []), [state, liveCase?.id]);
@@ -245,10 +244,8 @@ export function App() {
       const key = "rideout:wildfire-command";
       const pendingId = sessionStorage.getItem(key);
       const commandId = pendingId || crypto.randomUUID();
-      const include = pendingId ? sessionStorage.getItem(key + ":simulation") === "true" : includeSimulated;
       sessionStorage.setItem(key, commandId);
-      sessionStorage.setItem(key + ":simulation", String(include));
-      const result = await backend.run(() => api.wildfireDrill(commandId, include));
+      const result = await backend.run(() => api.wildfireDrill(commandId));
       sessionStorage.removeItem(key);
       sessionStorage.removeItem(key + ":simulation");
       setCaseId(result.support_case_id);
@@ -383,12 +380,8 @@ export function App() {
                   }}
                 >
                   <b>{startingDrill ? "Starting calls…" : "Wildfire drill"}</b>
-                  <small>{state.wildfire_demo?.ready ? `${state.demo_mode.simulate ? "Simulated calls" : "Call"} ${(state.wildfire_demo.names ?? [state.wildfire_demo.name]).join(", ")}` : "Configure the private drill roster"}</small>
+                  <small>{state.wildfire_demo?.ready ? `${state.demo_mode.simulate ? "Drill calls for" : "Call"} ${(state.wildfire_demo.names ?? [state.wildfire_demo.name]).join(", ")}` : "Configure the private drill roster"}</small>
                 </button>
-                <label className="start-simulation-option">
-                  <input type="checkbox" checked={includeSimulated} disabled={startingDrill} onChange={event => setIncludeSimulated(event.target.checked)} />
-                  <span>Include 12 simulated neighbors<small>They participate in coordination without phone calls.</small></span>
-                </label>
                 <button
                   type="button"
                   role="menuitem"
