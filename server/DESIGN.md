@@ -26,8 +26,54 @@ and never dials or writes rows. Scripted mode illustrates policy with fixed outp
 real mode calls Claude. Neither mode implements durable event ingestion, timers,
 revision checks or verified parent identity. Those belong to subsequent tickets.
 
-The HTTP runtime described below is still the baseline behavior. This slice does
-not wire the new evaluator into `runPlan()` or change the hosted phone contracts.
+The fixture remains isolated. The automatic runtime below reuses its evaluator
+without changing the hosted phone payload.
+
+## Automatic coordination (issue #5)
+
+This opt-in behavior supersedes the legacy dispatcher-only replanning rules below
+for enrolled demo cases. `AUTO_COORDINATE=1` and `COORDINATOR_HELPER_IDS=1,2`
+enroll newly opened cases with exactly two known helpers. The worker scans every
+second and on startup. Existing cases with attempts are not automatically enrolled.
+The predefined locations are Park bench and Playground; structured initial intake
+and parent identity are still pending issue #6. Original incident text is retained;
+incident creation time is not presented as last-seen time.
+
+`case_progress` stores input/evaluated revisions, helper IDs and bounded retry
+state. `attempt_progress` stores claims, transport, raw report receipts,
+interpretation state and acceptance/review times alongside existing attempts.
+Reducers remain the only writes. Multi-query snapshots retry when the revision
+changes; accepted plans commit only against their input revision. New input
+cancels unclaimed queued work. Claims are exclusive, and uncertain dispatch is
+never automatically redialed. Reports and timers cannot declare a real call ended.
+Only a provider `completed` status releases a live destination in this slice.
+
+For an enrolled attempt, `POST /calls/report` keeps the existing body and response
+but acknowledges a durable raw receipt before interpretation. Exactly one final
+report is accepted per attempt: identical replay is a no-op; different content
+returns 409. The worker interprets receipts, stores attributed notes, updates
+case/incident briefs and reconsiders the case. Briefs use deterministic report
+summaries, explicitly labeled unverified. Claude failures execute no fallback
+outreach and stop after three failures with persisted backoff. New input can
+resume the case. No hosted tool, prompt, authentication or tunnel changes occur.
+
+Follow-up becomes due 10 seconds after receipt of an explicit acceptance, not ten
+seconds after dialing. It still waits for the previous call to end. A simulated
+final report ends its simulated call. Each helper has at most an initial call
+and one follow-up; different destinations can overlap. Legacy attempts have no
+verified transport state, so any legacy attempt to the same destination blocks
+an automatic claim conservatively. Use a dedicated demo database/helper pool.
+
+`GET /state` adds `coordination` and `attempt_progress`; existing arrays remain.
+Publish the additive module before starting this server, even in legacy mode.
+Disabling `AUTO_COORDINATE` pauses enrolled cases rather than letting the old
+planner take them over. Closing a case prevents new outreach; already active
+phone conversations are not terminated. The current manual close route does not
+verify parent identity: phone-confirmed closure belongs to #6.
+
+Tests execute the actual reducers in a transactional in-memory host and restart
+worker instances over retained rows. They do not prove SpacetimeDB deployment,
+real process/database restart recovery, Claude behavior, or phone delivery.
 
 ## 1. Glossary
 

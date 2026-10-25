@@ -73,6 +73,7 @@ function distanceM(lat1: number, lng1: number, lat2: number, lng2: number): numb
 export const setIncidentBrief = spacetimedb.reducer(
   { incident_id: t.u64(), brief: t.string() },
   (ctx, { incident_id, brief }) => {
+    if ([...ctx.db.supportCase.incident_id.filter(incident_id)].some(row => ctx.db.caseProgress.support_case_id.find(row.id))) return
     const current = ctx.db.incident.id.find(incident_id)
     if (!current) throw new Error("Incident not found")
     ctx.db.incident.id.update({ ...current, brief })

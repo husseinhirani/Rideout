@@ -11,6 +11,7 @@ import {
   openCaseForVictim,
   openIncidentFromText,
   openIncidentStructured,
+  startCoordinatorWorker,
 } from "./loop"
 import { asId, asNumber, asString, optionalId, optionalString, ServiceError } from "./service"
 
@@ -29,6 +30,7 @@ const server = createServer((req, res) => {
 
 server.listen(Number(process.env.PORT ?? PORT), "127.0.0.1", () => {
   console.log("listening on http://127.0.0.1:" + String(process.env.PORT ?? PORT))
+  startCoordinatorWorker()
 })
 
 async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {

@@ -101,5 +101,37 @@ const note = table(
   },
 )
 
-const spacetimedb = schema({ profile, incident, incidentPerson, supportCase, attempt, note })
+const caseProgress = table(
+  { name: "case_progress", public: true },
+  {
+    support_case_id: t.u64().primaryKey(),
+    helper_profile_ids: t.array(t.u64()),
+    input_revision: t.u64(),
+    evaluated_revision: t.u64(),
+    failure_count: t.u8(),
+    retry_at_ms: t.option(t.f64()),
+    blocked_reason: t.string(),
+  },
+)
+
+const attemptProgress = table(
+  { name: "attempt_progress", public: true },
+  {
+    attempt_id: t.u64().primaryKey(),
+    support_case_id: t.u64().index("btree"),
+    context: t.string(),
+    transport: t.string(),
+    claim_token: t.string(),
+    dispatch_error: t.string(),
+    claimed_at_ms: t.option(t.f64()),
+    report_received: t.bool(),
+    report_processed: t.bool(),
+    raw_concern: t.string(),
+    report_received_at_ms: t.option(t.f64()),
+    accepted_at_ms: t.option(t.f64()),
+    review_consumed: t.bool(),
+  },
+)
+
+const spacetimedb = schema({ profile, incident, incidentPerson, supportCase, attempt, note, caseProgress, attemptProgress })
 export default spacetimedb

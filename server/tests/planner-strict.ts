@@ -27,9 +27,16 @@ test("real planner parses valid output and rejects refusal, truncation and API f
   process.env.ANTHROPIC_API_KEY = "test-only-not-a-real-key"
   process.env.ANTHROPIC_BASE_URL = `http://127.0.0.1:${address.port}`
   try {
-    const { planStrict } = await import("../src/agent")
+    const { planStrict, interpretCoordinationAnswer } = await import("../src/agent")
     assert.deepEqual(await planStrict({reports: ["New sighting"]}), expected)
     assert.match(JSON.stringify(received.messages), /New sighting/)
+    const report = { reached: true, accepted: true, notes: [], concern: "" }
+    output = JSON.stringify(report)
+    assert.deepEqual(await interpretCoordinationAnswer({answer: "I will check the playground."}), report)
+    assert.match(JSON.stringify(received.output_config), /accepted/)
+    output = JSON.stringify({ reached: true, notes: [], concern: "" })
+    await assert.rejects(() => interpretCoordinationAnswer({}))
+    output = JSON.stringify(expected)
     stopReason = "max_tokens"
     await assert.rejects(() => planStrict({}))
     stopReason = "refusal"

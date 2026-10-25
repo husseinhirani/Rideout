@@ -34,6 +34,51 @@ how to start it and how to run a real phone call end to end.
 
 ---
 
+## Automatic follow-up backend (issue #5)
+
+This uses the actual HTTP backend and persisted state. First publish the updated
+SpacetimeDB module to a dedicated test database: it adds `case_progress` and
+`attempt_progress`, which the server now reads. Use the existing database setup
+for that isolated environment; do not run `dev-clean-db` against Vien's database.
+Seed two helpers with distinct destinations and a separate child profile with an
+empty phone. Substitute the actual helper IDs below. Claude credentials are still
+required in simulated-call mode; this is not the offline scripted snapshot demo.
+
+```bash
+# Same backend, calls simulated for recording/development:
+AUTO_COORDINATE=1 COORDINATOR_HELPER_IDS=1,2 npm run server:sim
+
+# Same backend, real calls through Vien's existing provider adapter:
+AUTO_COORDINATE=1 COORDINATOR_HELPER_IDS=1,2 npm run server
+```
+
+Start a point incident with the full child description/location/time via the
+existing typed incident UI, or open a case for a separately seeded child through
+`POST /cases`. Two helper calls may overlap. Submit one final report per attempt
+through the existing simulation box or `POST /calls/report`:
+
+```json
+{"attempt_id":"7","answer":"Yes, I can check the park bench.","concern":""}
+```
+
+The callback returns after saving the receipt. Interpretation and planning happen
+in the worker. An explicit acceptance makes a follow-up due after 10 seconds;
+a real call must also have ended before another call reaches that helper.
+Exact report replays are harmless; changed final reports for the same attempt
+return 409. New unsolicited updates need the forthcoming inbound interface.
+
+Inspect `/state`: `coordination` exposes revision, backoff and blocked status;
+`attempt_progress` exposes transport, receipt and acceptance state. `unknown`
+transport is not retried automatically. Each helper gets at most two calls.
+Close through the existing case route to verify queued outreach stops. Do not
+represent that manual closure as verified parent confirmation.
+
+Verification for this change: `npm test` and `npm run check`. Tests include real
+reducer functions with an in-memory transaction host, fake provider/model calls,
+worker recreation, report replay, stale plans and simultaneous worker claims.
+Live DB publishing/restart, real Claude, incoming calls and end-to-end phone
+rehearsal remain separate checks. Initial phone intake is not yet implemented.
+
 ## 1. One-time setup
 
 ```sh

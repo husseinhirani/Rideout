@@ -1,3 +1,4 @@
+import { coordinationInput } from "./coordination"
 import { t } from "spacetimedb/server"
 import spacetimedb, {
   ANSWERED,
@@ -41,6 +42,7 @@ export const addAttempt = spacetimedb.reducer(
     const current = ctx.db.supportCase.id.find(support_case_id)
     if (!current) throw new Error("Support case not found")
     if (current.status === CLOSED) throw new Error("Support case is closed")
+    if (ctx.db.caseProgress.support_case_id.find(support_case_id)) throw new Error("Use coordination plan to add attempts")
     if (!ctx.db.profile.id.find(profile_id)) throw new Error("Profile not found")
     ctx.db.attempt.insert({
       id: 0n,
@@ -61,6 +63,7 @@ export const setAttemptCall = spacetimedb.reducer(
   (ctx, { attempt_id, call_id }) => {
     const current = ctx.db.attempt.id.find(attempt_id)
     if (!current) throw new Error("Attempt not found")
+    if (ctx.db.attemptProgress.attempt_id.find(attempt_id)) throw new Error("Use coordination reducers for this attempt")
     ctx.db.attempt.id.update({
       ...current,
       call_id: call_id.length === 0 ? undefined : call_id,
@@ -76,6 +79,7 @@ export const recordAnswer = spacetimedb.reducer(
     }
     const current = ctx.db.attempt.id.find(attempt_id)
     if (!current) throw new Error("Attempt not found")
+    if (ctx.db.attemptProgress.attempt_id.find(attempt_id)) throw new Error("Use coordination reducers for this attempt")
     // A real answer is never overwritten. Anything else may be, so a late report
     // still lands after the deadline already wrote no_answer.
     if (current.outcome === ANSWERED) return
@@ -99,8 +103,8 @@ export const addNote = spacetimedb.reducer(
     if (text.trim().length === 0) throw new Error("text is required")
     if (!ctx.db.supportCase.id.find(support_case_id)) throw new Error("Support case not found")
     // attempt_id 0 means the note did not come from a call. Ids start at 1.
-    if (attempt_id !== 0n && !ctx.db.attempt.id.find(attempt_id)) {
-      throw new Error("Attempt not found")
+    if (attempt_id !== 0n && ctx.db.attempt.id.find(attempt_id)?.support_case_id !== support_case_id) {
+      throw new Error("Attempt does not belong to this support case")
     }
     ctx.db.note.insert({
       id: 0n,
@@ -113,12 +117,14 @@ export const addNote = spacetimedb.reducer(
       radius_m: has_place ? radius_m : undefined,
       at: ctx.timestamp,
     })
+    coordinationInput(ctx, support_case_id)
   },
 )
 
 export const setBrief = spacetimedb.reducer(
   { support_case_id: t.u64(), brief: t.string() },
   (ctx, { support_case_id, brief }) => {
+    if (ctx.db.caseProgress.support_case_id.find(support_case_id)) return
     const current = ctx.db.supportCase.id.find(support_case_id)
     if (!current) throw new Error("Support case not found")
     ctx.db.supportCase.id.update({ ...current, brief })
@@ -133,6 +139,9 @@ export const setCaseStatus = spacetimedb.reducer(
     }
     const current = ctx.db.supportCase.id.find(support_case_id)
     if (!current) throw new Error("Support case not found")
+    if (current.status === status) return
+    if (current.status === CLOSED && ctx.db.caseProgress.support_case_id.find(support_case_id)) throw new Error("Closed coordination cases cannot reopen")
     ctx.db.supportCase.id.update({ ...current, status })
+    coordinationInput(ctx, support_case_id)
   },
 )
