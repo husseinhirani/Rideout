@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk"
 
-const DEFAULT_MODEL = "claude-opus-5"
+const DEFAULT_MODEL = "claude-sonnet-5-5"
 const MAX_TOKENS = 16_000
 
 let client: Anthropic | null = null
