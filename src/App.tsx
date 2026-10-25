@@ -49,7 +49,7 @@ export function App() {
   const [menu, setMenu] = useState(false);
   const [form, setForm] = useState(false);
   const [register, setRegister] = useState(false);
-  const [caseId, setCaseId] = useState<number | null>(null);
+  const [caseId, setCaseId] = useState<number | null>(0);
   const [liveChat, setLiveChat] = useState<ChatMessage[]>([]);
   const [chatBusy, setChatBusy] = useState(false);
   const [liveSelected, setLiveSelected] = useState<number | null>(null);
@@ -88,18 +88,25 @@ export function App() {
   const conversation = [...savedChat, ...liveChat.filter(message => !savedChat.some(saved => saved.from === message.from && saved.text === message.text))].sort((a,b) => a.at - b.at);
   useEffect(() => { setLiveChat([]); }, [liveCase?.id]);
   const liveHouses = useMemo(() => (state ? housesFrom(state, residents, spots, GEO) : []), [state, residents, spots]);
-  const liveCalls = useMemo(() => (state ? callsFor(state, liveCase?.id ?? null) : []), [state, liveCase?.id]);
+  const liveCalls = useMemo(() => (state && liveCase ? callsFor(state, liveCase.id) : []), [state, liveCase?.id]);
   const liveSightings = useMemo(() => (state ? sightingsFrom(state, liveCase?.id ?? null) : []), [state, liveCase?.id]);
   const liveGraph = useMemo(() => graphCalls(liveCalls, liveHouses), [liveCalls, liveHouses]);
   const selectedProfile = state?.profiles.find(p => p.id === liveSelected);
   const livePerson = liveHouses.find((house) => house.id === liveSelected) ?? (selectedProfile ? { ...selectedProfile, status: "waiting" as const, note: "Stored directory profile; current whereabouts unverified." } : null);
   const concern = live ? liveCalls.find((call) => call.attempt.concern && call.transport !== "ended" && call.transport !== "cancelled") : undefined;
 
-  // A newly opened case takes over the view; choosing one by hand holds until the next opens.
+  // Start idle on a fresh page unless a real call still needs attention. New
+  // cases opened during this session take focus; old completed drills stay history.
+  const newestSeen = useRef<number | null>(null);
   const newestCase = state?.cases.reduce((max, row) => Math.max(max, row.id), 0) ?? 0;
   useEffect(() => {
-    setCaseId(null);
-  }, [newestCase]);
+    if (!state) return;
+    if (newestSeen.current === null) {
+      const ongoing = [...state.attempt_progress].reverse().find(call => ["queued", "dispatching", "active", "unknown"].includes(call.transport));
+      setCaseId(current => current === 0 && ongoing ? ongoing.support_case_id : current);
+    } else if (newestCase > newestSeen.current) setCaseId(newestCase);
+    newestSeen.current = newestCase;
+  }, [state, newestCase]);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), 1000);
@@ -294,9 +301,13 @@ export function App() {
                 <button
                   type="button"
                   role="menuitem"
-                  disabled={!backend.connected || startingDrill || !state.wildfire_demo?.ready}
+                  disabled={!backend.connected || startingDrill}
                   onClick={() => {
                     setMenu(false);
+                    if (!state.wildfire_demo?.ready) {
+                      setNotice("No saved drill participant is available. Set WILDFIRE_DEMO_PHONE in .env.local and restart the API for the first drill.");
+                      return;
+                    }
                     void startWildfire();
                   }}
                 >
@@ -371,7 +382,7 @@ export function App() {
         <>
           {tab === "map" ? (
             <>
-              <LiveStats state={state} caseId={liveCase?.id ?? null} />
+              <LiveStats state={state} caseId={liveCase?.id ?? 0} />
               <aside className="right">
                 <CaseCard
                   state={state}
@@ -397,7 +408,7 @@ export function App() {
           <LiveChecks
             visible={tab === "checks"}
             state={state}
-            caseId={liveCase?.id ?? null}
+            caseId={liveCase?.id ?? 0}
             houses={liveHouses}
             mockCalls={mockCalls}
             firstProfileId={liveDrill?.profile_id}

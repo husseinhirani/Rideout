@@ -44,7 +44,7 @@ async function state() {
   const [legacy, information, incoming, coordination, inbound, drills] = await Promise.all([getState(false), readInformationState(), incomingRequests(), readInformationPlanning(), readInformationIncomingState(), wildfireDrills()])
   return {
     ...legacy, read_model_version: 2, server_time_ms: Date.now(),
-    wildfire_demo: wildfireDemo(),
+    wildfire_demo: await wildfireDemo(),
     wildfire_drills: drills,
     profiles: (legacy.profiles as ProfileRow[]).map(({phone, ...profile}) => ({...profile, phone_last4: phone.slice(-4)})),
     incidents: [...legacy.incidents as unknown[], ...information.incidents.map(i => ({...i, kind: "information", type: "Information investigation", brief: ""}))],

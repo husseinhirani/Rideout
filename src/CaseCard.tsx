@@ -25,8 +25,12 @@ export function CaseCard({
   if (!row) {
     return (
       <article className="glass case-card">
-        <p className="kicker">No case yet</p>
-        <p className="case-goal">Start → Missing child opens one from the dispatcher form. Inbound calls open one too.</p>
+        <p className="kicker">Ready to start</p>
+        <p className="case-goal">Use Start to begin a new drill, or open a previous case.</p>
+        {state.cases.length > 0 && <select value="" onChange={event => onChoose(Number(event.target.value))} aria-label="Open a previous case">
+          <option value="" disabled>Previous cases…</option>
+          {[...state.cases].sort((a, b) => b.id - a.id).map(item => <option key={item.id} value={item.id}>Case #{item.id} · {item.goal}</option>)}
+        </select>}
       </article>
     );
   }

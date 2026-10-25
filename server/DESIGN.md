@@ -3,7 +3,10 @@
 ## One-participant wildfire calling
 
 `POST /drills/wildfire` accepts an operator command ID. The Node handler supplies
-the participant name and phone from `WILDFIRE_DEMO_NAME` / `WILDFIRE_DEMO_PHONE`;
+the participant name and phone from `WILDFIRE_DEMO_NAME` / `WILDFIRE_DEMO_PHONE`
+for initial setup. Without a configured phone it resolves the latest saved drill
+participant by profile ID from the operator command log, never by a hardcoded
+name or by choosing an arbitrary directory entry;
 the browser sends neither a destination nor credentials. The `startWildfireDrill`
 reducer atomically finds/creates the profile, records initial consent when there
 is no preference, creates one case and queues one explicit information call.
@@ -20,7 +23,16 @@ no tables or schema changes are introduced.
 
 `GET /state` includes only the demo name/readiness. The UI keeps an uncertain
 start command in session storage so retry/refresh cannot create a second case.
-The outgoing row uses the existing backend profile/attempt join.
+The outgoing row uses the existing backend profile/attempt join. Readiness uses
+that same participant resolver. If initial setup is missing, clicking the menu
+shows an explanation instead of silently doing nothing. Consent and duplicate-call
+checks remain enforced by the reducer.
+
+A fresh browser page starts with zero outgoing calls unless a queued, dispatching,
+active or unresolved call needs attention. Completed cases remain selectable under
+Map → Previous cases. New cases opened during the session take focus; finishing a
+call does not clear the current view. This separates history from a new drill
+without deleting any database records.
 
 `GET /state` also returns saved wildfire drill case/profile IDs and start times
 from the existing operator command log. The UI reconstructs the existing 12-person

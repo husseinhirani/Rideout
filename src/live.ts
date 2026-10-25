@@ -62,6 +62,7 @@ export function isPossibleMatch(text: string): boolean {
 
 /** The case the dashboard follows: the chosen one, else the newest open, else the newest. */
 export function currentCase(state: BackendState, chosenId: number | null): SupportCaseRow | null {
+  if (chosenId === 0) return null; // Explicit idle view; history remains selectable.
   const chosen = chosenId === null ? undefined : state.cases.find((row) => row.id === chosenId);
   if (chosen) return chosen;
   const newest = [...state.cases].sort((a, b) => b.id - a.id);

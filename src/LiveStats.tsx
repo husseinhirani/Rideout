@@ -6,8 +6,8 @@ type Tile = { label: string; value: number | string; hot?: boolean; good?: boole
 /** Live numbers from /state, in the same tiles as the offline drill. */
 export function LiveStats({ state, caseId }: { state: BackendState; caseId: number | null }) {
   const row = currentCase(state, caseId);
-  const calls = callsFor(state, row?.id ?? null);
-  const sweep = row?.kind === "information" ? null : latestIncident(state, true);
+  const calls = row ? callsFor(state, row.id) : [];
+  const sweep = !row || row.kind === "information" ? null : latestIncident(state, true);
   const people = sweep ? state.incident_people.filter((item) => item.incident_id === sweep.id) : [];
   const count = (status: string) => people.filter((item) => item.status === status).length;
   const reports = calls.filter(call => call.progress?.report_received).length;

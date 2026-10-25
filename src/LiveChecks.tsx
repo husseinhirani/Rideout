@@ -68,12 +68,12 @@ export function LiveChecks({
   actions: LiveActions;
 }) {
   const row = currentCase(state, caseId);
-  const calls = callsFor(state, row?.id ?? null).sort((a, b) => Number(b.person?.id === firstProfileId) - Number(a.person?.id === firstProfileId));
+  const calls = (row ? callsFor(state, row.id) : []).sort((a, b) => Number(b.person?.id === firstProfileId) - Number(a.person?.id === firstProfileId));
   const mockActive = mockCalls.filter(call => call.phase === "live").length;
   const mockPending = mockCalls.filter(call => call.phase === "live" || call.phase === "calling").length;
   const total = calls.length + mockCalls.length;
   const realCount = calls.filter(call => !call.simulated).length;
-  const sweep = row?.kind === "information" ? null : latestIncident(state, true);
+  const sweep = !row || row.kind === "information" ? null : latestIncident(state, true);
   const inbound = inboundFrom(state);
   const review = inbound.filter((item) => item.review);
   const simulate = state.demo_mode.simulate;
