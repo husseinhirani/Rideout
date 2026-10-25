@@ -14,6 +14,12 @@ Scenario-specific stories are available only through explicit offline selection.
 Live disconnect retains real state; stored directory coordinates never become
 fictional household facts. See `README.md` for local startup and the first UI check.
 
+The map restores UpdatedUI's Side/Aerial/Nodes controls, Simple toggle, statistics,
+case and profile panels, hover cards and Start menu. Live building hover shows
+geometry only unless actual profile data is associated; Nodes uses stored contact
+relationships. The explicit offline story retains its scenario forms, map stats,
+export, call controls and takeover panel.
+
 The visual notes below describe the original map/dashboard direction.
 
 Source: the Droneview AI dashboard. The 3D neighborhood is the canvas. Every fact sits in a black, rounded, slightly blurred card on top of it. Type is large enough to read across a table.

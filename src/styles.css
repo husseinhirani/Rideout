@@ -1620,3 +1620,5 @@ button.tile:hover { transform: translateY(-3px); box-shadow: 0 16px 34px rgba(17
 
 .tile.status .stick { min-width: 0; }
 .tile.status .stick small { white-space: normal; overflow-wrap: anywhere; text-align: center; font-size: 11px; }
+
+.checks-on .street-label, .nodes-on .street-label { visibility: hidden !important; }

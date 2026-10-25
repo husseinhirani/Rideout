@@ -13,6 +13,7 @@ import type { House, Place, Sighting } from "./types";
 type Tip = {
   x: number;
   y: number;
+  buildingOnly?: boolean;
   kicker: string;
   owner: string;
   number: number;
@@ -566,7 +567,6 @@ export function NeighborhoodMap({ place, houses, onSelect, angle = "side", simpl
     };
 
     const hoverAt = (event: PointerEvent) => {
-      if (liveData) { setTip(null); return; }
       const rect = node.getBoundingClientRect();
       const id = pickAt(event);
       setHover(id);
@@ -575,6 +575,10 @@ export function NeighborhoodMap({ place, houses, onSelect, angle = "side", simpl
         return;
       }
       const house = housesRef.current.find((item) => item.id === id);
+      if (liveData) {
+        setTip({ x: Math.min(Math.max(12, event.clientX - rect.left + 16), rect.width - 312), y: Math.min(Math.max(12, event.clientY - rect.top + 16), rect.height - 250), buildingOnly: true, kicker: "Map feature", owner: "Mapped building", number: id, street: "", people: 0, vehicles: [], note: "No resident, vehicle or safety information is associated with this building." });
+        return;
+      }
       const home = householdFor(id, house?.name);
       const x = Math.min(Math.max(12, event.clientX - rect.left + 16), rect.width - 312);
       const y = Math.min(Math.max(12, event.clientY - rect.top + 16), rect.height - 250);
@@ -910,15 +914,15 @@ export function NeighborhoodMap({ place, houses, onSelect, angle = "side", simpl
           {sighting.label ?? `${sighting.safe ? "Safe here" : "Seen here"} · ${new Date(sighting.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`}
         </p>
       ))}
-      {problem ? <p className="scene-problem">{problem}</p> : null}
+      {problem && !simple ? <p className="scene-problem">{problem}</p> : null}
       {tip ? (
         <aside className="hover-card" style={{ left: tip.x, top: tip.y }}>
           <p>{tip.kicker}</p>
           <strong>{tip.owner}</strong>
           <span className="hover-address">
-            House #{tip.number} · {tip.street}
+            {tip.buildingOnly ? `Building #${tip.number}` : `House #${tip.number} · ${tip.street}`}
           </span>
-          <dl>
+          {!tip.buildingOnly && <dl>
             <div>
               <dt>People</dt>
               <dd>{tip.people}</dd>
@@ -933,7 +937,7 @@ export function NeighborhoodMap({ place, houses, onSelect, angle = "side", simpl
                 <dd>{tip.needs}</dd>
               </div>
             ) : null}
-          </dl>
+          </dl>}
           <span>{tip.note}</span>
         </aside>
       ) : null}

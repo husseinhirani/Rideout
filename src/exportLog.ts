@@ -1,3 +1,4 @@
+import type { BackendState } from "./api";
 import { householdFor } from "./households";
 import type { CallCard, CallTask, ChatMessage, House, InboundReport, Incident, Place } from "./types";
 
@@ -40,14 +41,23 @@ export async function downloadLog(snapshot: Snapshot) {
   const log = buildLog(snapshot, exportedAt, audio);
   files.unshift({ name: "log.json", data: encode(JSON.stringify(log, null, 2)) });
   if (snapshot.backend) files.push({ name: "backend/state.json", data: encode(JSON.stringify(snapshot.backend, null, 2)) });
-  const blob = new Blob([zip(files)], { type: "application/zip" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
   const pad = (value: number) => String(value).padStart(2, "0");
   const stamp = `${exportedAt.getFullYear()}-${pad(exportedAt.getMonth() + 1)}-${pad(exportedAt.getDate())}-${pad(exportedAt.getHours())}${pad(exportedAt.getMinutes())}`;
-  link.href = url;
-  link.download = `rideout-log-${snapshot.place.name.toLowerCase()}-${stamp}.zip`;
-  link.click();
+  downloadFiles(files, `rideout-log-${snapshot.place.name.toLowerCase()}-${stamp}.zip`);
+}
+
+export function downloadBackendLog(state: BackendState) {
+  const encode = (text: string) => new TextEncoder().encode(text);
+  const files = [{ name: "backend/state.json", data: encode(JSON.stringify(state, null, 2)) }];
+  for (const attempt of state.attempts) if (attempt.answer) {
+    files.push({ name: `reports/attempt-${attempt.id}.txt`, data: encode(`Case #${attempt.support_case_id} · Attempt #${attempt.id}\nQuestion: ${attempt.ask}\nSaved caller account: ${attempt.answer}\nConcern: ${attempt.concern}\nThis is a saved report, not a verbatim transcript.`) });
+  }
+  downloadFiles(files, `rideout-log-${new Date().toISOString().replace(/[:.]/g, "-")}.zip`);
+}
+
+function downloadFiles(files: { name: string; data: Uint8Array }[], filename: string) {
+  const url = URL.createObjectURL(new Blob([zip(files)], { type: "application/zip" }));
+  const link = document.createElement("a"); link.href = url; link.download = filename; link.click();
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 

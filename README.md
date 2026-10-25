@@ -62,7 +62,7 @@ Do not wipe or reseed an existing database. This UI change adds no database sche
 
 1. Confirm the mode and database in the connection strip. Existing investigations
    should appear in the top selector, with the same reports as the HTML console.
-2. Click **Start** to open a new investigation. Enter an incident and information objective.
+2. Click **Start → New investigation**. Enter an incident and information objective.
    Choose contacts directly or use area, relationship or tag filters. Search never
    calls anyone. Record consent only when the selected people agreed.
 3. Leave **Let Claude choose contacts and questions** off for the first UI check.
@@ -83,8 +83,12 @@ report, provider binding and actual terminal outcome in **Calls**, then inspect 
 accepted decision in **Coordinator**. No repeated baseline call is required simply
 to review the UI.
 
+The app opens on the teammate's 3D Side map. Side, Aerial, Nodes and the Simple
+toggle use the original map components and assets. Google photorealistic tiles
+require `VITE_GOOGLE_MAPS_KEY`; without it the original Esri/OSM view is used.
 The map retains the teammate's Rockridge basemap. It plots stored coordinates
-within that map's bounds; profiles elsewhere remain in the directory. It does not
+within that map's bounds; profiles elsewhere remain in the directory and Nodes view. Nodes use stored
+contact relationships and actual attempt states, not invented ride matches. It does not
 invent current locations, safe areas or available helpers. Future timed follow-ups
 and assistance assignment are not part of this integration.
 

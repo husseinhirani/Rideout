@@ -7,10 +7,10 @@ type Tile = { label: string; value: number | string; hot?: boolean; good?: boole
 export function LiveStats({ state, caseId }: { state: BackendState; caseId: number | null }) {
   const row = currentCase(state, caseId);
   const calls = callsFor(state, row?.id ?? null);
-  const sweep = latestIncident(state, true);
+  const sweep = row?.kind === "information" ? null : latestIncident(state, true);
   const people = sweep ? state.incident_people.filter((item) => item.incident_id === sweep.id) : [];
   const count = (status: string) => people.filter((item) => item.status === status).length;
-  const reports = row ? state.notes.filter((note) => note.support_case_id === row.id && note.source !== "dispatcher").length : 0;
+  const reports = calls.filter(call => call.progress?.report_received).length;
   const review = inboundFrom(state).filter((item) => item.review).length;
   const groups: { name: string; tiles: Tile[] }[] = [];
   if (row) {
@@ -38,7 +38,7 @@ export function LiveStats({ state, caseId }: { state: BackendState; caseId: numb
     });
   }
   if (!groups.length) {
-    groups.push({ name: "Backend", tiles: [{ label: "Registered", value: state.profiles.filter((profile) => profile.phone).length }, { label: "Cases", value: state.cases.length }] });
+    groups.push({ name: "Backend", tiles: [{ label: "Registered", value: state.profiles.length }, { label: "Cases", value: state.cases.length }] });
   }
   return (
     <section className="left stats" aria-label="Live numbers">
