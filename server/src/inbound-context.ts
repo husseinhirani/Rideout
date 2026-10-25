@@ -72,6 +72,7 @@ export async function inboundContext(body: unknown) {
   const authorizedContext=session?.scenario.context??''
   return {
     status:'ready',selected_by:selectedBy,last_called_at:calledAtText(lastCall),
+    previous_call:lastCall?{called_at:calledAtText(lastCall),purpose:lastCall.ask.slice(0,1600),purpose_truncated:lastCall.ask.length>1600}:null,
     participant_name:participant.name,identity_basis:'Provider calling line and self-reported full name; not independently verified identity.',
     case_id:String(caseId),case_context:{title:session?.scenario.title??'Open incident',drill:session?.scenario.drill??null,context:authorizedContext.slice(0,3000)},
     known_facts:person?Object.entries(person.facts).flatMap(([field,value])=>{

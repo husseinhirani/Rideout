@@ -147,7 +147,7 @@ phone run. No new automated test files were added for this change.
 ## Coordinator handoff and review resolution
 
 Deploy the module and restart the API/Vite before `npm --prefix server run setup-agent`.
-The updated API includes `assistance_protocol_version: 2` in authenticated `/state`.
+The updated API includes `assistance_protocol_version: 3` in authenticated `/state`.
 Fix any outstanding provider billing/authentication problem, then use **Retry planning**.
 A new call run cannot demonstrate model coordination while that provider remains unavailable.
 
@@ -168,3 +168,27 @@ resolved before matching. Refusal or continued uncertainty returns to human revi
 Reassessment does not clear withdrawn consent, retry an unreachable person, reopen a
 cancelled arrangement or invent a pickup confirmation. Names and phone numbers never
 select a predetermined pairing.
+
+## Returning calls and interrupted updates
+
+Publish the module and restart the API with `INBOUND_REQUESTS=1` before running
+`npm --prefix server run setup-agent`. Keep ngrok forwarding to the API on port 8787.
+Setup checks the authenticated callback endpoint for the matching voice protocol before
+changing hosted configuration. This check cannot prevent a tunnel disconnecting later.
+
+A returning caller supplies their full name and explains which call they are returning.
+The agent retrieves that caller’s saved call purpose and incident history using provider
+metadata and the directory. If several incidents are possible, it clarifies which one;
+it never combines unrelated histories. Earlier reports remain attributed historical
+accounts, and the caller can correct them. No named participant or pairing is encoded
+in this lookup.
+
+Accepted incoming reports associated with an existing participant reach the coordinator
+as unverified accounts for review. They do not automatically change consent, confirm a
+pickup, or reserve a helper. Unknown or ambiguous callers remain in incoming review.
+
+During an outgoing call, a correction after an interrupted tool request uses a new update
+sequence. A stale sequence returns current saved state so the agent can preserve the
+unsaved correction. The agent must not claim an account was saved when the callback
+failed, and should end only for a clear stop request or normal conversation completion.
+Natural conversation behavior still needs a live phone run after hosted setup.
