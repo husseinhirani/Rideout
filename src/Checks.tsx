@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { AgentColumn, barHeight, Bars, DashRail, FacilitatorTile, Faces, FocusView, Icon, initials, mmss, PeopleList, seconds, StatusSticks, Timeline, useFocus, type Bar, type BarTone, type Person, type RailItem, type TimelineLine } from "./Dashboard";
+import { barHeight, Bars, DashRail, FacilitatorTile, FocusView, Icon, initials, mmss, PeopleList, seconds, StatusSticks, Timeline, useFocus, type Bar, type BarTone, type Person, type RailItem, type TimelineLine } from "./Dashboard";
 import type { CallCard, ChatMessage, House, InboundReport, Incident } from "./types";
 
 /**
@@ -203,12 +203,18 @@ export function Checks({
     list.map((house) => ({ key: house.id, name: house.name, note: house.note, chip: STATUS_NAME[house.status], tone }));
 
   const rail: RailItem<Focus>[] = [
-    { id: "outgoing", label: "Outgoing calls", value: calls.length, icon: "phoneOut" },
-    { id: "incoming", label: "Incoming calls", value: inbound ? 1 : 0, icon: "phoneIn" },
-    { id: "need", label: "Need help", value: needHelp.length, icon: "alert" },
-    { id: "help", label: "Can help", value: helpers.length, icon: "hand" },
-    { id: "links", label: "Connections", value: links.length, icon: "link" },
-    { id: "facilitator", label: "Facilitator agent", value: null, icon: "spark", agent: true },
+    {
+      id: "outgoing",
+      label: "Outgoing calls",
+      value: calls.length,
+      icon: "phoneOut",
+      detail: calls.length ? `${reached}% reached · ${onLine.length} on the line${current ? ` · ${current.name.split(" ")[0]} ${mmss(seconds(current.answeredAt ?? current.startedAt, now))}` : ""}` : "Calls start with the drill",
+    },
+    { id: "incoming", label: "Incoming calls", value: inbound ? 1 : 0, icon: "phoneIn", detail: takerWho ? `${takerKicker} · ${takerWho}` : takerKicker },
+    { id: "need", label: "Need help", value: needHelp.length, icon: "alert", detail: names(needHelp, "No one is waiting on a ride") },
+    { id: "help", label: "Can help", value: helpers.length, icon: "hand", detail: names(helpers, "No open seats yet") },
+    { id: "links", label: "Connections", value: links.length, icon: "link", detail: links[0] ? `${links[0].from} → ${links[0].to}` : "No ride matched yet" },
+    { id: "facilitator", label: "Facilitator agent", value: null, icon: "spark", agent: true, detail: busy ? "Working…" : desk.kicker },
   ];
   const focused = focus ? rail.find((item) => item.id === focus.id) : undefined;
 
@@ -287,87 +293,20 @@ export function Checks({
 
             </div>
           </div>
-          <AgentColumn
-            top={
-              <>
-                <div className="dash-pair">
-                  <button type="button" className="tile stat reach" onClick={(event) => open("outgoing", event)}>
-                    <span className="tile-label">Reached</span>
-                    <strong className="big">
-                      {reached}
-                      <small>%</small>
-                    </strong>
-                    <span className="tile-foot">
-                      {answered} of {calls.length} picked up
-                    </span>
-                  </button>
-
-                  <button type="button" className={takerLive ? "tile stat incoming ringing" : "tile stat incoming"} onClick={(event) => open("incoming", event)}>
-                    <span className="tile-label">
-                      Incoming
-                      <em className={takerLive ? "chip hot" : "chip"}>{takerKicker}</em>
-                    </span>
-                    <strong className="big">{inbound ? 1 : 0}</strong>
-                    <span className="tile-foot">{takerWho ? `${takerWho} · Elena has the line` : "Elena answers call-ins"}</span>
-                  </button>
-
-                </div>
-                <div className="dash-pair">
-                  <button type="button" className={current ? "tile stat sky on" : "tile stat sky"} onClick={(event) => open("outgoing", event, current?.id)}>
-                    <span className="tile-label">On the line</span>
-                    <strong className="big">
-                      {onLine.length}
-                      <small>live</small>
-                    </strong>
-                    <span className="tile-foot">
-                      {current ? `${current.name} · ${mmss(seconds(current.answeredAt ?? current.startedAt, now))}` : "No one on the line"}
-                    </span>
-                  </button>
-
-                  <div className="tile people">
-                    <button type="button" className="people-half" onClick={(event) => open("need", event)}>
-                      <span className="tile-label">
-                        <i className="k-miss" />
-                        Need help
-                      </span>
-                      <span className="people-row">
-                        <strong className="big">{needHelp.length}</strong>
-                        <Faces names={needHelp.map((house) => house.name)} />
-                      </span>
-                    </button>
-                    <button type="button" className="people-half" onClick={(event) => open("help", event)}>
-                      <span className="tile-label">
-                        <i className="k-dark" />
-                        Can help
-                      </span>
-                      <span className="people-row">
-                        <strong className="big">{helpers.length}</strong>
-                        <Faces names={helpers.map((house) => house.name)} />
-                      </span>
-                    </button>
-                  </div>
-
-                </div>
-              </>
-            }
-            agent={
-              <FacilitatorTile
-                chat={chat}
-                name={AGENTS.facilitator.name}
-                kicker={desk.kicker}
-                lead={desk.lead}
-                live={desk.live || busy}
-                busy={busy}
-                suggestions={SUGGESTIONS}
-                placeholder="Ask Jonah to call someone…"
-                onOpen={(from) => open("facilitator", from)}
-                onAsk={(text, from) => {
-                  onAsk(text);
-                  open("facilitator", from);
-                }}
-              />
-            }
-          />
+          <div className="dash-col agent-col">
+            <FacilitatorTile
+              chat={chat}
+              name={AGENTS.facilitator.name}
+              kicker={desk.kicker}
+              lead={desk.lead}
+              live={desk.live || busy}
+              busy={busy}
+              suggestions={SUGGESTIONS}
+              placeholder="Ask Jonah to call someone…"
+              onOpen={(from) => open("facilitator", from)}
+              onAsk={(text) => onAsk(text)}
+            />
+          </div>
         </div>
       </div>
 
@@ -446,6 +385,12 @@ export function Checks({
       ) : null}
     </section>
   );
+}
+
+function names(list: House[], none: string) {
+  if (list.length === 0) return none;
+  const first = list.slice(0, 2).map((house) => house.name);
+  return list.length > 2 ? `${first.join(", ")} +${list.length - 2}` : first.join(" and ");
 }
 
 function canHelp(house: House) {
