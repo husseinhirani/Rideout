@@ -96,6 +96,16 @@ explicit dedicated database and the helpers have fictional phone numbers.
 `seed:recording` inserts two fictional helpers and Ava with an empty phone only
 into an empty database named rideout-recording-<name>.
 
+## Intake validation preparation (issue #6)
+
+`src/intake.ts` checks the agreed missing-child intake essentials independently
+of provider delivery. It returns normalized complete details or fixed questions
+for missing/unknown fields, retains approximate time as reported (trimming surrounding whitespace) and labels reporter
+claims self-reported. It does not create cases, authenticate callers, match a
+case, authorize outreach or close a case. It is not wired to any route yet.
+`INBOUND-PROPOSAL.md` supplies concrete proposed examples for Vien to confirm;
+these are not a frozen Cartesia contract. Existing routes remain unchanged.
+
 ## 1. Glossary
 
 Use these terms exactly in code, comments, UI copy, and docs.
