@@ -11,6 +11,15 @@ export type CallRecord = {
   status: string
   endReason: string | null
   summary: string | null
+  // Optional for legacy consumers and test adapters. getCall returns these
+  // fields explicitly; missing provider metadata stays null, never inferred.
+  id?: string | null
+  agentId?: string | null
+  agentVersionId?: string | null
+  direction?: string | null
+  fromNumber?: string | null
+  toNumber?: string | null
+  attemptId?: string | null
 }
 
 export class CartesiaServiceError extends Error {
@@ -93,11 +102,38 @@ export function placeBatch(
 }
 
 export function getCall(callId: string): Promise<CallRecord> {
-  return cartesiaJson("GET", "/agents/calls/" + encodeURIComponent(callId)).then((payload) => ({
-    status: typeof payload.status === "string" ? payload.status : "",
-    endReason: typeof payload.end_reason === "string" ? payload.end_reason : null,
-    summary: typeof payload.summary === "string" ? payload.summary : null,
-  }))
+  return cartesiaJson("GET", "/agents/calls/" + encodeURIComponent(callId)).then(decodeCallRecord)
+}
+
+export function decodeCallRecord(payload: JsonObject): CallRecord {
+  const telephony = objectOrEmpty(payload.telephony_params)
+  const variables = objectOrEmpty(payload.dynamic_variables)
+  return {
+    status: textOrNull(payload.status) ?? "",
+    endReason: textOrNull(payload.end_reason),
+    summary: textOrNull(payload.summary),
+    id: textOrNull(payload.id),
+    agentId: textOrNull(payload.agent_id),
+    agentVersionId: textOrNull(payload.agent_version_id),
+    direction: textOrNull(telephony.direction),
+    fromNumber: textOrNull(telephony.from),
+    toNumber: textOrNull(telephony.to),
+    attemptId: textOrNull(variables.attempt_id),
+  }
+}
+
+export function isTerminalCallStatus(status: string): boolean {
+  return status === "completed" || status === "failed"
+}
+
+function textOrNull(value: unknown): string | null {
+  return typeof value === "string" && value.length > 0 ? value : null
+}
+
+function objectOrEmpty(value: unknown): JsonObject {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? value as JsonObject
+    : {}
 }
 
 function postJson(path: string, body: unknown): Promise<JsonObject> {

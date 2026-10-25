@@ -55,17 +55,22 @@ assert.equal(inboundFields.from_phone.dynamic_variable, "system__caller_id")
 assert.equal(inboundFields.provider_call_id.dynamic_variable, "system__conversation_id")
 assert.equal(inboundFields.direction.dynamic_variable, "system__call_direction")
 assert.equal(inboundFields.text.dynamic_variable, undefined)
+const outbound = definitions.find(definition => definition.name === "report_call")!
+const outboundFields = outbound.api_schema.request_body_schema.properties as Record<string, {dynamic_variable?: string}>
+assert.equal(outboundFields.attempt_id.dynamic_variable, "attempt_id")
+assert.equal(outboundFields.provider_call_id.dynamic_variable, "system__conversation_id")
+assert.equal(outboundFields.direction.dynamic_variable, "system__call_direction")
 const created = toolRequest(definitions[0], "https://rideout.ngrok.app", true, "s3cret")
-const updated = toolRequest(definitions[0], "https://rideout.ngrok.app", false, "")
+const updated = toolRequest(definitions[0], "https://rideout.ngrok.app", false, "s3cret")
 assert.equal(created.type, "webhook")
 assert.equal("type" in updated, false)
 assert.equal((created.api_schema as { url: string }).url, "https://rideout.ngrok.app/check-ins")
 
-// A set secret becomes a bearer Cartesia sends on every call. An unset one
-// sends null, which clears auth left behind by an earlier run.
+// Hosted setup cannot silently clear the credential already used by live tools.
 assert.deepEqual(toolAuth("s3cret"), { mode: "bearer", token: { type: "secret", secret_value: "s3cret" } })
-assert.equal(toolAuth(""), null)
+assert.throws(() => toolAuth(""), /CALLBACK_SECRET is required/)
+assert.throws(() => toolAuth("   "), /CALLBACK_SECRET is required/)
 assert.deepEqual((created.api_schema as { authentication: unknown }).authentication, toolAuth("s3cret"))
-assert.equal((updated.api_schema as { authentication: unknown }).authentication, null)
+assert.deepEqual((updated.api_schema as { authentication: unknown }).authentication, toolAuth("s3cret"))
 
 console.log("ok")

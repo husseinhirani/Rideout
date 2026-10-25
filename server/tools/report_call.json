@@ -14,9 +14,17 @@
           "type": "string",
           "dynamic_variable": "attempt_id"
         },
+        "provider_call_id": {
+          "type": "string",
+          "dynamic_variable": "system__conversation_id"
+        },
+        "direction": {
+          "type": "string",
+          "dynamic_variable": "system__call_direction"
+        },
         "answer": {
           "type": "string",
-          "description": "Everything they told you, in their own words."
+          "description": "Their complete account in their own words, preserving corrections, uncertainty and refusal. Submit once; an exact retry must keep the same account."
         },
         "concern": {
           "type": "string",
