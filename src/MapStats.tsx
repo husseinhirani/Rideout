@@ -13,6 +13,7 @@ export function MapStats({
   homes,
   started,
   now,
+  areaName,
 }: {
   calls: CallCard[];
   houses: House[];
@@ -21,7 +22,21 @@ export function MapStats({
   homes: number;
   started: boolean;
   now: number;
+  areaName: string;
 }) {
+  if (!started && incident.startedAt === 0) {
+    return (
+      <section className="left stats" aria-label="Area information">
+        <details className="glass area-summary" open>
+          <summary>{areaName}</summary>
+          <div className="area-summary-lines">
+            <p><strong>{homes}</strong><span>Homes in this area</span></p>
+            <p><strong>{houses.length}</strong><span>Registered residents</span></p>
+          </div>
+        </details>
+      </section>
+    );
+  }
   const count = (test: (call: CallCard) => boolean) => calls.filter(test).length;
   const reached = count((call) => call.answeredAt !== null && call.phase !== "canceled" && !call.voicemail);
   const missed = count((call) => call.phase === "missed" || call.phase === "declined");
@@ -30,7 +45,7 @@ export function MapStats({
   const canceled = count((call) => call.phase === "canceled");
   const minutes = incident.startedAt ? Math.max(0, Math.floor((now - incident.startedAt) / 60000)) : 0;
 
-  let title = "Waiting to start";
+  let title = "Area status";
   let groups: { name: string; tiles: Tile[] }[] = [];
 
   if (incident.kind === "missing_child") {

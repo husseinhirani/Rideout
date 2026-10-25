@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { BackendState } from "./api";
 import { eventKey } from "./backend";
 import { FacilitatorChat } from "./Checks";
@@ -52,6 +52,7 @@ export function LiveChecks({
   operatorBusy,
   now,
   actions,
+  facilitatorRequest = 0,
 }: {
   visible: boolean;
   state: BackendState;
@@ -62,6 +63,7 @@ export function LiveChecks({
   operatorBusy: boolean;
   now: number;
   actions: LiveActions;
+  facilitatorRequest?: number;
 }) {
   const row = currentCase(state, caseId);
   const calls = callsFor(state, row?.id ?? null);
@@ -71,6 +73,7 @@ export function LiveChecks({
   const simulate = state.demo_mode.simulate;
   const brief = row ? briefOf(row.brief) : null;
   const { focus, open, close } = useFocus<Focus>(visible);
+  useEffect(() => { if (facilitatorRequest) open("facilitator"); }, [facilitatorRequest]);
 
   const pending = calls.filter((call) => call.transport === "active" || call.transport === "dispatching" || call.transport === "queued");
   const active = calls.filter((call) => call.transport === "active");

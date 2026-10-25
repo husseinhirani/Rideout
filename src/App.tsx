@@ -47,6 +47,8 @@ export function App() {
   const [simple, setSimple] = useState(false);
   const [drawMode, setDrawMode] = useState<"rectangle" | "brush" | null>(null);
   const [highlightedIds, setHighlightedIds] = useState<number[]>([]);
+  const [facilitatorRequest, setFacilitatorRequest] = useState(0);
+  const [groupMenuPosition, setGroupMenuPosition] = useState<{ x: number; y: number } | null>(null);
   const [now, setNow] = useState(() => new Date());
   const [menu, setMenu] = useState(false);
   const [form, setForm] = useState(false);
@@ -94,7 +96,16 @@ export function App() {
     return `${home.address} (${home.owner}, building ${id})`;
   }), [highlightedIds, live, liveHouses, ride.houses]);
   const mapContext = highlighted.length ? `\n\nDispatcher map filter: highlighted ${highlighted.length} building${highlighted.length === 1 ? "" : "s"}: ${highlighted.join("; ")}. Use these buildings as the geographic area of interest when choosing candidates.` : "";
-  const changeHighlights = useCallback((ids: number[]) => setHighlightedIds(ids), []);
+  const changeHighlights = useCallback((ids: number[], position?: { x: number; y: number }) => {
+    setHighlightedIds(ids);
+    setGroupMenuPosition(ids.length && position ? position : null);
+  }, []);
+  const openGroupMenu = useCallback((position: { x: number; y: number }) => setGroupMenuPosition(position), []);
+  const selectedResidents = (live ? liveHouses : ride.houses).filter((house) => highlightedIds.includes(house.id));
+  const openCoordinatorForGroup = () => {
+    setTab("checks");
+    setFacilitatorRequest((value) => value + 1);
+  };
 
   // A newly opened case takes over the view; choosing one by hand holds until the next opens.
   const newestCase = state?.cases.reduce((max, row) => Math.max(max, row.id), 0) ?? 0;
@@ -224,7 +235,16 @@ export function App() {
         selectedIds={highlightedIds}
         onSelectionChange={changeHighlights}
         drawMode={drawMode}
+        onOpenGroupMenu={openGroupMenu}
       />
+      {tab === "map" && highlightedIds.length > 0 && groupMenuPosition ? (
+        <aside className="group-action" style={{ left: Math.max(8, Math.min(groupMenuPosition.x, window.innerWidth - 292)), top: Math.max(8, Math.min(groupMenuPosition.y, window.innerHeight - 190)) }} aria-label="Selected area actions">
+          <div className="group-action-title"><span>Selected area</span><button type="button" aria-label="Close selected area menu" onClick={() => setGroupMenuPosition(null)}>×</button></div>
+          <p><strong>{highlightedIds.length}</strong><span>Buildings</span></p>
+          <p><strong>{selectedResidents.length}</strong><span>Registered residents</span></p>
+          <button type="button" onClick={openCoordinatorForGroup}>Go to facilitator</button>
+        </aside>
+      ) : null}
       {scene === "nodes" ? (
         live ? (
           <BlockGraph houses={liveHouses} calls={liveGraph} selectedId={liveSelected} onSelect={setLiveSelected} />
@@ -262,8 +282,8 @@ export function App() {
               <button type="button" className={simple ? "on" : ""} aria-pressed={simple} onClick={() => setSimple(true)}>Simple</button>
               <button type="button" className={!simple && scene === "nodes" ? "on" : ""} aria-pressed={!simple && scene === "nodes"} onClick={() => { setSimple(false); setScene("nodes"); }}>Nodes</button>
             </div>
-            <button type="button" className={drawMode === "rectangle" ? "map-tool-button on" : "map-tool-button"} aria-pressed={drawMode === "rectangle"} onClick={() => { setHighlightedIds([]); setDrawMode((value) => value === "rectangle" ? null : "rectangle"); }} title="Drag a rectangle over buildings to highlight them">Rectangle</button>
-            <button type="button" className={drawMode === "brush" ? "map-tool-button on" : "map-tool-button"} aria-pressed={drawMode === "brush"} onClick={() => { setHighlightedIds([]); setDrawMode((value) => value === "brush" ? null : "brush"); }} title="Draw a loop around buildings to highlight them">Brush</button>
+            <button type="button" className={drawMode === "rectangle" ? "map-tool-button on" : "map-tool-button"} aria-pressed={drawMode === "rectangle"} onClick={() => { setHighlightedIds([]); setGroupMenuPosition(null); setDrawMode((value) => value === "rectangle" ? null : "rectangle"); }} title="Drag a rectangle over buildings to highlight them">Rectangle</button>
+            <button type="button" className={drawMode === "brush" ? "map-tool-button on" : "map-tool-button"} aria-pressed={drawMode === "brush"} onClick={() => { setHighlightedIds([]); setGroupMenuPosition(null); setDrawMode((value) => value === "brush" ? null : "brush"); }} title="Draw a loop around buildings to highlight them">Brush</button>
           </div>
           <time>{clock}</time>
           <button type="button" className="ghost" onClick={live ? exportLive : exportOffline}>
@@ -386,6 +406,7 @@ export function App() {
             operatorBusy={Boolean(outside)}
             now={now.getTime()}
             actions={liveActions}
+            facilitatorRequest={facilitatorRequest}
           />
 
           {concern && !outside ? (
@@ -437,6 +458,7 @@ export function App() {
                 homes={ride.homesOnBlock}
                 started={ride.started}
                 now={now.getTime()}
+                areaName={ride.place.name}
               />
 
               <aside className="right">
@@ -490,6 +512,7 @@ export function App() {
             now={now.getTime()}
             chat={ride.chat}
             busy={ride.tasks.some((task) => task.state === "running")}
+            facilitatorRequest={facilitatorRequest}
             onAsk={(text) => ride.ask(`${text}${mapContext}`)}
             onCall={{
               busy: Boolean(ride.operator),

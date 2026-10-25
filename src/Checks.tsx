@@ -147,6 +147,7 @@ export function Checks({
   busy,
   onAsk,
   onCall,
+  facilitatorRequest = 0,
 }: {
   visible: boolean;
   houses: House[];
@@ -160,6 +161,7 @@ export function Checks({
   busy: boolean;
   onAsk: (request: string) => void;
   onCall: CallActions;
+  facilitatorRequest?: number;
 }) {
   const callerLive = calls.some((call) => ACTIVE.has(call.phase));
   const finished = started && !running && calls.length > 0 && !callerLive;
@@ -187,6 +189,7 @@ export function Checks({
   }
 
   const { focus, open, close } = useFocus<Focus>(visible);
+  useEffect(() => { if (facilitatorRequest) open("facilitator"); }, [facilitatorRequest]);
 
   const needHelp = houses.filter((house) => house.status === "needs_ride" || house.status === "no_ride");
   const helpers = houses.filter(canHelp);

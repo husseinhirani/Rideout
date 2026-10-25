@@ -41,8 +41,9 @@ type Props = {
   showFire?: boolean;
   sightings?: Sighting[];
   selectedIds?: number[];
-  onSelectionChange?: (ids: number[]) => void;
+  onSelectionChange?: (ids: number[], position?: { x: number; y: number }) => void;
   drawMode?: "rectangle" | "brush" | null;
+  onOpenGroupMenu?: (position: { x: number; y: number }) => void;
 };
 
 const STATUS: Record<House["status"], string> = {
@@ -85,7 +86,7 @@ const SIDING = [0xe9e2d3, 0xd8d3c8, 0xc9d1c4, 0xe8d9bf, 0xcdd6dd, 0xf2efe9, 0xbf
 const HOVER_GLOW = 0xffb347;
 const HOVER_LIFT = 2.2;
 
-export function NeighborhoodMap({ place, houses, onSelect, angle = "side", simple = false, showFire = true, sightings = [], selectedIds = [], onSelectionChange, drawMode = null }: Props) {
+export function NeighborhoodMap({ place, houses, onSelect, angle = "side", simple = false, showFire = true, sightings = [], selectedIds = [], onSelectionChange, drawMode = null, onOpenGroupMenu }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const housesRef = useRef(houses);
   const sightingsRef = useRef(sightings);
@@ -636,7 +637,8 @@ export function NeighborhoodMap({ place, houses, onSelect, angle = "side", simpl
       renderer.domElement.setPointerCapture(event.pointerId);
     };
     const onContextMenu = (event: MouseEvent) => {
-      if (simpleRef.current) event.preventDefault();
+      if (simpleRef.current || selectedRef.current.length) event.preventDefault();
+      if (selectedRef.current.length) onOpenGroupMenu?.({ x: event.clientX, y: event.clientY });
     };
     northRef.current = () => {
       // Unwind to the nearest north, so the map turns back the short way.
@@ -706,7 +708,8 @@ export function NeighborhoodMap({ place, houses, onSelect, angle = "side", simpl
               : pointInPolygon({ x: sx, y: sy }, path);
             return projected.z < 1 && inside;
           }).map((footprint) => footprint.id);
-          onSelectionChange?.(next);
+          onSelectionChange?.(next, { x: event.clientX, y: event.clientY });
+          if (next.length) onOpenGroupMenu?.({ x: event.clientX, y: event.clientY });
         }
         boxStart = null;
         setSelectionBox(null);
@@ -718,8 +721,11 @@ export function NeighborhoodMap({ place, houses, onSelect, angle = "side", simpl
       hoverAt(event);
       const id = pickAt(event);
       if (id !== null) {
-        if (event.shiftKey) onSelectionChange?.(selectedRef.current.includes(id) ? selectedRef.current.filter((item) => item !== id) : [...selectedRef.current, id]);
-        else onSelectionChange?.([id]);
+        const next = event.shiftKey
+          ? selectedRef.current.includes(id) ? selectedRef.current.filter((item) => item !== id) : [...selectedRef.current, id]
+          : [id];
+        onSelectionChange?.(next, { x: event.clientX, y: event.clientY });
+        if (next.length) onOpenGroupMenu?.({ x: event.clientX, y: event.clientY });
         if (housesRef.current.some((house) => house.id === id)) onSelect(id);
       }
     };
@@ -951,7 +957,7 @@ export function NeighborhoodMap({ place, houses, onSelect, angle = "side", simpl
       node.removeChild(renderer.domElement);
       node.removeChild(labelLayer);
     };
-  }, [onSelect, onSelectionChange, place]);
+  }, [onOpenGroupMenu, onSelect, onSelectionChange, place]);
 
   return (
     <div className={simple ? "scene simple" : "scene"}>
