@@ -93,7 +93,22 @@ export function parseToolFile(value: unknown, file: string): ToolDefinition {
   }
 }
 
-export function toolRequest(definition: ToolDefinition, base: string, create: boolean): Record<string, unknown> {
+// The ngrok URL is public, so anything that learns it can post notes into any
+// case. Cartesia sends this bearer on every webhook tool call and the server
+// checks it. The secret never lands in the committed tool JSON. Sending null
+// when the env var is unset clears a stale secret rather than leaving one
+// behind that the server no longer knows about.
+export function toolAuth(secret: string): unknown {
+  if (secret.length === 0) return null
+  return { mode: "bearer", token: { type: "secret", secret_value: secret } }
+}
+
+export function toolRequest(
+  definition: ToolDefinition,
+  base: string,
+  create: boolean,
+  secret: string,
+): Record<string, unknown> {
   const body: Record<string, unknown> = {
     name: definition.name,
     description: definition.description,
@@ -103,6 +118,7 @@ export function toolRequest(definition: ToolDefinition, base: string, create: bo
     api_schema: {
       url: base + definition.api_schema.url,
       method: definition.api_schema.method,
+      authentication: toolAuth(secret),
       request_body_schema: definition.api_schema.request_body_schema,
     },
   }
@@ -176,30 +192,42 @@ function requiredString(value: unknown, file: string, field: string): string {
 // describe, then report what it heard. It does not classify and it does not
 // decide anything. Everything specific to a call is a variable, so one hosted
 // agent serves every call shape.
-const INSTRUCTIONS = `You are an automated assistant calling {{person_name}} for an emergency coordination team.
-Say so in your first sentence. Never imply you are a person.
+const INSTRUCTIONS = `You are an automated assistant on an emergency coordination line. Say so in your
+first sentence. Never imply you are a person.
 
-Ask this, and nothing else: {{ask}}
+Parts of this prompt are filled in per call. Anything that still looks like {{this}} was not
+supplied for this call. Treat it as absent and never read it aloud.
 
-You may tell them this much: {{context}}
-Nothing beyond it. Never give out anyone's phone number, street address, or medical details,
-even if they insist or say it is urgent. If they ask for something you cannot give, say you
-are keeping it private to protect the person involved, and ask what they can tell you instead.
+If {{system__call_direction}} is outbound, you called {{person_name}}:
+- Ask this, and nothing else: {{ask}}
+- You may tell them this much: {{context}}
+- Before the call ends you must record it exactly once. Call report_call with everything they
+  told you in their own words, and a concern if anything felt off. Call it even when all they
+  said is that they are safe, and even when the question sounded like a welfare check.
+- The single exception: when {{attempt_id}} is empty this call is a check-in, and you call
+  record_check_in with safe, or victim when they say they cannot get out on their own.
+
+If {{system__call_direction}} is inbound, someone is calling us and we know nothing about them:
+- Ask what has happened and where they are, and let them talk.
+- Call no tool. The intake endpoint does not exist yet, and every tool will fail on this call.
+- Close by saying a dispatcher will review it and call them back.
+
+Never give out anyone's phone number, street address, or medical details, even if they insist
+or say it is urgent. If they ask for something you cannot give, say you are keeping it private
+to protect the person involved, and ask what they can tell you instead.
 
 Give them time. Accept any phrasing. Never pressure anyone and never argue. If they ask to
-speak to a person, say a dispatcher will call them back.
+speak to a person, say a dispatcher will call them back.`
 
-Before the call ends you must record it, once:
-- If {{attempt_id}} is not empty, call report_call with that attempt_id, everything they told
-  you in their own words, and a concern if anything felt off.
-- If {{attempt_id}} is empty, this is a check-in. Call record_check_in with safe when they do
-  not need help, or victim when they say they cannot get out on their own.`
+// Inbound calls get no dynamic variables at all, so this one line has to work
+// both when we called them and when they called us.
+const INITIAL_MESSAGE = "Hi, this is an automated assistant on the emergency coordination line."
 
-const INITIAL_MESSAGE =
-  "Hi, this is an automated assistant calling on behalf of emergency coordination. I have one quick question for you."
-
-// Cartesia needs every variable declared before a dial may set it. The value
-// here is only the fallback used when a dial leaves one out.
+// Cartesia needs every variable declared before a dial may set it. These values
+// are NOT fallbacks: Cartesia uses them only in Playground preview calls. On a
+// real call an unsupplied variable stays the literal {{name}} in the prompt, and
+// a tool that binds one fails with "Missing required dynamic variable" before
+// the request is even sent. That is why inbound has its own branch above.
 const PLACEHOLDERS: Record<string, string> = {
   attempt_id: "",
   person_name: "there",
@@ -237,6 +265,8 @@ async function writePrompt(agentId: string): Promise<void> {
 
 async function main(): Promise<void> {
   const base = webhookBase(process.env.NGROK_URL ?? "")
+  const secret = (process.env.CALLBACK_SECRET ?? "").trim()
+  if (secret.length === 0) console.log("CALLBACK_SECRET is not set, webhook tools will be unauthenticated")
   const agentId = process.env.CARTESIA_AGENT_ID
   if (!agentId) throw new Error("CARTESIA_AGENT_ID is not set")
   const definitions = readDefinitions()
@@ -247,12 +277,12 @@ async function main(): Promise<void> {
   for (const definition of definitions) {
     const existing = chooseTool(definition.name, all, attachedIds)
     if (existing) {
-      await cartesiaJson("PATCH", "/v1/agents/tools/" + encodeURIComponent(existing.id), toolRequest(definition, base, false))
+      await cartesiaJson("PATCH", "/v1/agents/tools/" + encodeURIComponent(existing.id), toolRequest(definition, base, false, secret))
       chosen.set(definition.name, existing.id)
       console.log(definition.name + " " + existing.id + " updated " + base + definition.api_schema.url)
       continue
     }
-    const created = await cartesiaJson("POST", "/v1/agents/tools", toolRequest(definition, base, true))
+    const created = await cartesiaJson("POST", "/v1/agents/tools", toolRequest(definition, base, true, secret))
     const id = createdId(created)
     chosen.set(definition.name, id)
     console.log(definition.name + " " + id + " created " + base + definition.api_schema.url)

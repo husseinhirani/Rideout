@@ -6,6 +6,7 @@ import {
   mergeToolIds,
   parseToolFile,
   sameIds,
+  toolAuth,
   toolRequest,
   webhookBase,
   type ListedTool,
@@ -47,10 +48,17 @@ for (const definition of definitions) {
     if (typeof field.dynamic_variable === "string") assert.equal(required.has(name), false)
   }
 }
-const created = toolRequest(definitions[0], "https://rideout.ngrok.app", true)
-const updated = toolRequest(definitions[0], "https://rideout.ngrok.app", false)
+const created = toolRequest(definitions[0], "https://rideout.ngrok.app", true, "s3cret")
+const updated = toolRequest(definitions[0], "https://rideout.ngrok.app", false, "")
 assert.equal(created.type, "webhook")
 assert.equal("type" in updated, false)
 assert.equal((created.api_schema as { url: string }).url, "https://rideout.ngrok.app/check-ins")
+
+// A set secret becomes a bearer Cartesia sends on every call. An unset one
+// sends null, which clears auth left behind by an earlier run.
+assert.deepEqual(toolAuth("s3cret"), { mode: "bearer", token: { type: "secret", secret_value: "s3cret" } })
+assert.equal(toolAuth(""), null)
+assert.deepEqual((created.api_schema as { authentication: unknown }).authentication, toolAuth("s3cret"))
+assert.equal((updated.api_schema as { authentication: unknown }).authentication, null)
 
 console.log("ok")

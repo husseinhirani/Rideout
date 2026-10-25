@@ -55,6 +55,10 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
   }
   const body = await readJson(req)
 
+  // Only the two routes Cartesia calls. The dispatcher UI is served over
+  // localhost and never carries the secret.
+  if (path === "/calls/report" || path === "/check-ins") requireCallbackSecret(req)
+
   if (path === "/incidents") {
     // The dispatcher types a sentence. The structured body stays accepted so
     // seeding and tests can open an incident without Claude.
@@ -106,6 +110,17 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     return
   }
   send(res, 404, { error: "not found" })
+}
+
+// The ngrok URL is the only thing between the public internet and these
+// routes, and anyone who learns it could inject notes into a live case.
+// Unset means off, so a teammate without the variable still runs the loop.
+function requireCallbackSecret(req: IncomingMessage): void {
+  const secret = (process.env.CALLBACK_SECRET ?? "").trim()
+  if (secret.length === 0) return
+  if (req.headers.authorization !== "Bearer " + secret) {
+    throw new ServiceError(401, "unauthorized")
+  }
 }
 
 function send(res: ServerResponse, status: number, body: unknown): void {

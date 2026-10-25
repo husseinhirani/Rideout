@@ -99,9 +99,17 @@ npm install
 | `CARTESIA_FROM_NUMBER_ID` | The number Cartesia dials *from* |
 | `NGROK_URL` | Your reserved ngrok https origin, e.g. `https://xxx.ngrok-free.dev` |
 | `ANTHROPIC_API_KEY` | Claude, for the coordinator |
+| `CALLBACK_SECRET` | Optional. Shared bearer for the two routes Cartesia calls |
 
 `.env.sample` lists them. `./dev-tunnel` also reads `.env` from either `server/` or the repo
 root.
+
+**`CALLBACK_SECRET`.** The ngrok URL is public, so without this anyone who learns it can post
+notes into a live case. Set it (`openssl rand -hex 24`) and `npm run setup-agent` configures
+Cartesia to send `Authorization: Bearer <secret>` on every webhook tool call, while the server
+rejects `/calls/report` and `/check-ins` without it. Leave it unset and both sides stay off, so
+a teammate who does not have it still runs the loop. **Change it and you must re-run
+`npm run setup-agent`**, or every real call reports into a 401.
 
 **Profiles.** `mock/profiles.json` is gitignored because it holds real phone numbers. Create
 your own from the template:
@@ -230,6 +238,33 @@ all work, before any coordinator logic is involved.
 > `POST /incidents did not call …`. Treat a ringing phone as the pass signal and ignore the
 > error, or skip to Step 3.
 
+### Step 2b — the provider probe: one answered call, reported back
+
+```sh
+npm run test:report -- +14155550123
+```
+
+This is the one check that covers the whole provider path in isolation. It builds a throwaway
+case in the middle of the Pacific, dials you with a real `attempt_id`, and waits. Answer, say
+one sentence, and let the agent finish talking. It then prints the attempt row and the notes
+Claude derived:
+
+```
+attempt_id 5, case 4
+dialing +14155550123 as ac_... Answer it, then wait.
+outcome   answered
+answer    "I'm at the park bench and I'm fine."
+note      probe-witness-...: The person is at the park bench and reports being safe.
+```
+
+A pass here means all of it works: the dial, the `attempt_id` dynamic variable, the hosted
+`report_call` tool, the `CALLBACK_SECRET` bearer, `POST /calls/report`, and Claude's
+interpretation. It calls nobody but the number you pass, so it is safe to re-run.
+
+If it times out, the call reached you but `report_call` never fired or never landed. Check the
+server log for a `401` (the bearer is out of sync — re-run `npm run setup-agent`) and
+`npm run agent:show` for the tool URL.
+
 ### Step 3 — open an incident
 
 Open `http://127.0.0.1:8787` and type a plain sentence into the entry box:
@@ -307,6 +342,7 @@ is why the template fixture works out of the box here but produces zero calls in
 | `npm run inspect` | Dumps every table as JSON |
 | `npm run agent:show` | Prints the live Cartesia agent config |
 | `npm run test:call -- +E164` | One check-in call, opens no case. Stale: see Step 2 |
+| `npm run test:report -- +E164` | One real answered call through `report_call`. See Step 2b |
 | `./dev-clean-db` | Wipes and republishes the database module |
 | `./dev-tunnel` | ngrok in front of port 8787 |
 

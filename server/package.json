@@ -13,6 +13,7 @@
     "test": "tsx tests/logic.ts && tsx tests/tools.ts && tsx --test tests/coordinator.ts tests/coordinator-fixtures.ts tests/planner-strict.ts tests/coordination-store.ts tests/coordinator-worker.ts tests/coordinator-report.ts tests/recording-model.ts tests/recording-demo.ts tests/intake.ts tests/case-input-store.ts tests/case-inputs.ts tests/recording-case-inputs.ts",
     "demo:coordinator": "tsx src/demo-coordinator.ts",
     "test:call": "tsx tests/call-number.ts",
+    "test:report": "tsx tests/report-call.ts",
     "inspect": "tsx src/inspect.ts",
     "setup-agent": "tsx src/setup-tools.ts",
     "check": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p spacetimedb/tsconfig.json",
