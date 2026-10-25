@@ -1727,3 +1727,58 @@ button.tile:hover { transform: translateY(-3px); box-shadow: 0 16px 34px rgba(17
 }
 .incident-map-tools { display: flex; gap: 12px; align-items: center; flex: none; }
 .incident-map-tools button { border: 1px solid #dce0d1; border-radius: 20px; padding: 7px 10px; background: #fff; color: #4b573c; font: inherit; font-size: 11px; cursor: pointer; }
+
+/* District hierarchy: agent statements sit beside the records that check them. */
+.trust-brief { display: grid; gap: 12px; padding: 18px; border: 1px solid var(--line); border-radius: 20px; background: #fff; }
+.trust-brief.compact { padding: 14px; gap: 9px; }
+.trust-brief > header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+.trust-brief h3 { margin: 0; font-size: 19px; letter-spacing: -.025em; }
+.trust-brief h4 { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 6px 0 0; font-size: 15px; }
+.trust-brief h4 small { font-size: 11px; font-weight: 500; color: #8b4b00; }
+.trust-brief header p { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
+.trust-verdict { flex-shrink: 0; font-size: 11px; font-weight: 650; padding: 4px 8px; border-radius: 12px; }
+.trust-verdict.ok { color: #394a0b; background: #e8f5bf; }
+.trust-verdict.bad { color: #8b2a00; background: #ffe2cf; }
+.trust-statement { margin: 0; font-size: 15px; line-height: 1.5; color: var(--ink); }
+.trust-statement.failed { text-decoration: line-through; text-decoration-color: #ff7a2f; color: var(--muted); }
+.trust-problems { margin: 4px 0 0; padding-left: 18px; color: #8b2a00; font-size: 12px; line-height: 1.5; }
+.trust-totals { display: flex; flex-wrap: wrap; gap: 8px 18px; font-size: 13px; color: var(--muted); }
+.trust-totals b { color: var(--ink); font-size: 17px; font-weight: 650; margin-right: 4px; }
+.trust-brief .unaccounted, .trust-brief .unaccounted b { color: #c75a12; font-weight: 650; }
+.trust-districts { display: grid; gap: 10px; }
+.trust-district { padding: 12px 14px; border-radius: 16px; background: var(--soft); }
+.trust-district > summary { display: grid; gap: 8px; cursor: pointer; list-style: none; }
+.trust-district > summary::-webkit-details-marker { display: none; }
+.trust-district.compact { display: grid; gap: 7px; }
+.trust-district-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; font-size: 15px; }
+.trust-district-head small { font-size: 11px; padding: 3px 7px; border-radius: 10px; background: #fff; color: var(--muted); }
+.trust-district-head small.cleared { color: #394a0b; background: #d4f25c; }
+.trust-district-counts { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--muted); }
+.trust-district-body { display: grid; gap: 10px; padding-top: 12px; }
+.trust-bar { display: flex; gap: 2px; height: 10px; border-radius: 6px; overflow: hidden; background: #e6e6e0; }
+.trust-bar .seg { min-width: 6px; }
+.seg.arrived, .trust-status.arrived { background: #8fbf2f; }
+.seg.in_transit, .trust-status.in_transit { background: #b5d65a; }
+.seg.help_arranged, .trust-status.help_arranged { background: #dbeca0; }
+.seg.self_evacuating, .trust-status.self_evacuating { background: #a9cbe8; }
+.seg.needs_help, .trust-status.needs_help { background: #f4b16f; }
+.seg.unknown, .trust-status.unknown { background: #c9c9c2; }
+.seg.unreachable, .trust-status.unreachable { background: #ff7a2f; color: #fff; }
+.trust-claims, .trust-list { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.trust-claims > li { display: grid; gap: 6px; padding: 10px 12px; border-radius: 12px; background: #fff; }
+.trust-claims > li.failed { background: #fff6f0; }
+.trust-list li { font-size: 13px; line-height: 1.5; padding: 8px 10px; border-radius: 10px; background: var(--soft); }
+.trust-list small { display: block; color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
+.trust-person { font-size: 13px; }
+.trust-person > summary { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; cursor: pointer; padding: 4px 0; }
+.trust-person > summary small { color: var(--muted); font-size: 11px; }
+.trust-status { font-size: 11px; padding: 2px 7px; border-radius: 9px; color: #1a1e16; }
+.trust-evidence blockquote { margin: 8px 0 0; border-left: 3px solid #d4f25c; padding: 4px 0 4px 12px; display: grid; gap: 4px; }
+.trust-evidence blockquote p { margin: 0; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ink); }
+.trust-evidence small { color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
+.trust-link { justify-self: start; padding: 0; border: 0; background: none; color: #50631e; font-size: 12px; font-weight: 650; text-decoration: underline; cursor: pointer; }
+.trust-section { display: grid; gap: 8px; padding-top: 12px; border-top: 1px solid var(--line); }
+.trust-section select { justify-self: start; border: 1px solid var(--line); background: #fff; border-radius: 10px; padding: 8px 10px; color: var(--ink); font: inherit; font-size: 13px; }
+.trust-clear { display: grid; gap: 6px; padding-top: 8px; border-top: 1px solid var(--line); }
+.trust-ack { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.trust-ack input { accent-color: #ff7a2f; }

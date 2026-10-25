@@ -5,12 +5,12 @@ registerHooks({ resolve(specifier, context, next) {
   return next(specifier, context)
 } })
 import { Timestamp } from "spacetimedb"
-export function storeHarness() {
+export function storeHarness(extraTables: string[] = []) {
   let now = 1_000
-  const rows: Record<string, any[]> = Object.fromEntries(["profile", "incident", "incidentPerson", "supportCase", "attempt", "note", "caseProgress", "attemptProgress", "caseIntake", "caseInput", "incomingRequest"].map(name => [name, []]))
+  const rows: Record<string, any[]> = Object.fromEntries(["profile", "incident", "incidentPerson", "supportCase", "attempt", "note", "caseProgress", "attemptProgress", "caseIntake", "caseInput", "incomingRequest", ...extraTables].map(name => [name, []]))
   const db: any = {}
   for (const name of Object.keys(rows)) {
-    const key = (name === "caseProgress" || name === "caseIntake") ? "support_case_id" : name === "attemptProgress" ? "attempt_id" : name === "caseInput" ? "event_key" : "id"
+    const key = name === "assistanceSession" ? "case_id" : name === "operatorCommand" ? "command_id" : name === "profileSettings" ? "profile_id" : (name === "caseProgress" || name === "caseIntake") ? "support_case_id" : name === "attemptProgress" ? "attempt_id" : name === "caseInput" ? "event_key" : "id"
     db[name] = new Proxy({
       iter: () => rows[name].map(row => ({ ...row }))[Symbol.iterator](),
       insert: (row: any) => {

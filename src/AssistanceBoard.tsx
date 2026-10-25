@@ -4,6 +4,8 @@ import { participantLocation } from "../server/shared/spatial";
 import type { Arrangement, AssistanceState, Participant, Task } from "../server/shared/assistance";
 import type { CoordinatorAction } from "./updated-ui-api";
 import { Icon, type Opener } from "./Dashboard";
+import { TrustBrief } from "./TrustBrief";
+import type { Ledger } from "../server/shared/districts";
 
 const STAGES: Record<Arrangement["status"], string> = {
   proposed: "Needs your approval", approved: "Awaiting helper acceptance", accepted: "Helper accepted",
@@ -33,7 +35,7 @@ function taskStatus(task: Task, now: number) {
 }
 
 export function AssistanceBoard({ session, disabled, closed, now, compact = false, onAction, onOpen }: {
-  session: AssistanceState; disabled: boolean; closed: boolean; now: number; compact?: boolean;
+  session: AssistanceState & { ledger?: Ledger }; disabled: boolean; closed: boolean; now: number; compact?: boolean;
   onAction: (expectedRevision: number, action: CoordinatorAction) => Promise<void>;
   onOpen?: (from: Opener) => void;
 }) {
@@ -73,6 +75,7 @@ export function AssistanceBoard({ session, disabled, closed, now, compact = fals
     {error && <p className="assistance-review" role="alert">{error}</p>}
     {session.review && <p className="assistance-review" role="status"><b>Needs your attention</b>{session.review}</p>}
     {!compact && session.error && <details className="assistance-evidence"><summary>Planning issue</summary><p>{session.error}</p></details>}
+    {(!compact || (session.briefs?.length ?? 0) > 0) && <TrustBrief session={session} now={now} compact={compact} unavailable={unavailable} act={act} />}
 
     {shown.length ? <div className="arrangement-list">{shown.map(arrangement => <article key={arrangement.id} className={"arrangement " + arrangement.status}>
       <header><span className="arrangement-stage">{STAGES[arrangement.status]}</span><small>{new Date(arrangement.updated_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</small></header>

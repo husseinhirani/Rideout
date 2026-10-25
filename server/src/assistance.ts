@@ -5,13 +5,15 @@ import { readInformationState, runInformationCommand } from './information'
 import { object, commandId, canonicalJson } from '../shared/information'
 import { person, taskInstruction, type AssistanceState, type VoiceUpdate } from '../shared/assistance'
 import { answerCoordinator } from './assistance-agent'
+import { districtLedger, type Ledger } from '../shared/districts'
 import { ServiceError } from './service'
 
 export async function assistanceStates(): Promise<AssistanceState[]> {
   return (await query('SELECT * FROM assistance_session')).map(row=>JSON.parse(asString(row.state_json)) as AssistanceState)
 }
-export function publicAssistance(s: AssistanceState): AssistanceState {
-  return {...s,people:s.people.map(({simulation,...p})=>p)}
+/** The ledger is recomputed on every read so the UI's numbers always come from current records. */
+export function publicAssistance(s: AssistanceState): AssistanceState & { ledger: Ledger } {
+  return {...s,people:s.people.map(({simulation,...p})=>p),ledger:districtLedger(s,Date.now())}
 }
 export async function assistanceState(caseId: number) {
   const state=(await assistanceStates()).find(s=>s.case_id===caseId)

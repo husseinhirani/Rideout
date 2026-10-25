@@ -1,6 +1,7 @@
 import { person, matchReasons, requiresInformationReview } from './assistance-eligibility';
 export { person, matchReasons, requiresInformationReview } from './assistance-eligibility';
 import { spatialMatching } from './spatial';
+import type { CoreBrief, DistrictReport } from './trust-check';
 /** Shared incident coordination contract. People and locations are data, never role rules. */
 export type Facts = {
   location_id: string | null; needs_transport: boolean | null; party_size: number | null;
@@ -16,7 +17,10 @@ export type Task = { id: string; profile_id: number; kind: TaskKind; arrangement
 export type Arrangement = { id: string; recipient_id: number; helper_id: number; evidence_ids: string[]; reason: string; status: 'proposed' | 'approved' | 'accepted' | 'confirmed' | 'picked_up' | 'completed' | 'cancelled'; helper_accepted: boolean; recipient_confirmed: boolean; pickup_confirmations: number[]; arrival_confirmations: number[]; reconsiderable?: boolean; created_at: number; updated_at: number; };
 export type Finding = { id: string; profile_id: number; attempt_id: number; text: string; changes: Partial<Facts>; at: number };
 export type CoordinatorMessage = { id: string; from: 'lead' | 'facilitator'; text: string; at: number; kind: 'update' | 'decision' | 'review' | 'chat' };
-export type AssistanceState = { case_id: number; revision: number; planned_revision: number; paused: boolean; scenario: Scenario; people: Participant[]; findings: Finding[]; tasks: Task[]; arrangements: Arrangement[]; messages: CoordinatorMessage[]; review: string | null; failure_count: number; retry_at: number; error: string; processed_reports: number[]; missing_report_attempts?: number[]; closing_attempts?: number[]; };
+export type AssistanceState = { case_id: number; revision: number; planned_revision: number; paused: boolean; scenario: Scenario; people: Participant[]; findings: Finding[]; tasks: Task[]; arrangements: Arrangement[]; messages: CoordinatorMessage[]; review: string | null; failure_count: number; retry_at: number; error: string; processed_reports: number[]; missing_report_attempts?: number[]; closing_attempts?: number[];
+  /** District hierarchy: latest checked report per district, recent core briefs, and human sign-offs. */
+  district_reports?: Record<string, DistrictReport>; briefs?: CoreBrief[]; cleared_districts?: ClearedDistrict[]; };
+export type ClearedDistrict = { district_id: string; revision: number; at: number; actor: string; acknowledged: number[] };
 export type AssistancePlan = { summary: string; questions: { profile_id: number; kind: 'needs' | 'location' | 'capability'; reason: string; evidence_ids: string[] }[]; proposals: { recipient_id: number; helper_id: number; reason: string; evidence_ids: string[] }[]; cancel_task_ids: string[]; review: string | null };
 export type VoiceUpdate = { sequence: number; text: string; facts: Partial<Facts>; task_id?: string; result?: 'answered' | 'declined' | 'unknown'; confirmation?: 'accepted' | 'declined' | 'picked_up' | 'arrived'; finished?: boolean; do_not_call?: boolean };
 

@@ -2,6 +2,8 @@ import { t, SenderError, type ReducerCtx } from 'spacetimedb/server'
 import spacetimedb from '../models'
 import { addMessage, addTask, applyFinding, applyPlan, cancelArrangement, matchReasons, person, taskInstruction, touch, type AssistanceState, type VoiceUpdate } from '../../../shared/assistance'
 import { canonicalJson, commandId, object, text, contactEligibility, matchesScope, type InformationPolicy } from '../../../shared/information'
+import { districtLedger, STATUS_LABEL } from '../../../shared/districts'
+import { checkBrief, checkDistrictReport, type CoreBrief, type DistrictReport } from '../../../shared/trust-check'
 type Ctx = ReducerCtx<typeof spacetimedb.schemaType>
 const now = (ctx: Ctx) => Number(ctx.timestamp.microsSinceUnixEpoch)/1000
 function read(ctx: Ctx, caseId: bigint) {
@@ -64,6 +66,23 @@ export const commitAssistancePlan = spacetimedb.reducer({ case_id:t.u64(), expec
   if(reconcileContacts(ctx,args.case_id,s)){touch(s);write(ctx,args.case_id,s);return}
   if (s.revision !== Number(args.expected_revision) || s.planned_revision === s.revision) throw new SenderError('Stale coordinator plan')
   try{applyPlan(s,JSON.parse(args.plan_json),now(ctx))}catch(error){throw new SenderError(error instanceof Error?error.message:'Invalid coordinator plan')}
+  write(ctx,args.case_id,s)
+})
+/** Agent reports are saved with checks recomputed here, so a worker cannot vouch for itself.
+ * Saving a report is not new evidence and does not advance the revision. */
+export const commitTrustBriefing = spacetimedb.reducer({ case_id:t.u64(), based_on_revision:t.u64(), reports_json:t.string(), brief_json:t.string() }, (ctx,args) => {
+  const {state:s} = read(ctx,args.case_id)
+  if (s.revision !== Number(args.based_on_revision)) return // Newer evidence arrived; the next plan briefs it.
+  const ledger = districtLedger(s,now(ctx))
+  const reports = JSON.parse(args.reports_json) as Record<string,DistrictReport>, brief = JSON.parse(args.brief_json) as CoreBrief
+  if (!object(reports,'district reports') || !Array.isArray(brief?.district_lines) || typeof brief.headline !== 'string') throw new SenderError('Invalid briefing')
+  for (const [id,report] of Object.entries(reports)) {
+    if (report.district_id !== id || !Array.isArray(report.claims) || typeof report.summary !== 'string') throw new SenderError('Invalid district report')
+    report.based_on_revision = s.revision; report.check = checkDistrictReport(s,ledger,report)
+  }
+  brief.based_on_revision = s.revision; brief.created_at = now(ctx); brief.check = checkBrief(s,ledger,reports,brief)
+  s.district_reports = reports
+  s.briefs = [...(s.briefs ?? []), brief].slice(-20)
   write(ctx,args.case_id,s)
 })
 export const failAssistancePlan = spacetimedb.reducer({ case_id:t.u64(), expected_revision:t.u64(), message:t.string() }, (ctx,args) => {
@@ -155,6 +174,15 @@ export const assistanceOperator = spacetimedb.reducer({ case_id:t.u64(), command
       const reasons=matchReasons(s,a.recipient_id,a.helper_id,a.id);if(reasons.length) cancelArrangement(s,a,reasons.join('; '),now(ctx))
     }
     addMessage(s,'Dispatcher changed access at '+location.label+' to '+location.access+'.',now(ctx),'decision')
+  } else if (input.action === 'declare_clear') {
+    // Only the human declares a district clear, and only after naming every open exception.
+    const ledger=districtLedger(s,now(ctx)), tally=ledger.districts.find(d=>d.district.id===input.district_id)
+    if(!tally) throw new SenderError('Unknown district')
+    const acknowledged=Array.isArray(input.acknowledged)?input.acknowledged.map(Number):[]
+    const open=ledger.people.filter(p=>p.district_id===tally.district.id&&['unknown','unreachable','needs_help'].includes(p.status)&&!acknowledged.includes(p.profile_id))
+    if(open.length) throw new SenderError(tally.district.label+' still has '+open.map(p=>p.name+' ('+STATUS_LABEL[p.status]+')').join(', ')+'. Acknowledge each person to declare it clear.')
+    s.cleared_districts=[...(s.cleared_districts??[]).filter(c=>c.district_id!==tally.district.id),{district_id:tally.district.id,revision:s.revision+1,at:now(ctx),actor:args.actor,acknowledged}]
+    addMessage(s,'You declared '+tally.district.label+' clear'+(acknowledged.length?', acknowledging '+acknowledged.length+' open case(s)':'')+'. This records your decision, not verified safety.',now(ctx),'decision','lead')
   } else if(input.action==='retry_planning') { s.error='';s.failure_count=0;s.retry_at=0 }
   else throw new SenderError('Unsupported coordinator action')
   touch(s);write(ctx,args.case_id,s)

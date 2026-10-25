@@ -66,7 +66,8 @@ export type CoordinatorAction =
   | { action: 'message'; text: string }
   | { action: 'approve' | 'reject' | 'cancel'; arrangement_id: string; reason?: string }
   | { action: 'pause' | 'resume' | 'retry_planning' }
-  | { action: 'location_access'; location_id: string; access: 'community' | 'specialist' | 'unknown' };
+  | { action: 'location_access'; location_id: string; access: 'community' | 'specialist' | 'unknown' }
+  | { action: 'declare_clear'; district_id: string; acknowledged: number[] };
 export const api = {
   coordinator: (id: number, expectedRevision: number, action: CoordinatorAction) => command<{ status: string }>(
     // Controls apply to the revision the operator reviewed. Repeating a control

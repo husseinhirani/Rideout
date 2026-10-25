@@ -27,6 +27,15 @@ reports remain visible even while audio is unavailable.
 Only build/type checks have been performed for this slice; the actual click,
 phone conversation and audio availability need verification on the running app.
 
+## District agents (`feature/district-trust`)
+
+Add `DISTRICT_AGENTS=1` to the backend command to run one agent per district and a core
+agent that briefs the dispatcher. The **Core agent briefing** in the assistance view shows
+code-computed counts, each agent statement's check against saved reports, drill-down to
+calls, spot-checks and the human-only **Declare district clear** control. See
+`docs/adr/0005-district-agent-trust.md`. Without the flag, the single coordinator runs
+as before.
+
 RideOut helps an organizer collect information about an incident. Claude chooses
 questions and contacts within an authorized scope; Cartesia conducts phone calls;
 reports become attributed evidence for the organizer. Incident details are free

@@ -33,5 +33,5 @@ export { configureInformationIntake, reviewInformationIncoming, prepareInformati
 export { closeInformationCase, cancelInformationAttempt } from "./apis/information"
 export { startWildfireDrill, configureDrillParticipants } from "./apis/information"
 
-export { commitAssistancePlan, failAssistancePlan, recordAssistanceUpdate, deliverAssistanceTask, assistanceOperator, recordAssistanceChat, synchronizeAssistance, bindAssistanceTask, blockAssistanceTask } from './apis/assistance'
+export { commitAssistancePlan, commitTrustBriefing, failAssistancePlan, recordAssistanceUpdate, deliverAssistanceTask, assistanceOperator, recordAssistanceChat, synchronizeAssistance, bindAssistanceTask, blockAssistanceTask } from './apis/assistance'
 export { queueAssistanceTask } from './apis/information'

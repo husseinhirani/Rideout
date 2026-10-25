@@ -1,6 +1,8 @@
 import { callReducer } from './db'
 import { assistanceStates, assistanceState, callSnapshot, nextVoiceTask } from './assistance'
 import { planAssistance } from './assistance-agent'
+import { admissibleQuestions, coreBrief, districtReport } from './district-agent'
+import { districtLedger } from '../shared/districts'
 import { requiresInformationReview, type AssistanceState, type Task, type VoiceUpdate } from '../shared/assistance'
 
 export function startAssistanceWorker():()=>void {
@@ -12,7 +14,24 @@ export function startAssistanceWorker():()=>void {
     if(!seen||seen.revision!==s.revision){lastRevision.set(s.case_id,{revision:s.revision,at:Date.now()});return}
     if(Date.now()-seen.at<700)return
     planning.add(s.case_id)
-    try{const result=await planAssistance(s);if(!stopped)await callReducer('commitAssistancePlan',[s.case_id,s.revision,JSON.stringify(result)])}
+    try{
+      if(process.env.DISTRICT_AGENTS!=='1'){const result=await planAssistance(s);if(!stopped)await callReducer('commitAssistancePlan',[s.case_id,s.revision,JSON.stringify(result)]);return}
+      // District agents report on their slice in parallel with incident-wide matching; the core then briefs the human.
+      const ledger=districtLedger(s,Date.now())
+      const [planned,...reports]=await Promise.allSettled([planAssistance(s),...ledger.districts.filter(d=>d.total>0).map(d=>districtReport(s,ledger,d.district.id))])
+      const byDistrict=Object.fromEntries(reports.flatMap(r=>r.status==='fulfilled'?[[r.value.district_id,r.value]]:[]))
+      const brief=await coreBrief(s,ledger,byDistrict,Date.now())
+      if(stopped)return
+      if(planned.status==='fulfilled'){
+        const plan=planned.value, asked=new Set(plan.questions.map(q=>q.profile_id+':'+q.kind))
+        const delegated=Object.values(byDistrict).flatMap(r=>admissibleQuestions(s,ledger,r)).filter(q=>{const key=q.profile_id+':'+q.kind;if(asked.has(key))return false;asked.add(key);return true})
+        // District questions go first; if the merged plan is rejected, the incident-wide plan still commits alone.
+        try{await callReducer('commitAssistancePlan',[s.case_id,s.revision,JSON.stringify({...plan,questions:[...delegated,...plan.questions].slice(0,6)})])}
+        catch(error){if(!delegated.length)throw error;await callReducer('commitAssistancePlan',[s.case_id,s.revision,JSON.stringify(plan)])}
+      }
+      await callReducer('commitTrustBriefing',[s.case_id,s.revision,JSON.stringify(byDistrict),JSON.stringify(brief)])
+      if(planned.status==='rejected')throw planned.reason
+    }
     catch(error){if(!stopped)await callReducer('failAssistancePlan',[s.case_id,s.revision,error instanceof Error?error.message:'Planning failed'])}
     finally{planning.delete(s.case_id)}
   }
