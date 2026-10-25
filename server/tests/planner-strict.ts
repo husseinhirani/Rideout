@@ -12,7 +12,7 @@ test("real planner parses valid output and rejects refusal, truncation and API f
     const chunks: Buffer[] = []
     for await (const chunk of req) chunks.push(Buffer.from(chunk))
     received = JSON.parse(Buffer.concat(chunks).toString())
-    res.writeHead(status, { "content-type": "application/json" })
+    res.writeHead(status, { "content-type": "application/json", "request-id": "req_test" })
     res.end(JSON.stringify(status === 200 ? {
       id: "msg_test", type: "message", role: "assistant", model: "test-model",
       content: [{type: "text", text: output}], stop_reason: stopReason, stop_sequence: null,
@@ -30,6 +30,9 @@ test("real planner parses valid output and rejects refusal, truncation and API f
     const { planStrict, interpretCoordinationAnswer, interpretIncomingRequest } = await import("../src/agent")
     assert.deepEqual(await planStrict({reports: ["New sighting"]}), expected)
     assert.match(JSON.stringify(received.messages), /New sighting/)
+    const { askStrictWithMetadata } = await import("../src/llm")
+    const traced = await askStrictWithMetadata({ system: "test", input: {}, schema: { type: "object" } })
+    assert.deepEqual(traced, { value: expected, model: "test-model", request_id: "req_test" })
     const report = { reached: true, accepted: true, notes: [], concern: "" }
     output = JSON.stringify(report)
     assert.deepEqual(await interpretCoordinationAnswer({answer: "I will check the playground."}), report)

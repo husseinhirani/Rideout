@@ -16,6 +16,7 @@ import {
   attemptProgress,
   caseProgress,
   caseIntakes,
+  incomingRequests,
   callReducer,
   incidentPeople,
   incidents,
@@ -28,8 +29,10 @@ import {
   type ProfileRow,
   type SupportCaseRow,
 } from "./db"
+import { DEMO_LOCATIONS } from "../shared/locations"
+import { createCaseFromIntake } from "./case-inputs"
 import { ServiceError } from "./service"
-import { recordingMode, scriptedPlan, scriptedInterpret } from "./recording-model"
+import { recordingMode, scriptedPlan, scriptedInterpret, scriptedRidePlan } from "./recording-model"
 
 // Legacy cases replan on dispatcher input. Opt-in coordinated cases instead use
 // the durable worker below; both paths share dial() and the provider adapter.
@@ -42,6 +45,7 @@ const PLACEHOLDER_PHONE_PREFIX = "+1555555"
 const CHECKING_IN = "checking_in"
 const SAFE = "safe"
 const VICTIM = "victim"
+const UNKNOWN = "unknown"
 const ANSWERED = "answered"
 const NO_ANSWER = "no_answer"
 const CLOSED = "closed"
@@ -86,7 +90,7 @@ function configuredHelperIds(): number[] {
 // ------------------------------------------------------------------ reading
 
 export async function getState(includeLegacyConfiguration = true): Promise<Record<string, unknown>> {
-  const [allProfiles, allIncidents, people, cases, allAttempts, allNotes, coordination, attempt_progress, case_intakes] = await Promise.all([
+  const [allProfiles, allIncidents, people, cases, allAttempts, allNotes, coordination, attempt_progress, case_intakes, incoming_requests] = await Promise.all([
     profiles(),
     incidents(),
     incidentPeople(),
@@ -96,6 +100,7 @@ export async function getState(includeLegacyConfiguration = true): Promise<Recor
     caseProgress(),
     attemptProgress(),
     caseIntakes(),
+    incomingRequests(),
   ])
   return {
     simulate: process.env.SIMULATE === "1",
@@ -103,7 +108,10 @@ export async function getState(includeLegacyConfiguration = true): Promise<Recor
       simulate: process.env.SIMULATE === "1", scripted: recordingMode(),
       auto_coordinate: automatic(), database: process.env.SPACETIMEDB_DATABASE ?? "rideout",
       helper_ids: includeLegacyConfiguration && automatic() ? configuredHelperIds() : [],
+      reporter_id: includeLegacyConfiguration ? configuredReporterId() : null,
+      inbound: process.env.INBOUND_REQUESTS === "1",
     },
+    locations: includeLegacyConfiguration ? DEMO_LOCATIONS : [],
     profiles: allProfiles,
     incidents: allIncidents,
     incident_people: people,
@@ -113,6 +121,39 @@ export async function getState(includeLegacyConfiguration = true): Promise<Recor
     coordination,
     attempt_progress,
     case_intakes,
+    // Dispatcher view only. The caller-facing reply never carries case facts.
+    incoming_requests,
+  }
+}
+
+function configuredReporterId(): number | null {
+  const id = Number(process.env.COORDINATOR_REPORTER_ID)
+  return Number.isSafeInteger(id) && id > 0 ? id : null
+}
+
+// ------------------------------------------------------------------- intake
+
+// The dispatcher's missing-child form. It goes through the same intake service
+// as an inbound call, so the case gets the same receipt, intake row and
+// parent-confirmed closure. The reporter is self-reported, never verified.
+export async function openDispatcherIntake(input: {
+  event_key: string
+  reporter_profile_id: number | null
+  intake: unknown
+}): Promise<Awaited<ReturnType<typeof createCaseFromIntake>>> {
+  if (!automatic()) throw new ServiceError(503, "Dispatcher intake requires AUTO_COORDINATE=1 with two configured helpers")
+  const eventKey = input.event_key.trim()
+  if (!/^[A-Za-z0-9-]{8,100}$/.test(eventKey)) throw new ServiceError(400, "event_key must be 8-100 letters, digits or dashes")
+  const reporterProfileId = input.reporter_profile_id ?? configuredReporterId()
+  if (reporterProfileId === null) throw new ServiceError(400, "Choose the reporter's profile")
+  try {
+    const result = await createCaseFromIntake(input.intake, {
+      eventKey: "dispatcher:" + eventKey, reporterProfileId, helperProfileIds: configuredHelperIds(),
+    })
+    if (result.status === "recorded") background("intake plan", coordinationWorker.tick())
+    return result
+  } catch (error) {
+    throw new ServiceError(409, "Intake was not recorded: " + errorMessage(error))
   }
 }
 
@@ -225,11 +266,23 @@ async function triage(incident: IncidentRow): Promise<void> {
           // check-in rather than a case answer.
           attempt_id: "",
         })
+        watchCheckIn(incident.id, profile.id)
       } catch (error) {
         console.error("check-in " + profile.name + ": " + errorMessage(error))
       }
     }),
   )
+}
+
+// Same deadline as a case call. Nobody answering is "unknown", which is
+// neither safe nor cleared; a late answer still lands afterwards.
+function watchCheckIn(incidentId: number, profileId: number): void {
+  setTimeout(() => {
+    background("check-in deadline " + String(profileId), (async () => {
+      await callReducer("markCheckInUnanswered", [incidentId, profileId])
+      await refreshIncidentBrief(incidentId)
+    })())
+  }, NO_ANSWER_MS).unref()
 }
 
 export async function onCheckIn(input: {
@@ -249,7 +302,9 @@ export async function onCheckIn(input: {
     (row) => row.incident_id === input.incident_id && row.victim_profile_id === input.profile_id,
   )
   if (!opened) throw new Error("recordCheckIn did not open a support case")
-  background("case " + String(opened.id), startCase(opened.id))
+  // A ride case is not the missing-child scenario the coordinator is built for,
+  // so it always uses the dispatcher-reviewed planner.
+  background("case " + String(opened.id), startCase(opened.id, false))
   return { result: VICTIM, support_case_id: opened.id }
 }
 
@@ -292,8 +347,8 @@ export async function closeCase(
   return { support_case_id: supportCaseId, status: CLOSED }
 }
 
-async function startCase(supportCaseId: number): Promise<void> {
-  if (automatic()) {
+async function startCase(supportCaseId: number, coordinated = true): Promise<void> {
+  if (coordinated && automatic()) {
     await callReducer("enableCoordination", [supportCaseId, configuredHelperIds()])
     startCoordinatorWorker()
   }
@@ -322,6 +377,62 @@ async function requireCase(supportCaseId: number): Promise<SupportCaseRow> {
   const row = (await supportCases()).find((item) => item.id === supportCaseId)
   if (!row) throw new ServiceError(404, "Support case not found")
   return row
+}
+
+// The dispatcher stops a call that has not started, or a simulated one. A real
+// call that may already be ringing is left alone: RideOut cannot hang it up.
+export async function cancelCall(
+  attemptId: number,
+): Promise<{ attempt_id: number; cancelled: boolean; reason: string }> {
+  const attempt = (await attempts()).find(row => row.id === attemptId)
+  if (!attempt) throw new ServiceError(404, "Attempt not found")
+  const progress = (await attemptProgress()).find(row => row.attempt_id === attemptId)
+  const refusal = cancelRefusal(attempt, progress?.transport)
+  if (refusal) return { attempt_id: attemptId, cancelled: false, reason: refusal }
+  try {
+    await callReducer("cancelAttempt", [attemptId])
+  } catch (error) {
+    // The worker can claim the call between our read and the reducer.
+    return { attempt_id: attemptId, cancelled: false, reason: errorMessage(error) }
+  }
+  const simulated = attempt.call_id?.startsWith("sim_") === true
+  return { attempt_id: attemptId, cancelled: true, reason: simulated ? "Simulated call ended." : "Call cancelled before dialing." }
+}
+
+export function cancelRefusal(attempt: AttemptRow, transport: string | undefined): string {
+  const simulated = attempt.call_id?.startsWith("sim_") === true
+  if (transport === undefined) {
+    if (attempt.outcome != null) return "Call already has an outcome."
+    return attempt.call_id && !simulated ? "A live call cannot be ended from RideOut." : ""
+  }
+  if (transport === "queued" || (transport === "active" && simulated)) return ""
+  if (transport === "ended" || transport === "cancelled") return "Call already finished."
+  if (transport === "dispatching") return "The call is being placed and cannot be cancelled safely."
+  return "A live or unresolved call cannot be ended from RideOut."
+}
+
+// ----------------------------------------------------------------- profiles
+
+export async function registerProfile(input: {
+  name: string
+  phone: string
+  lat: number
+  lng: number
+  contact_profile_ids: number[]
+}): Promise<{ profile_id: number }> {
+  const name = input.name.trim()
+  const phone = input.phone.trim()
+  if (name.length === 0) throw new ServiceError(400, "name is required")
+  if (phone && !E164.test(phone)) throw new ServiceError(400, "phone must be E.164, such as +14155550123, or empty")
+  const known = await profiles()
+  const missing = input.contact_profile_ids.find(id => !known.some(row => row.id === id))
+  if (missing !== undefined) throw new ServiceError(400, "Contact profile " + String(missing) + " not found")
+  const before = new Set(known.map(row => row.id))
+  await callReducer("insertProfile", [name, phone, input.lat, input.lng, []])
+  const created = (await profiles()).find(row => !before.has(row.id))
+  if (!created) throw new Error("insertProfile did not insert a profile")
+  if (input.contact_profile_ids.length) await callReducer("setContacts", [created.id, input.contact_profile_ids])
+  return { profile_id: created.id }
 }
 
 // ------------------------------------------------------------------ reports
@@ -359,7 +470,8 @@ export async function onReport(input: {
     throw new ServiceError(409, "Coordinated inbound updates need an explicitly matched case; inbound integration is pending")
   }
   const facts = await caseFacts(supportCaseId)
-  const learned = await interpretAnswer(
+  const interpret = recordingMode() ? scriptedInterpret : interpretAnswer
+  const learned = await interpret(
     {
       goal: facts.supportCase.goal,
       victim: facts.victim?.name ?? "",
@@ -448,7 +560,7 @@ async function runPlan(
     return { planned: 0, reason: "No one left to call on this case." }
   }
   const contacts = new Set(facts.victim?.contact_profile_ids ?? [])
-  const result = await plan(
+  const result = await (recordingMode() ? scriptedRidePlan : plan)(
     {
       goal: facts.supportCase.goal,
       instruction,
@@ -560,9 +672,15 @@ async function expire(attemptId: number): Promise<void> {
 // ------------------------------------------------------------------- briefs
 
 async function refreshBriefs(supportCaseId: number): Promise<void> {
-  if (recordingMode()) return
   if ((await caseProgress()).some(row => row.support_case_id === supportCaseId)) return
   const facts = await caseFacts(supportCaseId)
+  if (recordingMode()) {
+    // Same template coordinated cases use, so a scripted run makes no Claude call.
+    const latest = facts.caseNotes.slice(-6).map(row => row.text)
+    const summary = `${facts.supportCase.goal} Latest reports (not verified): ${latest.length ? latest.join("; ") : "None yet."}`
+    await callReducer("setBrief", [supportCaseId, JSON.stringify({ summary, suggestions: [] })])
+    return
+  }
   const result = await brief(
     {
       scope: "one case",
@@ -606,6 +724,7 @@ async function refreshIncidentBrief(incidentId: number): Promise<void> {
       triage: {
         safe: people.filter((row) => row.status === SAFE).length,
         still_checking_in: people.filter((row) => row.status === CHECKING_IN).length,
+        no_answer: people.filter((row) => row.status === UNKNOWN).length,
         needs_help: people.filter((row) => row.status === VICTIM).length,
       },
       cases: cases.map((row) => ({

@@ -1,5 +1,17 @@
 # design.md
 
+## UI/backend integration
+
+The integration branch combines the dashboard at `3a5b293` with the generic
+backend at `f453df8`. Generic authenticated routes remain authoritative; the
+dashboard still needs migration to `INFORMATION-API.md` before live use. The
+HTML console remains the verified interaction path. Legacy reducers and fixtures
+are retained for existing records, not exposed as new generic product flows.
+
+Strict Claude requests use `messages.create().withResponse()` and parse the
+structured JSON text before application validation. This preserves request IDs
+without relying on the installed SDK's `parse()` returning an APIPromise at runtime.
+
 ## Organizer controls — Step 6
 
 Pause/resume and contact consent reuse the configuration reducer. Explicit close

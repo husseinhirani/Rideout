@@ -52,3 +52,15 @@ test("explicit unknown time remains missing instead of counting as an approximat
   assert.equal(assessDemoIntake({...complete,child:{...complete.child,last_seen_time:time}}).status,"needs_clarification")
  }
 })
+test("dispatcher intake refuses without coordination and asks questions before writing",async()=>{
+ process.env.SPACETIMEDB_URL="http://127.0.0.1:9"
+ const {openDispatcherIntake}=await import("../src/loop")
+ delete process.env.AUTO_COORDINATE
+ await assert.rejects(openDispatcherIntake({event_key:"form-0001",reporter_profile_id:4,intake:complete}),/AUTO_COORDINATE/)
+ Object.assign(process.env,{AUTO_COORDINATE:"1",COORDINATOR_HELPER_IDS:"1,2",COORDINATOR_REPORTER_ID:"4"})
+ await assert.rejects(openDispatcherIntake({event_key:"x",reporter_profile_id:null,intake:complete}),/event_key/)
+ const result=await openDispatcherIntake({event_key:"form-0002",reporter_profile_id:null,intake:{child:{name:"Ava"},reporter:{name:"Morgan",relationship:"parent"}}})
+ assert.equal(result.status,"needs_clarification")
+ if(result.status!=="needs_clarification")return
+ assert.deepEqual(result.questions.map(row=>row.field),["child.description","child.last_seen_location_id","child.last_seen_time"])
+})

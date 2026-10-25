@@ -2,6 +2,11 @@
 
 ## Current product — GitHub #15
 
+Integration update: Vien's testing handoff is complete. Tony owns the remaining
+dashboard/API integration on `tony/ui-backend-integration`. GitHub #27 records
+passed live checkpoints and outstanding checks; the stage descriptions below
+are implementation history, not a request to wait for Vien.
+
 RideOut collects information for an organizer about any incident. The organizer
 sets an objective and permitted contacts; calls and incoming accounts become
 attributed evidence. No child, victim, parent, predefined place or participant

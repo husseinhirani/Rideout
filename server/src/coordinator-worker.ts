@@ -3,6 +3,7 @@ import type { CaseProgressRow, AttemptProgressRow, ProfileRow, SupportCaseRow, I
 import type { Planner } from "./coordinator"
 import { evaluateCase, type CaseSnapshot } from "./coordinator"
 import { randomUUID } from "node:crypto"
+import { DEMO_LOCATIONS } from "../shared/locations"
 
 export type CoordinationState = {
   cases: SupportCaseRow[]; incidents: IncidentRow[]; profiles: ProfileRow[]
@@ -129,7 +130,7 @@ function snapshotFor(state: CoordinationState, progress: CaseProgressRow, now: n
   const incident = state.incidents.find(row => row.id === current.incident_id)!
   const intake = state.case_intakes?.find(row => row.support_case_id === current.id)
   const history = state.attempt_progress.filter(row => row.support_case_id === current.id && row.transport !== "cancelled")
-  const locations = [{id:"park-bench",label:"Park bench"},{id:"playground",label:"Playground"}]
+  const locations = DEMO_LOCATIONS.map(({id,label}) => ({id,label}))
   return {
     case_id: current.id, status: current.status === "closed" ? "closed" : "open", now,
     child: intake ? {name:victim.name,description:intake.child_description,last_seen_location_id:intake.last_seen_location_id,last_seen_at:intake.last_seen_time}

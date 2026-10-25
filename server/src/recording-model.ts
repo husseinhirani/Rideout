@@ -39,3 +39,18 @@ export async function scriptedInterpret(input: unknown): Promise<Learned & {acce
     notes:[{text:report.answer,has_place:false,lat:0,lng:0,radius_m:0}],
   }
 }
+
+// Legacy ride cases opened by a wildfire check-in. Candidates arrive ordered by
+// code (the victim's contacts first), so the script asks the first one.
+export async function scriptedRidePlan(input: Record<string, unknown>): Promise<Plan> {
+  const candidates = input.candidates as {profile_id:number;name:string}[]
+  const victim = (input.victim as {name?:string}).name || "this neighbor"
+  const first = candidates[0]
+  if (!first) return {calls:[],reason:"SCRIPTED DEMO: no one left to ask."}
+  return {
+    reason:`SCRIPTED DEMO: ask ${first.name}, the first eligible contact or neighbor.`,
+    calls:[{profile_id:first.profile_id,
+      ask:`${victim} cannot leave on their own. Can you give them a ride out?`,
+      context:"Fictional wildfire drill. Reports are not verified."}],
+  }
+}

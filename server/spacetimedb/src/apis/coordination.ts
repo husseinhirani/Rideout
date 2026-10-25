@@ -1,6 +1,6 @@
 import { SenderError, t } from "spacetimedb/server"
 import type { ReducerCtx } from "spacetimedb/server"
-import spacetimedb, { ANSWERED, CALL, CLOSED, CONCERN, OPEN, SUPERSEDED, VICTIM } from "../models"
+import spacetimedb, { ANSWERED, CALL, CANCELLED, CLOSED, CONCERN, OPEN, SUPERSEDED, VICTIM } from "../models"
 
 type Ctx = ReducerCtx<typeof spacetimedb.schemaType>
 const nowMs = (ctx: Ctx) => Number(ctx.timestamp.microsSinceUnixEpoch) / 1000
@@ -228,5 +228,38 @@ export const recordCoordinationFailure = spacetimedb.reducer(
     const failure_count = progress.failure_count + 1
     ctx.db.caseProgress.support_case_id.update({ ...progress, failure_count, retry_at_ms: failure_count < 3 ? nowMs(ctx) + 2_000 * failure_count : undefined, blocked_reason: failure_count === 3 ? message || "Coordination failed" : "" })
     refreshCoordinationBrief(ctx, support_case_id)
+  },
+)
+
+// The dispatcher stops a call that has not started, or a simulated one. A real
+// call that may be ringing stays as it is: RideOut has no way to hang it up.
+export const cancelAttempt = spacetimedb.reducer(
+  { attempt_id: t.u64() },
+  (ctx, { attempt_id }) => {
+    const attempt = ctx.db.attempt.id.find(attempt_id)
+    if (!attempt) throw new SenderError("Attempt not found")
+    const simulated = attempt.call_id?.startsWith("sim_") === true
+    const progress = ctx.db.attemptProgress.attempt_id.find(attempt_id)
+    if (!progress) {
+      if (attempt.outcome !== undefined) throw new SenderError("Call already has an outcome")
+      if (attempt.call_id && !simulated) throw new SenderError("A live call cannot be ended from RideOut")
+      ctx.db.attempt.id.update({ ...attempt, outcome: CANCELLED })
+      return
+    }
+    if (progress.transport === "queued") {
+      // Not an input: cancelling must not make the planner propose the same call again.
+      ctx.db.attemptProgress.attempt_id.update({ ...progress, transport: "cancelled" })
+      ctx.db.attempt.id.update({ ...attempt, outcome: CANCELLED })
+      refreshCoordinationBrief(ctx, attempt.support_case_id)
+      return
+    }
+    if (progress.transport === "active" && simulated) {
+      ctx.db.attemptProgress.attempt_id.update({ ...progress, transport: "ended" })
+      coordinationInput(ctx, attempt.support_case_id)
+      return
+    }
+    if (progress.transport === "ended" || progress.transport === "cancelled") throw new SenderError("Call already finished")
+    if (progress.transport === "dispatching") throw new SenderError("The call is being placed and cannot be cancelled safely")
+    throw new SenderError("A live or unresolved call cannot be ended from RideOut")
   },
 )

@@ -44,7 +44,7 @@ export async function askStrict<T>(options: Omit<AskOptions<T>, "fallback">): Pr
 }
 
 export async function askStrictWithMetadata<T>(options: Omit<AskOptions<T>, "fallback">): Promise<{ value: T; model: string; request_id: string }> {
-  const { data: reply, request_id } = await anthropic().messages.parse({
+  const { data: reply, request_id } = await anthropic().messages.create({
     model: process.env.CLAUDE_MODEL?.trim() || DEFAULT_MODEL,
     max_tokens: MAX_TOKENS,
     thinking: { type: "adaptive" },
@@ -52,10 +52,13 @@ export async function askStrictWithMetadata<T>(options: Omit<AskOptions<T>, "fal
     output_config: { format: { type: "json_schema", schema: options.schema } },
     messages: [{ role: "user", content: JSON.stringify(options.input) }],
   }, { timeout: 60_000, maxRetries: 0 }).withResponse()
-  if (reply.stop_reason !== "end_turn" || reply.parsed_output == null) {
+  const output = reply.content.find(block => block.type === "text")
+  if (reply.stop_reason !== "end_turn" || output?.type !== "text") {
     throw new Error("Claude returned no complete structured output")
   }
-  return { value: reply.parsed_output as T, model: reply.model, request_id: request_id ?? "" }
+  const value = JSON.parse(output.text) as T
+  if (value == null) throw new Error("Claude returned no structured output")
+  return { value, model: reply.model, request_id: request_id ?? "" }
 }
 
 export function objectSchema(

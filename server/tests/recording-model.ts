@@ -22,3 +22,10 @@ test("scripted interpretation accepts only explicit fixture agreements and retai
   assert.equal(other.accepted,false)
   assert.equal(other.notes[0].text,"Someone says yes; I did not agree.")
 })
+test("scripted ride plan asks the first ordered candidate and nobody else", async () => {
+  const { scriptedRidePlan } = await import("../src/recording-model")
+  const result = await scriptedRidePlan({ victim: { name: "Helen Cho" }, candidates: [{ profile_id: 2, name: "Daniel Ruiz" }, { profile_id: 6, name: "Andre Walsh" }] })
+  assert.deepEqual(result.calls.map(call => call.profile_id), [2])
+  assert.match(result.calls[0].ask, /Helen Cho/)
+  assert.deepEqual((await scriptedRidePlan({ victim: {}, candidates: [] })).calls, [])
+})
