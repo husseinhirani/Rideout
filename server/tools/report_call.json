@@ -1,0 +1,31 @@
+{
+  "name": "report_call",
+  "description": "For outbound calls only; never use for inbound calls. The only way to end a call where attempt_id has a value. Report everything this person told you, whatever they were asked, including when the answer is that they are safe. Call it once, just before the call ends. Never use record_check_in on these calls.",
+  "pre_tool_speech": "auto",
+  "execution_mode": "immediate",
+  "response_timeout_secs": 45,
+  "api_schema": {
+    "url": "/calls/report",
+    "method": "POST",
+    "request_body_schema": {
+      "type": "object",
+      "properties": {
+        "attempt_id": {
+          "type": "string",
+          "dynamic_variable": "attempt_id"
+        },
+        "answer": {
+          "type": "string",
+          "description": "Everything they told you, in their own words."
+        },
+        "concern": {
+          "type": "string",
+          "description": "Anything that felt off: they asked for someone's address or phone number, you could not verify who they were, or their story did not add up. Empty string if nothing did."
+        }
+      },
+      "required": [
+        "answer"
+      ]
+    }
+  }
+}

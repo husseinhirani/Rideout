@@ -1,0 +1,56 @@
+#!/bin/sh
+cd "$(dirname "$0")" || exit 1
+if ! command -v ngrok >/dev/null 2>&1; then
+  echo "ngrok is not installed. Install it, then run: ngrok config add-authtoken <token>" >&2
+  exit 1
+fi
+
+read_env() {
+  file=$1
+  key=$2
+  [ -f "$file" ] || return 0
+  awk -v key="$key" '
+    {
+      line = $0
+      sub(/^[[:space:]]+/, "", line)
+      sub(/[[:space:]]+$/, "", line)
+      if (line ~ /^export[[:space:]]+/) sub(/^export[[:space:]]+/, "", line)
+      if (line == "" || line ~ /^#/) next
+      eq = index(line, "=")
+      if (eq == 0) next
+      k = substr(line, 1, eq - 1)
+      sub(/[[:space:]]+$/, "", k)
+      if (k != key) next
+      v = substr(line, eq + 1)
+      sub(/^[[:space:]]+/, "", v)
+      sub(/[[:space:]]+$/, "", v)
+      n = length(v)
+      if (n >= 2) {
+        q = substr(v, 1, 1)
+        if ((q == "\"" || q == "'\''") && substr(v, n, 1) == q) v = substr(v, 2, n - 2)
+      }
+      print v
+      exit
+    }
+  ' "$file"
+}
+
+if [ -z "${NGROK_URL:-}" ]; then
+  NGROK_URL=$(read_env .env.local NGROK_URL)
+fi
+if [ -z "${NGROK_URL:-}" ]; then
+  NGROK_URL=$(read_env ../.env.local NGROK_URL)
+fi
+if [ -z "${NGROK_URL:-}" ]; then
+  NGROK_URL=$(read_env .env NGROK_URL)
+fi
+if [ -z "${NGROK_URL:-}" ]; then
+  NGROK_URL=$(read_env ../.env NGROK_URL)
+fi
+
+PORT="${PORT:-8787}"
+if [ -n "${NGROK_URL:-}" ]; then
+  exec ngrok http "$PORT" --url "$NGROK_URL"
+fi
+echo "NGROK_URL is not set. ngrok will assign a new https URL. Put that URL in NGROK_URL and run npm run setup-agent again." >&2
+exec ngrok http "$PORT"

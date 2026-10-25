@@ -1,0 +1,433 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>RideOut dispatcher</title>
+<style>
+  :root { color-scheme: dark; }
+  body {
+    margin: 0; padding: 16px;
+    background: #111417; color: #d7dde3;
+    font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  .wrap { max-width: 880px; margin: 0 auto; }
+  h1 { font-size: 13px; font-weight: 600; margin: 0; letter-spacing: .08em; text-transform: uppercase; }
+  .top { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: #4ea76a; }
+  .dot.off { background: #6b7076; }
+  .tag { border: 1px solid #3a4148; border-radius: 3px; padding: 1px 6px; font-size: 11px; color: #9aa4ad; }
+  .tag.sim { border-color: #6b5a2a; color: #d6b45c; }
+  section { border: 1px solid #262b30; border-radius: 4px; margin-bottom: 12px; }
+  section > h2 {
+    margin: 0; padding: 6px 10px; border-bottom: 1px solid #262b30;
+    font-size: 11px; font-weight: 600; letter-spacing: .08em;
+    text-transform: uppercase; color: #8d969e;
+  }
+  .body { padding: 10px; }
+  .muted { color: #7f888f; }
+  .quote { color: #9aa4ad; font-style: italic; }
+  .row { display: flex; gap: 10px; padding: 4px 0; border-bottom: 1px solid #1c2024; }
+  .row:last-child { border-bottom: 0; }
+  .row.pick { cursor: pointer; }
+  .row.pick:hover { background: #171b1f; }
+  .row.sel { background: #1b2228; }
+  .name { min-width: 150px; color: #e7edf3; }
+  .grow { flex: 1; min-width: 0; }
+  .badge { font-size: 11px; padding: 0 6px; border-radius: 3px; border: 1px solid #3a4148; color: #9aa4ad; white-space: nowrap; }
+  .badge.ringing { border-color: #35566f; color: #78b0d8; }
+  .badge.answered { border-color: #2f5c40; color: #6fc08c; }
+  .badge.no_answer { border-color: #4a4a4a; color: #8a8a8a; }
+  .badge.closed { border-color: #4a4a4a; color: #8a8a8a; }
+  .badge.open { border-color: #35566f; color: #78b0d8; }
+  .badge.needs_dispatcher { border-color: #6b5a2a; color: #d6b45c; }
+  .flag { color: #d6b45c; }
+  label { display: block; font-size: 11px; color: #8d969e; margin-bottom: 4px; }
+  textarea, input {
+    width: 100%; box-sizing: border-box;
+    background: #0d1013; color: #d7dde3;
+    border: 1px solid #333a41; border-radius: 3px; padding: 6px 8px;
+    font: inherit; resize: vertical;
+  }
+  textarea:focus, input:focus { outline: none; border-color: #4a6f8c; }
+  button {
+    background: #22292f; color: #d7dde3; border: 1px solid #3a4148;
+    border-radius: 3px; padding: 5px 12px; font: inherit; cursor: pointer;
+  }
+  button:hover { background: #2c343b; }
+  button.go { border-color: #3d6b4f; color: #8fd4a6; }
+  .bar { display: flex; gap: 8px; margin-top: 8px; align-items: flex-start; }
+  .err { background: #3a1f20; border: 1px solid #6b3134; color: #e4a1a3; padding: 6px 10px; border-radius: 3px; margin-bottom: 12px; }
+  ul { margin: 4px 0 0; padding-left: 18px; }
+  li { color: #9aa4ad; }
+  .sub { font-size: 11px; color: #7f888f; }
+  .sim-box { display: flex; gap: 6px; margin-top: 4px; }
+  .sim-box textarea { height: 38px; }
+  .sim-box input { max-width: 190px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <h1>RideOut dispatcher</h1>
+    <span class="tag sim" id="sim" hidden>SIMULATE</span>
+    <span class="grow"></span>
+    <span class="dot off" id="dot"></span>
+    <span class="sub" id="dotText">connecting</span>
+  </div>
+
+  <div class="err" id="err" hidden></div>
+
+  <section>
+    <h2>What is happening?</h2>
+    <div class="body">
+      <textarea id="newIncident" rows="2" placeholder="7-year-old Ava Reyes missing near Loma Alta Park since 3pm"></textarea>
+      <div class="bar">
+        <button class="go" id="openIncident">Open incident</button>
+        <span class="sub" id="newHint"></span>
+      </div>
+    </div>
+  </section>
+
+  <div id="view"></div>
+</div>
+
+<script>
+"use strict"
+
+const POLL_MS = 2000
+
+let state = null
+let selectedIncident = null
+let selectedCase = null
+let busy = false
+
+const els = {
+  sim: document.getElementById("sim"),
+  dot: document.getElementById("dot"),
+  dotText: document.getElementById("dotText"),
+  err: document.getElementById("err"),
+  view: document.getElementById("view"),
+  newIncident: document.getElementById("newIncident"),
+  newHint: document.getElementById("newHint"),
+}
+
+// --------------------------------------------------------------- plumbing
+
+function showError(message) {
+  els.err.textContent = message
+  els.err.hidden = !message
+}
+
+async function post(path, body) {
+  const response = await fetch(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  })
+  let payload = {}
+  try { payload = await response.json() } catch { payload = {} }
+  if (!response.ok) throw new Error(payload.error || ("request failed (" + response.status + ")"))
+  showError("")
+  return payload
+}
+
+// Sending always re-renders, so the poll never has to fight the keyboard.
+async function send(button, work) {
+  if (busy) return
+  busy = true
+  const label = button ? button.textContent : ""
+  if (button) { button.disabled = true; button.textContent = "..." }
+  try {
+    await work()
+    await poll()
+    render()
+  } catch (error) {
+    showError(error.message || "request failed")
+  } finally {
+    if (button) { button.disabled = false; button.textContent = label }
+    busy = false
+  }
+}
+
+async function poll() {
+  const response = await fetch("/state")
+  if (!response.ok) throw new Error("state failed (" + response.status + ")")
+  state = await response.json()
+  els.sim.hidden = !state.simulate
+  els.dot.classList.remove("off")
+  els.dotText.textContent = "live"
+}
+
+// The poll must never eat half-typed text. Anything the dispatcher has
+// started writing holds the render until they send or clear it.
+function typing() {
+  const active = document.activeElement
+  if (!active) return false
+  const isField = active.tagName === "TEXTAREA" || active.tagName === "INPUT"
+  return isField && active.value.trim().length > 0
+}
+
+async function tick() {
+  try {
+    await poll()
+    if (!busy && !typing()) render()
+  } catch {
+    els.dot.classList.add("off")
+    els.dotText.textContent = "disconnected"
+  }
+}
+
+// ----------------------------------------------------------------- shapes
+
+function parseBrief(stored) {
+  if (!stored || !stored.trim()) return null
+  try {
+    const parsed = JSON.parse(stored)
+    return {
+      summary: typeof parsed.summary === "string" ? parsed.summary : stored,
+      suggestions: Array.isArray(parsed.suggestions) ? parsed.suggestions : [],
+    }
+  } catch {
+    return { summary: stored, suggestions: [] }
+  }
+}
+
+function personName(id) {
+  const row = (state.profiles || []).find((item) => item.id === id)
+  return row ? row.name : "#" + id
+}
+
+function personPhone(id) {
+  const row = (state.profiles || []).find((item) => item.id === id)
+  return row && row.phone ? row.phone : ""
+}
+
+function clock(iso) {
+  if (!iso) return ""
+  const at = new Date(iso)
+  return isNaN(at) ? "" : at.toTimeString().slice(0, 5)
+}
+
+function el(tag, className, text) {
+  const node = document.createElement(tag)
+  if (className) node.className = className
+  if (text !== undefined) node.textContent = text
+  return node
+}
+
+function briefBlock(brief) {
+  const box = document.createDocumentFragment()
+  if (!brief) {
+    box.append(el("div", "muted", "no brief yet"))
+    return box
+  }
+  box.append(el("div", "", brief.summary))
+  if (brief.suggestions.length > 0) {
+    const list = el("ul")
+    for (const line of brief.suggestions) list.append(el("li", "", line))
+    box.append(list)
+  }
+  return box
+}
+
+// ----------------------------------------------------------------- render
+
+function render() {
+  if (!state) return
+  const incidents = (state.incidents || []).slice().sort((a, b) => b.id - a.id)
+  els.view.replaceChildren()
+  if (incidents.length === 0) {
+    els.newHint.textContent = "Describe an area evacuation or one missing person."
+    return
+  }
+  els.newHint.textContent = ""
+  if (!incidents.some((row) => row.id === selectedIncident)) selectedIncident = incidents[0].id
+  const incident = incidents.find((row) => row.id === selectedIncident)
+
+  const cases = (state.cases || [])
+    .filter((row) => row.incident_id === incident.id)
+    .sort((a, b) => b.id - a.id)
+  if (!cases.some((row) => row.id === selectedCase)) {
+    const open = cases.find((row) => row.status !== "closed")
+    selectedCase = open ? open.id : (cases[0] ? cases[0].id : null)
+  }
+
+  els.view.append(incidentSection(incident, incidents, cases))
+  els.view.append(caseListSection(cases))
+  const current = cases.find((row) => row.id === selectedCase)
+  if (current) els.view.append(caseSection(current))
+}
+
+function incidentSection(incident, incidents, cases) {
+  const node = el("section")
+  const head = el("h2", "", "Incident · " + incident.type)
+  if (incidents.length > 1) {
+    const picker = el("select")
+    picker.style.cssText = "float:right;background:#0d1013;color:#d7dde3;border:1px solid #333a41;font:inherit"
+    for (const row of incidents) {
+      const option = el("option", "", "#" + row.id + " " + row.type)
+      option.value = row.id
+      if (row.id === incident.id) option.selected = true
+      picker.append(option)
+    }
+    picker.onchange = () => { selectedIncident = Number(picker.value); selectedCase = null; render() }
+    head.append(picker)
+  }
+  node.append(head)
+
+  const body = el("div", "body")
+  body.append(el("div", "quote", '"' + incident.description + '"'))
+  body.append(briefBlock(parseBrief(incident.brief)))
+
+  const people = (state.incident_people || []).filter((row) => row.incident_id === incident.id)
+  if (people.length > 0) {
+    const count = (status) => people.filter((row) => row.status === status).length
+    body.append(el("div", "sub", "triage: " + count("safe") + " safe · "
+      + count("checking_in") + " checking in · " + count("victim") + " needs help"))
+  }
+  body.append(el("div", "sub", cases.length + " case" + (cases.length === 1 ? "" : "s")))
+  node.append(body)
+  return node
+}
+
+function caseListSection(cases) {
+  const node = el("section")
+  node.append(el("h2", "", "Cases"))
+  const body = el("div", "body")
+  if (cases.length === 0) {
+    body.append(el("div", "muted", "no cases on this incident yet"))
+  }
+  for (const row of cases) {
+    const ringing = (state.attempts || [])
+      .filter((item) => item.support_case_id === row.id && item.outcome === null).length
+    const line = el("div", "row pick" + (row.id === selectedCase ? " sel" : ""))
+    line.append(el("span", "name", personName(row.victim_profile_id)))
+    line.append(el("span", "badge " + row.status, row.status.replace("_", " ")))
+    line.append(el("span", "grow sub", ringing > 0 ? ringing + " ringing" : ""))
+    line.onclick = () => { selectedCase = row.id; render() }
+    body.append(line)
+  }
+  node.append(body)
+  return node
+}
+
+function caseSection(current) {
+  const node = el("section")
+  node.append(el("h2", "", "Case · " + personName(current.victim_profile_id)))
+  const body = el("div", "body")
+
+  body.append(el("div", "sub", "goal: " + current.goal))
+  body.append(briefBlock(parseBrief(current.brief)))
+
+  const calls = (state.attempts || []).filter((row) => row.support_case_id === current.id)
+  body.append(el("h2", "", "Calls"))
+  if (calls.length === 0) body.append(el("div", "muted", "no calls placed yet"))
+  for (const call of calls) {
+    const outcome = call.outcome || "ringing"
+    const line = el("div", "row")
+    const who = el("span", "name", personName(call.profile_id))
+    who.title = personPhone(call.profile_id)
+    line.append(who)
+    line.append(el("span", "badge " + outcome, outcome.replace("_", " ")))
+    const detail = el("span", "grow")
+    const ask = el("div", "sub", call.ask)
+    ask.title = call.ask
+    detail.append(ask)
+    if (call.answer) detail.append(el("div", "quote", '"' + call.answer + '"'))
+    if (state.simulate && call.outcome === null) detail.append(simulateBox(call.id))
+    line.append(detail)
+    body.append(line)
+  }
+
+  const notes = (state.notes || []).filter((row) => row.support_case_id === current.id)
+  const facts = notes.filter((row) => row.source !== "concern")
+  const flags = notes.filter((row) => row.source === "concern")
+
+  body.append(el("h2", "", "Notes"))
+  if (facts.length === 0) body.append(el("div", "muted", "nothing recorded yet"))
+  for (const note of facts) {
+    const line = el("div", "row")
+    line.append(el("span", "sub", clock(note.at) + " " + note.source))
+    const text = el("span", "grow", note.text)
+    if (note.lat !== null && note.lat !== undefined) {
+      text.append(el("span", "sub", "  (" + note.lat.toFixed(4) + ", " + note.lng.toFixed(4)
+        + (note.radius_m ? " r" + Math.round(note.radius_m) + "m" : "") + ")"))
+    }
+    line.append(text)
+    body.append(line)
+  }
+
+  body.append(el("h2", "", "Flags"))
+  if (flags.length === 0) body.append(el("div", "muted", "none"))
+  for (const note of flags) {
+    const line = el("div", "row")
+    line.append(el("span", "sub", clock(note.at)))
+    line.append(el("span", "grow flag", note.text))
+    body.append(line)
+  }
+
+  body.append(dispatcherBox(current))
+  node.append(body)
+  return node
+}
+
+function simulateBox(attemptId) {
+  const box = el("div", "sim-box")
+  const answer = el("textarea")
+  answer.placeholder = "what did they say?"
+  const concern = el("input")
+  concern.placeholder = "concern (optional)"
+  const button = el("button", "go", "Send")
+  button.onclick = () => {
+    if (!answer.value.trim()) { showError("answer is required"); return }
+    send(button, () => post("/calls/report", {
+      attempt_id: attemptId,
+      answer: answer.value,
+      concern: concern.value,
+    }))
+  }
+  box.append(answer, concern, button)
+  return box
+}
+
+function dispatcherBox(current) {
+  const box = el("div")
+  box.append(el("h2", "", "Dispatcher"))
+  const text = el("textarea")
+  text.rows = 2
+  text.placeholder = "what should I do next? e.g. also ask the neighbours on Marengo"
+  box.append(text)
+  const bar = el("div", "bar")
+  const sendButton = el("button", "go", "Send")
+  sendButton.onclick = () => {
+    if (!text.value.trim()) { showError("text is required"); return }
+    const typed = text.value
+    text.value = ""
+    send(sendButton, () => post("/cases/" + current.id + "/input", { text: typed }))
+  }
+  const accept = el("button", "", "Accept — close case")
+  accept.disabled = current.status === "closed"
+  accept.onclick = () => { send(accept, () => post("/cases/" + current.id + "/close", {})) }
+  bar.append(sendButton, accept)
+  box.append(bar)
+  return box
+}
+
+// -------------------------------------------------------------------- boot
+
+document.getElementById("openIncident").onclick = (event) => {
+  const text = els.newIncident.value
+  if (!text.trim()) { showError("text is required"); return }
+  els.newIncident.value = ""
+  send(event.currentTarget, async () => {
+    const result = await post("/incidents", { text })
+    selectedIncident = result.incident_id
+    selectedCase = result.case_ids && result.case_ids.length > 0 ? result.case_ids[0] : null
+  })
+}
+
+tick()
+setInterval(tick, POLL_MS)
+</script>
+</body>
+</html>

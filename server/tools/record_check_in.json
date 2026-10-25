@@ -1,0 +1,35 @@
+{
+  "name": "record_check_in",
+  "description": "For outbound calls only; never use for inbound calls. Only for a check-in call, meaning a call where attempt_id is empty. Record whether this person is safe or needs help. If attempt_id has any value, this tool will fail: use report_call instead, even when the person says they are safe.",
+  "pre_tool_speech": "auto",
+  "execution_mode": "immediate",
+  "response_timeout_secs": 45,
+  "api_schema": {
+    "url": "/check-ins",
+    "method": "POST",
+    "request_body_schema": {
+      "type": "object",
+      "properties": {
+        "incident_id": {
+          "type": "string",
+          "dynamic_variable": "incident_id"
+        },
+        "profile_id": {
+          "type": "string",
+          "dynamic_variable": "profile_id"
+        },
+        "result": {
+          "type": "string",
+          "enum": [
+            "safe",
+            "victim"
+          ],
+          "description": "safe if the person does not need help. victim if they explicitly need help."
+        }
+      },
+      "required": [
+        "result"
+      ]
+    }
+  }
+}
