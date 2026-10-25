@@ -19,7 +19,7 @@ The repo root is the browser demo. It does not import `server/`. `server/` is th
 | `server/src` | The process outside the database: HTTP routes, calls to Cartesia, reading rows, choosing the next reducer. `llm.ts` is the only file that talks to the Anthropic SDK. `agent.ts` holds the four Claude prompts. `loop.ts` holds the loop, the candidate filter, and the call deadline. `ui.html` is the test UI | Table definitions, reducer bodies |
 | `server/spacetimedb` | The database module. `src/models.ts` is tables only. `src/apis/` is reducers, one file per area (profiles, incidents, support cases). `src/index.ts` re-exports them | HTTP, Cartesia, scripts that only a developer runs |
 | `server/tests` | Checks that a behavior works. A manual check is still a test | Product behavior the running server needs |
-| `server/mock` | Shared fixtures the team can load. No one's real phone number | Code |
+| `server/mock` | Shared fixtures the team can load, including typed fictional coordinator snapshots. No one's real phone number | Runtime behavior |
 | `server/tools` | Cartesia webhook tool JSON, one file per tool, currently `record_check_in` and `report_call`. `api_schema.url` is a path such as `/calls/report`. `npm run setup-agent` prefixes `NGROK_URL` | Phone numbers, secrets, the agent prompt |
 | `server/` root | `package.json`, docs (`AGENTS.md`, `CONTEXT.md`, `DESIGN.md`), and short dev commands such as wiping the local database or opening the ngrok tunnel | Feature logic |
 
@@ -37,6 +37,14 @@ A reducer records a fact. The process in `server/src` is what may call Cartesia 
 People who in a disaster case cannot evacuate on their own. Example: an elderly or disabled resident in a wildfire zone, often living alone, without a car or unable to walk, and often not an app user. Primary interface is therefore **phone calls** (text and images later).
 
 ## MVP scope
+
+The next demo is agent-led missing-child coordination with two known helpers and
+two predefined locations. Its agreed scope is GitHub issue #2. Ticket #3 adds an
+isolated planning harness (`npm run demo:coordinator`); it does not activate
+automatic outreach in the HTTP server. Follow-up becomes due 10 seconds after
+acceptance, with at most two outbound calls per helper and parent confirmation
+required before closure. The existing runtime workflow below remains unchanged
+until the durable-loop and verified phone-integration tickets land.
 
 One neighborhood, one simulated fire, one complete loop:
 
