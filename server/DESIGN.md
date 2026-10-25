@@ -43,6 +43,26 @@ and label even when the phone transport ended normally. Notifications share one
 bottom-right portal stack above modal backdrops, with dismissible concern notices;
 queued-call confirmations expire after eight seconds.
 
+The live board has a follow-up inbox reconstructed from saved attempts across open
+cases. It includes not-reached/no-answer outcomes, unresolved provider status,
+calls that ended without a report and reported concerns. A retry in progress does
+not erase the previous unresolved result. A later completed result supersedes the
+earlier result for that case/person; case closure removes its inbox items. Dismissing
+a toast does not affect this inbox. The coordinator conversation includes attributed
+call starts and results from the same saved records, so results appear without the
+operator typing a message and survive refresh. These are status updates, not new
+model decisions or invented reports. SMS, automatic retries and rescue assignments
+are not implemented by this display change.
+
+Transcript and recording reads retry transient connection/5xx failures twice with
+bounded delays. Cancel/unmount aborts pending reads and retries. Preparing recordings
+stop polling after two minutes and can be requested again; playback remains restricted
+to ended calls. HTTP and network failures get distinct useful messages. The Vite proxy
+uses the configured backend host for upstream requests, including HTTPS tunnels, and
+requests API responses rather than ngrok's browser warning page. The reported recording
+failure recovered after a browser refresh; authenticated reads of that saved transcript
+and WAV succeeded. No provider recording loss was observed.
+
 Use `npm --prefix server run setup-agent` to apply the tracked prompt and tool
 configuration to the hosted agent, preserving unrelated voice configuration.
 The latest investigated call used an older hosted missing-child prompt despite a

@@ -1,5 +1,5 @@
 import type { BackendState } from "./api";
-import { briefOf, callsFor, caseStatus, coordinationOf, currentCase, intakeOf, notesFor } from "./live";
+import { briefOf, callsFor, callStatusLabel, caseStatus, coordinationOf, currentCase, intakeOf, notesFor } from "./live";
 
 const clock = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" });
 
@@ -97,7 +97,7 @@ export function CaseCard({
             <div key={call.attempt.id} className="case-call">
               <p>
                 <b>{call.person?.name ?? "Unknown"}</b>
-                <span className={`badge t-${call.transport ?? "legacy"}`}>{call.transportLabel}</span>
+                <span className={`badge t-${call.transport ?? "legacy"}`}>{callStatusLabel(call)}</span>
                 <span className="badge">{call.reportLabel}</span>
               </p>
               <p className="case-ask">“{call.attempt.ask}”</p>

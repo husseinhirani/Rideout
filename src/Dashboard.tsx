@@ -219,10 +219,11 @@ export function FacilitatorTile({
 }) {
   const [draft, setDraft] = useState("");
   const feed = useRef<HTMLDivElement>(null);
+  const latestMessage = chat[chat.length - 1];
   useEffect(() => {
     const node = feed.current;
     if (node) node.scrollTop = node.scrollHeight;
-  }, [chat, busy]);
+  }, [latestMessage?.id, latestMessage?.text, busy]);
   return (
     <article className={live ? "tile agent live" : "tile agent"}>
       <button type="button" className="agent-top" onClick={onOpen}>

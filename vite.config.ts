@@ -36,8 +36,12 @@ export default defineConfig(({ mode }) => {
   };
   const route: ProxyOptions = {
     target,
+    changeOrigin: true,
     configure(proxy) {
-      proxy.on("proxyReq", (request) => request.setHeader("Authorization", `Bearer ${secret}`));
+      proxy.on("proxyReq", (request) => {
+        request.setHeader("Authorization", `Bearer ${secret}`);
+        request.setHeader("ngrok-skip-browser-warning", "1");
+      });
     },
   };
   return {

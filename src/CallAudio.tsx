@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "./Dashboard";
+import { readCallMedia } from "./call-media";
 
 /** Mounted only for ended calls. The API also enforces that restriction. */
 export function CallAudio({ attemptId }: { attemptId: number }) {
@@ -16,6 +17,7 @@ export function CallAudio({ attemptId }: { attemptId: number }) {
     const context = new AudioContext();
     const controller = new AbortController();
     let stopped = false, timer = 0;
+    const started = Date.now();
     let source: AudioBufferSourceNode | null = null;
     const stop = () => {
       if (stopped) return;
@@ -29,16 +31,18 @@ export function CallAudio({ attemptId }: { attemptId: number }) {
     }
     const poll = async () => {
       try {
-        const response = await fetch(`/attempts/${attemptId}/audio`, { signal: controller.signal, cache: "no-store" });
+        const audio = await readCallMedia(`/attempts/${attemptId}/audio`, controller.signal, async response => {
+          if (response.status === 202) return null;
+          if (!response.headers.get("content-type")?.startsWith("audio/")) throw new Error("RideOut did not return a recording. Refresh the page and try again.");
+          return response.arrayBuffer();
+        }, () => setMessage("Recording connection interrupted. Reconnecting…"));
         if (stopped) return;
-        if (response.status === 202) {
+        if (!audio) {
+          if (Date.now() - started > 120000) throw new Error("The recording is still being prepared. Try again shortly.");
           setMessage("The provider is preparing the recording…");
           timer = window.setTimeout(() => void poll(), 3000); return;
         }
-        if (!response.ok) {
-          const data = await response.json(); throw new Error(data.error || "Recording is unavailable.");
-        }
-        const buffer = await context.decodeAudioData(await response.arrayBuffer());
+        const buffer = await context.decodeAudioData(audio);
         if (stopped) return;
         source = context.createBufferSource(); source.buffer = buffer; source.connect(context.destination);
         source.onended = () => {

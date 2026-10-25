@@ -589,11 +589,12 @@ export function FacilitatorChat({
 }) {
   const [draft, setDraft] = useState("");
   const feed = useRef<HTMLDivElement>(null);
+  const latestMessage = chat[chat.length - 1];
 
   useEffect(() => {
     const node = feed.current;
     if (node) node.scrollTop = node.scrollHeight;
-  }, [chat, busy]);
+  }, [latestMessage?.id, latestMessage?.text, busy]);
 
   const send = (text: string) => {
     if (!text.trim()) return;

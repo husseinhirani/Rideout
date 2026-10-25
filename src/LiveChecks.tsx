@@ -22,7 +22,7 @@ import {
   type RailItem,
   type TimelineLine,
 } from "./Dashboard";
-import { awaitingSimulatedReport, briefOf, callsFor, cancellable, coordinationOf, currentCase, inboundFrom, latestIncident, type InboundView, type LiveCall } from "./live";
+import { awaitingSimulatedReport, briefOf, callsFor, callStatusLabel, cancellable, coordinationOf, currentCase, followUps, inboundFrom, latestIncident, notReached, type InboundView, type LiveCall } from "./live";
 import type { CallCard, ChatMessage, House } from "./types";
 
 export type LiveActions = {
@@ -34,7 +34,7 @@ export type LiveActions = {
   ask: (text: string) => void;
 };
 
-type Focus = "outgoing" | "incoming" | "checkins" | "need" | "help" | "links" | "facilitator";
+type Focus = "outgoing" | "followups" | "incoming" | "checkins" | "need" | "help" | "links" | "facilitator";
 
 /**
  * The same board as the offline drill, reading the backend instead of a script.
@@ -100,8 +100,10 @@ export function LiveChecks({
   const status = pending.length + mockPending ? "Live" : row ? (row.status === "closed" ? "Case closed" : `Case #${row.id}`) : "Standing by";
   const coordination = row ? coordinationOf(state, row.id, now) : null;
   const latest = inbound[0];
+  const followUpItems = followUps(state);
 
   const rail: RailItem<Focus>[] = [
+    { id: "followups", label: "Follow-up inbox", value: followUpItems.length, icon: "alert", detail: followUpItems.length ? "People who still need your attention" : "Nothing awaiting review" },
     {
       id: "outgoing",
       label: "Outgoing calls",
@@ -170,7 +172,19 @@ export function LiveChecks({
                 <span><i className="k-done" />Ended</span>
               </span>
             </button>
-
+            {followUpItems.length > 0 && <section className="tile follow-up-inbox" aria-label="Follow-up inbox">
+              <button type="button" className="follow-up-heading" onClick={event => open("followups", event)}>
+                <span>Needs your attention <small>{followUpItems.length}</small></span><Icon name="expand" />
+              </button>
+              <ul>{followUpItems.slice(0, 3).map(item => <li key={item.call.attempt.id}>
+                <button type="button" onClick={event => open("followups", event, String(item.call.attempt.id))}>
+                  <b>{item.call.person?.name ?? "Unknown"}</b>
+                  <span>{item.reason}</span>
+                  {item.retrying && <small>Another call is already in progress.</small>}
+                </button>
+              </li>)}</ul>
+              {followUpItems.length > 3 && <p>{followUpItems.length - 3} more in the follow-up inbox</p>}
+            </section>}
           </div>
           <div className="dash-col agent-col">
             <FacilitatorTile
@@ -181,7 +195,7 @@ export function LiveChecks({
               live={busy}
               busy={busy}
               suggestions={brief?.suggestions.slice(0, 3) ?? []}
-              placeholder={row ? "A witness reports a red backpack near the playground…" : "Describe what is happening…"}
+              placeholder={row ? "Share an update or instruction for this incident…" : "Describe what is happening…"}
               onOpen={(from) => open("facilitator", from)}
               onAsk={(text) => actions.ask(text)}
             />
@@ -191,6 +205,14 @@ export function LiveChecks({
 
       {focus && focused ? (
         <FocusView focus={focus} title={focused.label} kicker={focus.id === "facilitator" ? "Manager agent" : status} icon={focused.icon} agent={focus.id === "facilitator"} onClose={close}>
+          {focus.id === "followups" && <>
+            <p className="focus-note">Across open cases. These items remain here until a later call resolves them or the case is closed. No automatic retry or text message has been sent.</p>
+            {followUpItems.length === 0 ? <p className="focus-empty">No calls awaiting follow-up.</p> :
+              <ul className="call-list">{followUpItems.map(item => <li key={item.call.attempt.id} className="follow-up-item">
+                <p className="focus-note">Case #{item.call.attempt.support_case_id} · {item.reason}{item.retrying ? " Another call is already in progress." : ""}</p>
+                <ul className="call-list"><LiveCallRow call={item.call} now={now} simulate={simulate} operatorBusy={operatorBusy} actions={actions} initial={focus.item === String(item.call.attempt.id)} /></ul>
+              </li>)}</ul>}
+          </>}
           {focus.id === "outgoing" ? (
             <>
               <div className="focus-stats">
@@ -304,7 +326,7 @@ export function LiveChecks({
                 suggestions={brief?.suggestions.slice(0, 3) ?? []}
                 empty="What you send is saved as dispatcher input on the case. It is not verified."
                 busyText="Sending to the backend…"
-                placeholder={row ? "A witness reports a red backpack near the playground…" : "Describe what is happening…"}
+                placeholder={row ? "Share an update or instruction for this incident…" : "Describe what is happening…"}
               />
             </>
           ) : null}
@@ -324,7 +346,7 @@ function callTone(call: LiveCall): BarTone {
   if (call.transport === "queued" || call.transport === "dispatching") return "ring";
   if (call.transport === "unknown") return "hold";
   if (call.transport === "cancelled" || call.attempt.outcome === "cancelled" || call.attempt.outcome === "superseded") return "off";
-  if (["no_answer", "not_reached"].includes(call.attempt.outcome ?? "")) return "miss";
+  if (notReached(call)) return "miss";
   if (call.transport === undefined && call.attempt.outcome === null) return call.attempt.call_id ? "ring" : "off";
   return "done";
 }
@@ -347,7 +369,7 @@ function liveBars(calls: LiveCall[], now: number, current: LiveCall | null): Bar
       id: String(call.attempt.id),
       tone,
       height: length !== null ? barHeight(length, longest) : tone === "ring" ? 34 : tone === "done" ? 46 : 16,
-      title: `${call.person?.name ?? "Unknown"} · ${call.transportLabel} · ${call.reportLabel}`,
+      title: `${call.person?.name ?? "Unknown"} · ${callStatusLabel(call)} · ${call.reportLabel}`,
       tag: call === current ? `${(call.person?.name ?? "Unknown").split(" ")[0]}${length !== null ? ` · ${mmss(length)}` : ""}` : undefined,
     };
   });
@@ -387,7 +409,7 @@ function LiveCallRow({
 
   const lines: TimelineLine[] = [{ at: "0:00", who: "Assigned question", text: call.attempt.ask, kind: "system" }];
   if (placed) lines.push({ at: stamp(placed), who: "", text: call.simulated ? "Simulated call placed." : "Call placed.", kind: "system" });
-  if (call.attempt.answer) lines.push({ at: stamp(reportedAt), who: `${first} · saved report`, text: call.attempt.answer, kind: "them" });
+  if (call.attempt.answer) lines.push({ at: stamp(reportedAt), who: `Call report · ${first}`, text: call.attempt.answer, kind: "them" });
   if (call.attempt.concern) lines.push({ at: stamp(reportedAt), who: "Concern", text: call.attempt.concern, kind: "warn" });
   if (call.progress?.dispatch_error) lines.push({ at: "", who: "Dispatch", text: call.progress.dispatch_error, kind: "warn" });
   if (call.followUpAt !== null && !call.progress?.review_consumed) {
@@ -413,7 +435,7 @@ function LiveCallRow({
         </span>
         <em className="call-state">
           <i />
-          {call.attempt.outcome === "not_reached" ? "Not reached" : call.transportLabel.split(" · ")[0]}
+          {callStatusLabel(call).split(" · ")[0]}
         </em>
         <span className="call-time">{length === null ? "—" : mmss(length)}</span>
         <Icon name="chevron" />
@@ -440,7 +462,7 @@ function LiveCallRow({
             </button>
           </div>}
           <Timeline lines={lines} />
-          {shown && !call.simulated && call.attempt.call_id && <CallTranscript key={call.attempt.id} attemptId={call.attempt.id} name={name} ended={call.transport === "ended"} />}
+          {shown && !call.simulated && call.attempt.call_id && <CallTranscript key={call.attempt.id} attemptId={call.attempt.id} name={notReached(call) ? "Recipient’s line" : name} ended={call.transport === "ended"} />}
           {shown && !call.simulated && call.transport === "ended" && call.attempt.call_id && <CallAudio attemptId={call.attempt.id} />}
           {showReport ? (
             <form

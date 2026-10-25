@@ -1,5 +1,6 @@
 import type { CreateInformationInput } from '../server/shared/information';
 import { api as backend, ApiError, type BackendState, type IntakeResult } from './api';
+import { callsFor, notReached } from './live';
 
 // Translate the original UI's actions into revisioned generic investigation commands.
 const pending = new Map<string, Promise<{ body: unknown; path: string }>>();
@@ -106,6 +107,20 @@ export function presentationState(state: BackendState): BackendState {
 export function savedConversation(state: BackendState | null, caseId: number | null) {
   if (!state || caseId === null) return [];
   return [
+    ...callsFor(state, caseId).flatMap(call => {
+      const name = call.person?.name ?? 'Unknown participant';
+      const created = Date.parse(call.attempt.created_at);
+      const messages = [{ id: `call-start-${call.attempt.id}`, from: 'facilitator' as const,
+        text: `${call.simulated ? 'Simulated call' : 'Call'} to ${name}: ${call.attempt.call_id ? 'placed' : 'queued'}.`,
+        at: call.progress?.claimed_at_ms ?? created }];
+      const text = notReached(call) ? `${name} was not reached. Their situation remains unknown. I’ve kept this in the follow-up inbox for your review.`
+        : call.attempt.answer ? `Report from the call to ${name}: ${call.attempt.answer}${call.attempt.concern ? ` Review needed: ${call.attempt.concern}` : ''}`
+        : call.transport === 'unknown' ? `The call to ${name} has an unconfirmed status. Check the follow-up inbox before retrying.`
+        : call.transport === 'ended' ? `The call to ${name} ended without a saved report. I cannot confirm their situation.`
+        : call.transport === 'cancelled' ? `The queued call to ${name} was cancelled.` : '';
+      if (text) messages.push({ id: `call-result-${call.attempt.id}`, from: 'facilitator', text, at: call.progress?.report_received_at_ms ?? (call.progress?.claimed_at_ms ?? created) + 1 });
+      return messages;
+    }),
     ...state.notes.filter(n => n.support_case_id === caseId && ['organizer', 'dispatcher'].includes(n.source)).map(n => ({ id: `note-${n.id}`, from: 'lead' as const, text: n.text, at: Date.parse(n.at) })),
     ...(state.information_decisions ?? []).filter(d => d.support_case_id === caseId).map(d => ({ id: `decision-${d.id}`, from: 'facilitator' as const, text: d.plan.summary, at: Date.parse(d.created_at) })),
   ].sort((a,b) => a.at - b.at);

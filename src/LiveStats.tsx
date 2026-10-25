@@ -1,5 +1,5 @@
 import type { BackendState } from "./api";
-import { callsFor, currentCase, inboundFrom, latestIncident } from "./live";
+import { callsFor, currentCase, inboundFrom, latestIncident, notReached } from "./live";
 
 type Tile = { label: string; value: number | string; hot?: boolean; good?: boolean };
 
@@ -19,7 +19,8 @@ export function LiveStats({ state, caseId }: { state: BackendState; caseId: numb
       tiles: [
         { label: "Active", value: calls.filter((call) => call.transport === "active").length, hot: calls.some((call) => call.transport === "active") },
         { label: "Queued or placing", value: calls.filter((call) => call.transport === "queued" || call.transport === "dispatching").length },
-        { label: "Ended", value: calls.filter((call) => call.transport === "ended").length },
+        { label: "Ended", value: calls.filter((call) => call.transport === "ended" && !notReached(call)).length },
+        { label: "Not reached", value: calls.filter(notReached).length, hot: calls.some(notReached) },
         { label: "Unresolved", value: calls.filter((call) => call.transport === "unknown").length, hot: calls.some((call) => call.transport === "unknown") },
         { label: "Reports", value: reports, good: reports > 0 },
         { label: "Inbound to review", value: review, hot: review > 0 },

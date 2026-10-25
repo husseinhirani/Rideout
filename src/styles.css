@@ -1255,6 +1255,14 @@ h2, h3 { margin: 0; font-weight: 600; }
 /* The right half is the facilitator alone; it shows the conversation once it has the height for it. */
 .dash-col.agent-col { container: agent / size; }
 .agent-col > .tile.agent { flex: 1; min-height: 0; }
+.follow-up-inbox { flex: 0 0 auto; }
+.follow-up-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; border: 0; background: none; padding: 0; text-align: left; font: inherit; font-weight: 650; cursor: pointer; }
+.follow-up-heading small { display: inline-block; margin-left: 8px; padding: 2px 8px; border-radius: 20px; background: #fff0df; color: #8b4b00; }
+.follow-up-inbox ul { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.follow-up-inbox li button { display: grid; gap: 4px; width: 100%; border: 0; border-radius: 14px; padding: 12px; background: var(--soft); text-align: left; font: inherit; cursor: pointer; }
+.follow-up-inbox li span, .follow-up-inbox p { color: var(--muted); font-size: 14px; line-height: 1.4; }
+.follow-up-item { list-style: none; }
+.follow-up-item > .focus-note { margin: 12px 4px; }
 .tile {
   position: relative;
   display: flex;

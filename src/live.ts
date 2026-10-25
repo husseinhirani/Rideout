@@ -118,6 +118,43 @@ export type LiveCall = {
   simulated: boolean;
 };
 
+export function notReached(call: LiveCall): boolean {
+  return ["no_answer", "not_reached"].includes(call.attempt.outcome ?? "");
+}
+
+/** The contact outcome is distinct from the provider connection ending. */
+export function callStatusLabel(call: LiveCall): string {
+  if (["queued", "dispatching", "active", "unknown"].includes(call.transport ?? "")) return call.transportLabel;
+  return notReached(call) ? "Not reached" : call.transportLabel;
+}
+
+export type FollowUp = { call: LiveCall; reason: string; retrying: boolean };
+
+/** Rebuilt from durable records, including after a page refresh. One item per case/person. */
+export function followUps(state: BackendState): FollowUp[] {
+  const openCases = new Set(state.cases.filter(row => row.status !== "closed").map(row => row.id));
+  const groups = new Map<string, LiveCall[]>();
+  for (const call of callsFor(state, null)) {
+    if (!openCases.has(call.attempt.support_case_id) || call.transport === "cancelled"
+      || ["cancelled", "superseded"].includes(call.attempt.outcome ?? "")) continue;
+    const key = `${call.attempt.support_case_id}:${call.attempt.profile_id}`;
+    groups.set(key, [...(groups.get(key) ?? []), call]);
+  }
+  return [...groups.values()].flatMap(group => {
+    group.sort((a, b) => b.attempt.id - a.attempt.id);
+    const latest = group[0];
+    const retrying = ["queued", "dispatching", "active"].includes(latest.transport ?? "");
+    // Starting a retry does not resolve a previous unsuccessful contact.
+    const call = group.find(item => !["queued", "dispatching", "active"].includes(item.transport ?? ""));
+    if (!call) return [];
+    const reason = call.transport === "unknown" ? "Call status is unconfirmed. Review it before attempting another call."
+      : notReached(call) ? "Not reached. Their situation is still unknown; another contact method or follow-up is needed."
+      : call.attempt.concern || (call.transport === "ended" && !call.progress?.report_received && !call.attempt.answer
+        ? "The call ended without a report. Their situation is still unknown." : "");
+    return reason ? [{ call, reason, retrying }] : [];
+  }).sort((a, b) => b.call.attempt.id - a.call.attempt.id);
+}
+
 export function callsFor(state: BackendState, caseId: number | null): LiveCall[] {
   return state.attempts
     .filter((row) => caseId === null || row.support_case_id === caseId)
@@ -273,8 +310,8 @@ export function graphCalls(calls: LiveCall[], houses: House[]): CallCard[] {
     const house = houses.find((row) => row.name === call.person?.name);
     const at = Date.parse(call.attempt.created_at) || 0;
     const phase: CallCard["phase"] =
-      call.transport === "active" ? "live" : call.attempt.outcome === "no_answer" ? "missed" : call.transport === "ended" ? "done" : call.transport === "cancelled" ? "canceled" : call.transport === undefined && call.attempt.outcome !== null ? "done" : "calling";
-    return { id: `attempt-${call.attempt.id}`, name: call.person?.name ?? "Unknown", phase, transcript: call.attempt.answer ? `Saved caller report (not a verbatim transcript): ${call.attempt.answer}` : "", at, startedAt: at, answeredAt: null, endedAt: null, householdId: house?.id };
+      call.transport === "active" ? "live" : notReached(call) ? "missed" : call.transport === "ended" ? "done" : call.transport === "cancelled" ? "canceled" : call.transport === undefined && call.attempt.outcome !== null ? "done" : "calling";
+    return { id: `attempt-${call.attempt.id}`, name: call.person?.name ?? "Unknown", phase, transcript: call.attempt.answer ? `Saved call report (not a verbatim transcript): ${call.attempt.answer}` : "", at, startedAt: at, answeredAt: null, endedAt: null, householdId: house?.id };
   });
 }
 
