@@ -12,13 +12,18 @@ export function informationGaps(kind: TaskKind, facts: Facts): InformationGap[] 
     return gaps
   }
   if (!['assess','needs','capability'].includes(kind)) return gaps
-  need('needs_transport','Establish how this person plans to evacuate and whether they have available transport. Vague reassurance is not enough to establish independent evacuation.')
+  need('needs_transport','Can they get out on their own? Ask how they will leave, e.g. do they have a car they can drive.')
   if (facts.needs_transport === null) return gaps
+  if (kind !== 'capability') {
+    // Minimal first call: only what the coordinator needs to find or offer a ride.
+    need('location_id','Confirm they are at home (their supplied starting location) so a ride can find them.')
+    if (facts.needs_transport) need('party_size','How many people need the ride; "just me" means 1.')
+    else need('has_vehicle','Whether they are driving their own car, so the coordinator can consider them for a nearby pickup later. Do not ask them to help anyone on this call.')
+    return gaps
+  }
   if (facts.needs_transport) {
     need('location_id','Locate the requested pickup and check whether community assistance is eligible.')
     need('party_size','Find enough passenger capacity for everyone travelling together.')
-    need('wheelchair','Avoid proposing a vehicle that cannot accommodate the reported mobility requirement.')
-    need('pets','Include animals in the vehicle suitability comparison.')
   } else {
     need('can_help','Distinguish independent evacuation from willingness and ability to help someone else.')
     if (facts.can_help) {
@@ -91,11 +96,14 @@ export function voiceMission(state: AssistanceState, task: Task, outcome: string
       'The coordinator brief prioritizes work within this task outcome; focus fields do not replace the information gaps or authorize commitments. Use its revision to recognize a changed objective, not to restart the conversation.',
       'Prior-call accounts are previous reports, not things heard in this call. Superseded fields have newer sources in known_facts; do not restore old values. A historical review request is not a new instruction or proof that the concern persists.',
       'Record important context in text even if it has no structured field. Escalate needs this workflow cannot resolve.',
-      'An unconfirmed supplied starting location is scenario context, not knowledge about the person. Explain its source before asking for confirmation.',
+      state.scenario.immersive
+        ? 'The supplied starting location is the person\u2019s home. Ask simply whether they are at home now; never read location labels or position numbers aloud.'
+        : 'An unconfirmed supplied starting location is scenario context, not knowledge about the person. Explain its source before asking for confirmation.',
+      'Ask only about information_gaps. Do not ask about pets, wheelchairs, spare seats or travelling companions unless the person raises them. Never re-ask something already in known_facts or said earlier in this call.',
       'A request to stop takes priority over information collection or tool calls. Unknown and declined answers are valid outcomes.',
       'Only an authorized arrangement task permits asking for that specific commitment. Never invent a match, ETA, dispatch, pickup or arrival.',
       ...(state.scenario.follow_through === 'arrangement' ? ['This session ends when the helper accepts and the recipient confirms the arrangement. Confirmation does not mean pickup or arrival; do not promise travel follow-up calls.'] : []),
-      ...(state.scenario.drill ? ['Disclose the drill once at opening, then discuss the scenario naturally without repeatedly saying fictional or simulated. Clarify whether an unexpected urgent statement describes a real situation or the drill; unresolved real urgency needs human review. Do not direct actual travel.'] : []),
+      ...(state.scenario.immersive ? ['Treat the situation as real and current. Never say drill, exercise, simulated or fictional. If the person describes an emergency beyond this one (injury, fire at their home), tell them to call 911 and request human review.'] : state.scenario.drill ? ['Disclose the drill once at opening, then discuss the scenario naturally without repeatedly saying fictional or simulated. Clarify whether an unexpected urgent statement describes a real situation or the drill; unresolved real urgency needs human review. Do not direct actual travel.'] : []),
     ],
   }
 }

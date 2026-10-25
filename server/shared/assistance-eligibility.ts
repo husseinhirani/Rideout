@@ -30,10 +30,10 @@ export function matchReasons(s: AssistanceState, recipientId: number, helperId: 
   if (r.unreachable || h.unreachable) reasons.push('A participant has not been reached');
   if (!pickupStarted) {
     if (r.facts.needs_transport !== true) reasons.push('Transport need is unconfirmed');
-    if (h.facts.needs_transport !== false || h.facts.can_help !== true) reasons.push('Helper independence or willingness is unconfirmed');
-    if (!r.facts.party_size || h.facts.seats === null) reasons.push('Passenger count or capacity is unknown');
-    if ((r.facts.party_size ?? Infinity) > (h.facts.seats ?? 0)) reasons.push('Not enough seats');
-    if (r.facts.wheelchair === null || r.facts.pets === null) reasons.push('Recipient vehicle requirements are unknown');
+    // A driver who can leave on their own is a candidate; the approved pickup call asks them directly.
+    if (h.facts.needs_transport !== false || h.facts.can_help === false || (h.facts.has_vehicle !== true && h.facts.can_help !== true)) reasons.push('Helper has no confirmed vehicle or declined to help');
+    if (!r.facts.party_size) reasons.push('Passenger count is unknown');
+    if (h.facts.seats !== null && (r.facts.party_size ?? 1) > h.facts.seats) reasons.push('Not enough seats');
     if (r.facts.wheelchair && h.facts.wheelchair_space !== true) reasons.push('Wheelchair capacity is unconfirmed');
     if (r.facts.pets && h.facts.pets_allowed !== true) reasons.push('Pet transport is unconfirmed');
   }
