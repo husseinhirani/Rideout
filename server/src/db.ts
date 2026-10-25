@@ -107,6 +107,32 @@ export async function caseInputs(): Promise<CaseInputRow[]> {
   }))
 }
 
+export type IncomingRequestRow = {
+  id: number
+  provider_call_id: string
+  from_phone: string
+  direction: string
+  text: string
+  revision: number
+  status: "pending" | "prepared" | "needs_clarification" | "recorded" | "needs_review"
+  decision_json: string
+  reply: string
+  support_case_id: number | null
+  failure_count: number
+  retry_at_ms: number
+}
+
+export async function incomingRequests(): Promise<IncomingRequestRow[]> {
+  return (await query("SELECT * FROM incoming_request")).map(row => ({
+    id: asId(row.id), provider_call_id: asString(row.provider_call_id),
+    from_phone: asString(row.from_phone), direction: asString(row.direction), text: asString(row.text),
+    revision: asId(row.revision), status: asString(row.status) as IncomingRequestRow["status"],
+    decision_json: asString(row.decision_json), reply: asString(row.reply),
+    support_case_id: optionalId(row.support_case_id), failure_count: asNumber(row.failure_count),
+    retry_at_ms: asId(row.retry_at_ms),
+  }))
+}
+
 export type AttemptProgressRow = {
   attempt_id: number
   support_case_id: number

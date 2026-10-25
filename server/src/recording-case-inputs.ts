@@ -78,7 +78,7 @@ async function main(): Promise<void> {
   if (process.argv.length > 2) throw new Error("Unknown argument; use --help")
   loadEnv()
   const config = recordingCaseInputConfig(process.env)
-  await runRecordingDemo({ ...config, caseInputs: createRecordingCaseInputs(), report: event => console.log(JSON.stringify(event)) })
+  await runRecordingDemo({ ...config, callbackSecret: process.env.CALLBACK_SECRET?.trim(), caseInputs: createRecordingCaseInputs(), report: event => console.log(JSON.stringify(event)) })
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   main().catch(error => { console.error(`Case input recording failed: ${error instanceof Error ? error.message : String(error)}`); process.exitCode = 1 })

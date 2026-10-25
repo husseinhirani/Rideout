@@ -141,6 +141,23 @@ not added to that response. Deploy the new additive module before running this
 server. `demo:case-inputs` exercises the internal operations and existing worker
 with simulated calls; `demo:recording` keeps its earlier manual-close flow.
 
+## Inbound provider receiver (issue #6)
+
+`POST /requests` implements the raw-text provider envelope in INBOUND-PROPOSAL.md.
+It requires callback bearer authentication and explicit INBOUND_REQUESTS enrollment.
+The incoming_request table stores immutable prepared decisions and revisioned
+clarifications; the worker reuses case-input reducers with stable receipt keys.
+A demo reporter cannot open two concurrent cases. Unknown callers are retained
+for review without case disclosure; no review dashboard is added. Raw requests
+are omitted from GET /state. Source tool bindings exist but remain unverified on
+an actual inbound Cartesia call. PROVIDER-HANDOFF.md lists the deployment steps.
+
+## Local configuration
+
+The backend loads `.env.local` before `.env`, checking the working directory,
+repository root and server directory in that order. Exported process variables
+always take precedence. Both local files stay gitignored.
+
 ## 1. Glossary
 
 Use these terms exactly in code, comments, UI copy, and docs.

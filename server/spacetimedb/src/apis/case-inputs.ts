@@ -33,6 +33,11 @@ export const recordCaseIntake = spacetimedb.reducer(
     const intake = assessment.intake
     const payload = JSON.stringify({ reporter_profile_id: String(reporter_profile_id), helper_profile_ids: helper_profile_ids.map(String), intake })
     if (replay(ctx, event_key, "intake", payload)) return
+    for (const existing of ctx.db.caseIntake.iter()) {
+      if (existing.reporter_profile_id === reporter_profile_id && ctx.db.supportCase.id.find(existing.support_case_id)?.status !== CLOSED) {
+        throw new SenderError("Reporter already has an open case")
+      }
+    }
     if (helper_profile_ids.length !== 2 || new Set(helper_profile_ids).size !== 2 || helper_profile_ids.includes(reporter_profile_id)) throw new SenderError("Parent and two distinct helpers required")
     const profiles = [reporter_profile_id, ...helper_profile_ids].map(id => ctx.db.profile.id.find(id))
     if (profiles.some(profile => !profile || !/^\+[1-9]\d{7,14}$/.test(profile.phone))) throw new SenderError("Participants must have known dialable profiles")

@@ -36,6 +36,12 @@ read_env() {
 }
 
 if [ -z "${NGROK_URL:-}" ]; then
+  NGROK_URL=$(read_env .env.local NGROK_URL)
+fi
+if [ -z "${NGROK_URL:-}" ]; then
+  NGROK_URL=$(read_env ../.env.local NGROK_URL)
+fi
+if [ -z "${NGROK_URL:-}" ]; then
   NGROK_URL=$(read_env .env NGROK_URL)
 fi
 if [ -z "${NGROK_URL:-}" ]; then

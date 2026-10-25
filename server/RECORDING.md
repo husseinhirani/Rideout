@@ -137,3 +137,12 @@ live database checks rejected conflicting intake and helper confirmation, replay
 confirmation after closure, and retained a late update without further calls.
 Expected validation failures use SpacetimeDB SenderError so their rejection reason
 survives the database boundary instead of becoming a generic runtime failure.
+
+## Full inbound HTTP recording
+
+`demo:inbound` now sends intake, unsolicited helper updates and parent reunion
+confirmation through authenticated `POST /requests`. See
+[PROVIDER-HANDOFF.md](PROVIDER-HANDOFF.md) for the exact server/runner commands.
+This replaces internal service calls in the latest recording path, while retaining
+explicit simulated caller metadata and scripted interpretation. The older
+`demo:recording` and `demo:case-inputs` commands remain available.

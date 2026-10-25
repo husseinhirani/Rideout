@@ -1,11 +1,9 @@
-# Inbound intake handoff — proposal, not an implemented endpoint
+# Inbound integration — implemented source, live verification pending
 
-Tony owns receiving, validation, case matching and persistence. Vien owns hosted
-routing, tools and provider-bound metadata. The frontend team owns the UI.
-`src/intake.ts` exposes the shared completeness check. `src/case-inputs.ts` now
-implements internal durable intake, updates and reported-reunion operations over
-new reducers. No phone route, hosted payload or configuration has changed.
-Participant binding in the recording is simulated, not verified caller identity.
+Tony implemented Vien's `POST /requests` proposal on top of the durable case inputs.
+The earlier `/inbound/intake` proposal is superseded. No hosted configuration was
+changed during this implementation. See [PROVIDER-HANDOFF.md](PROVIDER-HANDOFF.md)
+for setup and the remaining live checks. The frontend team retains UI ownership.
 
 ## Internal application input
 
@@ -36,69 +34,40 @@ It ignores caller-supplied `verified` flags/profile IDs. A complete validator re
 The internal createCaseFromIntake service combines complete details with configured
 reporter/helper IDs and an application event key to atomically create a case.
 
-## Proposed provider boundary for agreement
+## Implemented provider boundary
 
-A separate `POST /inbound/intake` would avoid changing `/calls/report` and the
-empty-attempt check-in convention. The following envelope is illustrative;
-Vien must confirm which fields can actually be bound by the provider/tool:
+`POST /requests` requires `Authorization: Bearer <CALLBACK_SECRET>` and:
 
 ```json
-{
-  "provider_call_id": "<provider-bound call identifier>",
-  "direction": "inbound",
-  "from_phone": "<provider-bound caller number>",
-  "intake": {
-    "child": {
-      "name": "Ava",
-      "description": "Age 7, red jacket",
-      "last_seen_location_id": "park-bench",
-      "last_seen_time": "about 3 pm"
-    },
-    "reporter": {"name": "Morgan", "relationship": "mother"}
-  }
-}
+{"from_phone":"<system__caller_id>","provider_call_id":"<system__conversation_id>","direction":"inbound","text":"<complete caller account>"}
 ```
 
-The conversation model supplies reported details; it must not invent call/caller
-identifiers. Caller number is a lookup hint, not verified identity. No auth header
-or signature scheme is selected here. Direct knowledge of a case ID or a claimed
-relationship must not grant access to case details or permission to close it.
+Only `text` is model-supplied. `report_request.json` binds the other fields; missing,
+literal-placeholder or invalid bindings reject before case creation. These system
+variable bindings still require a real inbound capture. Caller number is an
+association hint, not proof of identity.
 
-Suggested responses, pending agreement:
+The response contains only `request_id`, `status`, and a short `reply`, never case
+facts or a case identifier. Status is pending/prepared, needs_clarification,
+recorded, or needs_review. The receiver durably saves input, then waits up to 20
+seconds for processing; work continues on the startup/one-second scan if needed.
+Repeat the exact body to retrieve progress. After needs_clarification, submit the
+complete account including the answer; other changed-text retries return 409.
 
-```json
-{"status":"needs_clarification","questions":[{"field":"child.last_seen_time","question":"Approximately when was the child last seen?"}]}
-```
+One row per provider call retains the raw input and accepted decision. A revision
+check saves the action before execution; stable case-input keys recover a crash
+after mutation but before completion. Retries back off and stop after three
+failures. A reporter can have only one open demo intake case.
 
-```json
-{"status":"recorded","support_case_id":3}
-```
+Enable with INBOUND_REQUESTS=1, AUTO_COORDINATE=1, COORDINATOR_REPORTER_ID and exactly
+two COORDINATOR_HELPER_IDS. Only uniquely matched configured participants can
+change cases. Unknown/ambiguous callers are retained for review without outreach
+or case disclosure. Review receipts are queryable in incoming_request; no new
+operator review UI is included. A helper's possible find cannot close a case;
+only the original reporter's explicit child identity and physical reunion
+confirmation does. This is reported confirmation, not verified caller identity.
 
-Incomplete intake would return questions without opening a case or authorizing
-helper calls. The internal intake operation already atomically stores the receipt, reported
-facts, original reporter association and case before coordination begins; the
-provider receiver still needs to call it with an agreed, trusted binding.
-If the provider-bound call ID is stable and available, a namespaced final-intake
-key derived from it could deduplicate repeated final submissions. Partial
-clarification attempts must not consume that final key. Identical final replay
-would return the same case; conflicting final content would return 409. Internal operations implement this persistence/deduplication behavior using opaque
-application event keys; deriving those keys from provider metadata remains open.
-
-## Vien's concrete next input
-
-1. Confirm whether the tool can bind call ID, direction and caller number, with a
-   redacted captured request or exact supported binding example.
-2. Confirm or amend the separate intake endpoint/envelope/response above.
-3. Specify the callback authentication configuration with a redacted example.
-4. Confirm the hosted conversation can use the clarification response and submit
-   one final intake once the essentials are present.
-
-After agreement: Tony wires the receiver to the implemented atomic
-deduplication/case creation service; Vien supplies the hosted tool/bindings. Existing outbound reporting
-must also be shown to reach `/calls/report` successfully.
-
-Later phone updates and parent confirmation still need provider binding into the
-implemented internal participant/case association rule.
-Do not select the newest case on an ambiguous phone match. Do not interpret a
-helper sighting as reunion or accept an arbitrary caller's claimed relationship
-as authorization. No update/confirmation route is frozen by this document.
+The existing /calls/report and empty-attempt outbound check-in remain separate.
+The database retains its baseline public-table/reducer access model; keep its
+endpoint local/private for this demo. Callback bearer auth is not database access
+control. Raw incoming requests are deliberately omitted from GET /state.

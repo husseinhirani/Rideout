@@ -71,3 +71,13 @@ test("expected input conflicts are sender errors rather than runtime failures", 
   const s=fixture()
   assert.throws(()=>s.run(r.recordCaseIntake,{...input,intake_json:JSON.stringify({...intake,child:{...intake.child,name:"Other"}})}),{name:"SenderError",message:/different input/})
 })
+
+test("separate intake calls cannot open two concurrent demo cases for one reporter", () => {
+  const s = fixture()
+  const before = structuredClone(s.rows)
+  assert.throws(() => s.run(r.recordCaseIntake, { ...input, event_key: "second-call" }), /open case/)
+  assert.deepEqual(structuredClone(s.rows), before)
+  s.run(r.recordReunionConfirmation, confirmation)
+  s.run(r.recordCaseIntake, { ...input, event_key: "next-case" })
+  assert.equal(s.rows.supportCase.length, 2)
+})

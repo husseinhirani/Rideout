@@ -48,8 +48,9 @@ HTTP backend using persisted attempts, notes and progress records. It uses the
 same worker with simulated or real calls. `npm run server:recording` explicitly
 substitutes scripted model responses and simulated calls for reproducible recording,
 while keeping HTTP, the worker and SpacetimeDB intact. Internal intake, attributed updates and reported-reunion operations are implemented
-under ticket #6. Phone delivery, caller binding and live confirmation remain
-unwired; the recording uses explicitly simulated participant associations. The workflow below describes
+under ticket #6. The provider receiver and hosted tool source are implemented using Vien's /requests
+envelope; live metadata binding and confirmation remain unverified. The recording
+uses explicitly simulated participant associations. The workflow below describes
 legacy cases when automatic coordination is disabled.
 
 One neighborhood, one simulated fire, one complete loop:
