@@ -1,0 +1,14 @@
+# RideOut
+
+- **Organizer / dispatcher:** the human who sets an information objective and the permitted contact scope.
+- **Incident:** the situation described by the organizer or a reporting person. No particular incident type is required.
+- **Case:** an investigation with an objective, permitted scope, evidence and current state.
+- **Profile:** a directory entry with a phone destination, stored attributes and contact relationships. Directory coordinates are not proof of current whereabouts.
+- **Attempt:** one authorized outbound conversation with a profile about a case. Its transport and report status are separate.
+- **Report:** what a caller said, preserved with its source. A report is not a verified fact.
+- **Note:** an attributed interpretation of a report or organizer input.
+- **Coordinator:** the application and Claude planning loop that gathers useful information within the organizer's scope. Stage 1 uses explicit organizer questions; adaptive selection follows after its live gate.
+- **Contact scope:** the explicit profiles or directory filters the organizer permits. Combined filters intersect. Consent is checked separately.
+- **Command receipt:** the persisted input and result of an organizer action, allowing a retry without performing it twice.
+
+The missing-child story belongs to earlier demo fixtures. Child, parent, victim and reunion are not required roles or completion rules for the generic product.

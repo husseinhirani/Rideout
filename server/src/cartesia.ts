@@ -49,7 +49,7 @@ export function placeCall(to: string, variables: Record<string, DynamicValue>): 
   // posted back to /calls/report by hand from the test UI.
   if (process.env.SIMULATE === "1") {
     const simulated = "sim_" + Math.random().toString(36).slice(2, 12)
-    console.log("simulate dial " + to + " " + JSON.stringify(variables))
+    console.log("simulate dial for attempt " + String(variables.attempt_id ?? "unbound") + " to number ending " + to.slice(-4))
     return Promise.resolve(simulated)
   }
   return postJson("/agents/calls", {

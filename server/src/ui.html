@@ -80,13 +80,19 @@
   <div class="sub" id="environment">Waiting for backend state. This console is separate from the product UI.</div>
   <section>
     <h2>Available profiles</h2>
-    <div class="body" id="profiles">Waiting for the database.</div>
+    <div class="body">
+      <label>Directory filter (optional JSON: profile_ids, radius, related_to_profile_id, tags)</label>
+      <input id="directoryFilter" placeholder='{"related_to_profile_id":1}'>
+      <div class="bar"><button id="searchProfiles" disabled>Find people</button><span class="sub">Search never calls anyone. Coordinates are stored directory data.</span></div>
+      <div id="profiles">Waiting for the database.</div>
+    </div>
   </section>
 
   <section>
     <h2>What is happening?</h2>
     <div class="body">
-      <textarea id="newIncident" rows="2" placeholder="7-year-old Ava Reyes missing near Loma Alta Park since 3pm"></textarea>
+      <textarea id="newIncident" rows="2" placeholder="Describe what is happening"></textarea>
+      <label>What do you need to find out?</label><textarea id="newObjective" rows="2" placeholder="Which entrances are accessible?"></textarea>
       <div class="bar">
         <button class="go" id="openIncident" disabled>Open incident</button>
         <span class="sub" id="newHint"></span>
@@ -95,6 +101,7 @@
   </section>
 
   <div id="view"></div>
+  <section><h2>Incoming reports awaiting association</h2><div class="body" id="incoming"></div></section>
 </div>
 
 <script>
@@ -108,6 +115,9 @@ let selectedCase = null
 let busy = false
 let connected = false
 let lastSeenAt = 0
+let directory = null
+const selectedProfiles = new Set()
+const pendingCommands = new Map()
 
 const els = {
   sim: document.getElementById("sim"),
@@ -116,6 +126,7 @@ const els = {
   err: document.getElementById("err"),
   view: document.getElementById("view"),
   newIncident: document.getElementById("newIncident"),
+  newObjective: document.getElementById("newObjective"),
   newHint: document.getElementById("newHint"),
   environment: document.getElementById("environment"),
   profiles: document.getElementById("profiles"),
@@ -171,9 +182,10 @@ async function poll() {
   els.sim.classList.toggle("sim", state.simulate)
   const mode = state.demo_mode || {}
   els.environment.textContent = "Database: " + (mode.database || "not reported")
-    + " · Planning: " + (mode.scripted === true ? "SCRIPTED" : mode.scripted === false ? "Claude" : "not reported")
+    + " · Planning: " + (mode.scripted === true ? "SCRIPTED" : mode.scripted === false ? "Manual selection; Claude interprets reports" : "not reported")
     + " · Automatic coordination: " + (mode.auto_coordinate === true ? "on" : mode.auto_coordinate === false ? "off" : "not reported")
   renderProfiles()
+  renderIncoming()
   els.dot.classList.remove("off")
   els.dotText.textContent = "connected"
   updateControls()
@@ -187,18 +199,46 @@ function updateControls() {
 
 function renderProfiles() {
   els.profiles.replaceChildren()
-  for (const profile of state.profiles || []) {
+  for (const profile of directory || state.profiles || []) {
     const line = el("div", "row")
     const contacts = (profile.contact_profile_ids || []).map(personName).join(", ") || "none"
+    const check = el("input")
+    check.type = "checkbox"; check.style.width = "auto"; check.checked = selectedProfiles.has(profile.id)
+    check.onchange = () => check.checked ? selectedProfiles.add(profile.id) : selectedProfiles.delete(profile.id)
+    line.append(check)
     line.append(el("span", "name", "#" + profile.id + " " + profile.name))
-    line.append(el("span", "sub", (profile.phone ? "Phone ending " + profile.phone.slice(-4) : "No phone") + " · Contacts: " + contacts))
+    line.append(el("span", "sub", (profile.phone_last4 ? "Phone ending " + profile.phone_last4 : "No phone") + " · Contacts: " + contacts))
+    const preference = (state.profile_settings || []).find(p => p.profile_id === profile.id)
+    line.append(el("span", "sub", preference?.call_consent ? "Calls allowed" : "Call consent not recorded"))
     els.profiles.append(line)
   }
-  if (!(state.profiles || []).length) els.profiles.textContent = "No profiles loaded."
+  if (!(directory || state.profiles || []).length) els.profiles.textContent = "No profiles loaded."
 }
 
 // The poll must never eat half-typed text. Anything the dispatcher has
 // started writing holds the render until they send or clear it.
+function renderIncoming() {
+  const target = document.getElementById("incoming")
+  target.replaceChildren()
+  for (const request of state.incoming_requests || []) {
+    const row = el("div", "row")
+    row.append(el("span", "sub", "#" + request.id + " · " + request.status))
+    row.append(el("span", "grow", request.text))
+    target.append(row)
+  }
+  if (!target.childNodes.length) target.textContent = "No incoming reports."
+}
+
+// A retry of the same command reuses its receipt key; changed content is a new command.
+function command(path, body) {
+  const key = path + JSON.stringify(body)
+  if (!pendingCommands.has(key)) pendingCommands.set(key, crypto.randomUUID())
+  return post(path, { ...body, command_id: pendingCommands.get(key) }).then(result => {
+    pendingCommands.delete(key)
+    return result
+  })
+}
+
 function typing() {
   const active = document.activeElement
   if (!active) return false
@@ -278,7 +318,7 @@ function render() {
   const incidents = (state.incidents || []).slice().sort((a, b) => b.id - a.id)
   els.view.replaceChildren()
   if (incidents.length === 0) {
-    els.newHint.textContent = "Describe an area evacuation or one missing person."
+    els.newHint.textContent = "Describe an incident and an information objective; select the permitted contacts above."
     return
   }
   els.newHint.textContent = ""
@@ -343,7 +383,7 @@ function caseListSection(cases) {
     const pending = (state.attempts || [])
       .filter((item) => item.support_case_id === row.id && item.outcome === null).length
     const line = el("div", "row pick" + (row.id === selectedCase ? " sel" : ""))
-    line.append(el("span", "name", personName(row.victim_profile_id)))
+    line.append(el("span", "name", row.kind === "information" ? "Case #" + row.id : personName(row.victim_profile_id)))
     line.append(el("span", "badge " + row.status, row.status.replace("_", " ")))
     line.append(el("span", "grow sub", pending > 0 ? pending + " without an interpreted report" : ""))
     line.onclick = () => { selectedCase = row.id; render() }
@@ -355,7 +395,7 @@ function caseListSection(cases) {
 
 function caseSection(current) {
   const node = el("section")
-  node.append(el("h2", "", "Case · " + personName(current.victim_profile_id)))
+  node.append(el("h2", "", "Case #" + current.id))
   const body = el("div", "body")
 
   body.append(el("div", "sub", "goal: " + current.goal))
@@ -367,9 +407,10 @@ function caseSection(current) {
   for (const call of calls) {
     const outcome = call.outcome || "pending"
     const progress = (state.attempt_progress || []).find(row => row.attempt_id === call.id)
+    const binding = (state.information_attempts || []).find(row => row.attempt_id === call.id)
     const line = el("div", "row")
     const who = el("span", "name", personName(call.profile_id))
-    who.title = personPhone(call.profile_id)
+
     line.append(who)
     line.append(el("span", "badge " + outcome, "Report: " + (call.outcome ? outcome.replace("_", " ") : progress?.report_received ? "received; processing" : "not received")))
     const detail = el("span", "grow")
@@ -378,6 +419,7 @@ function caseSection(current) {
     detail.append(ask)
     detail.append(el("div", "sub", "Attempt #" + call.id + " · Provider: " + (call.call_id || "not recorded")
       + " · Transport: " + (progress ? progress.transport : "not tracked by legacy call path")))
+    if (binding) detail.append(el("div", "sub", "Binding: " + binding.binding_status + " · Provider outcome: " + (binding.provider_terminal_status || "not terminal") + (binding.interpretation_error ? " · Interpretation: " + binding.interpretation_error : "")))
     if (call.answer) detail.append(el("div", "quote", '"' + call.answer + '"'))
     if (state.simulate && call.outcome === null) detail.append(simulateBox(call.id))
     line.append(detail)
@@ -411,7 +453,7 @@ function caseSection(current) {
     body.append(line)
   }
 
-  body.append(dispatcherBox(current))
+  body.append(current.kind === "information" ? informationBox(current) : el("div", "muted", "Legacy history is read-only in this console."))
   node.append(body)
   return node
 }
@@ -425,7 +467,7 @@ function simulateBox(attemptId) {
   const button = el("button", "go", "Send")
   button.onclick = () => {
     if (!answer.value.trim()) { showError("answer is required"); return }
-    send(button, () => post("/calls/report", {
+    send(button, () => post("/simulation/report", {
       attempt_id: attemptId,
       answer: answer.value,
       concern: concern.value,
@@ -435,40 +477,62 @@ function simulateBox(attemptId) {
   return box
 }
 
-function dispatcherBox(current) {
+function informationBox(current) {
   const box = el("div")
-  box.append(el("h2", "", "Dispatcher"))
-  const text = el("textarea")
-  text.rows = 2
-  text.placeholder = "what should I do next? e.g. also ask the neighbours on Marengo"
-  box.append(text)
-  const bar = el("div", "bar")
-  const sendButton = el("button", "go", "Send")
-  sendButton.onclick = () => {
-    if (!text.value.trim()) { showError("text is required"); return }
-    const typed = text.value
-    text.value = ""
-    send(sendButton, () => post("/cases/" + current.id + "/input", { text: typed }))
+  box.append(el("h2", "", "Organizer-directed information call"))
+  box.append(el("div", "sub", "Revision " + current.input_revision + ". This step calls the selected person with your question. Automatic planning comes after this checkpoint."))
+  const person = el("select")
+  for (const profile of state.profiles || []) {
+    const option = el("option", "", profile.name)
+    option.value = profile.id; person.append(option)
   }
-  const accept = el("button", "", "Close case")
-  accept.dataset.locked = String(current.status === "closed")
-  accept.disabled = current.status === "closed"
-  accept.onclick = () => { send(accept, () => post("/cases/" + current.id + "/close", {})) }
-  bar.append(sendButton, accept)
-  box.append(bar)
+  const question = el("textarea"); question.placeholder = "What should Tom ask?"
+  const context = el("textarea"); context.placeholder = "Context this person may be told (optional)"
+  const call = el("button", "go", state.simulate ? "Start simulated call" : "Call selected person")
+  call.dataset.locked = String(current.status !== "open")
+  call.onclick = () => {
+    if (!question.value.trim()) { showError("Write the question first."); return }
+    const queued = (state.attempt_progress || []).filter(p => p.support_case_id === current.id && p.transport === "queued")
+    if (queued.length) { showError("A call is already queued. Wait for its status before adding another in this manual console."); return }
+    send(call, async () => {
+      await command("/cases/" + current.id + "/calls", {
+        expected_input_revision: current.input_revision, profile_id: Number(person.value),
+        question: question.value, context: context.value, queued: [],
+      })
+      question.value = ""; context.value = ""
+    })
+  }
+  box.append(person, question, context, call)
+  box.append(el("h2", "", "Update objective or contact scope"))
+  const objective = el("textarea"); objective.value = current.goal
+  const scope = el("input"); scope.value = JSON.stringify(current.scope || { profile_ids: [] })
+  const save = el("button", "", "Save configuration")
+  save.dataset.locked = String(current.status !== "open")
+  save.onclick = () => send(save, () => command("/cases/" + current.id + "/configuration", {
+    expected_input_revision: current.input_revision, objective: objective.value, scope: JSON.parse(scope.value),
+  }))
+  box.append(objective, scope, save)
   return box
 }
 
 // -------------------------------------------------------------------- boot
 
+document.getElementById("searchProfiles").onclick = event => send(event.currentTarget, async () => {
+  const filter = JSON.parse(document.getElementById("directoryFilter").value || "{}")
+  const response = await fetch("/profiles?filter=" + encodeURIComponent(JSON.stringify(filter)) + "&limit=100")
+  const result = await response.json()
+  if (!response.ok) throw new Error(result.error || "Search failed")
+  directory = result.profiles
+})
 document.getElementById("openIncident").onclick = (event) => {
   const text = els.newIncident.value
-  if (!text.trim()) { showError("text is required"); return }
-  els.newIncident.value = ""
+  const objective = els.newObjective.value
+  if (!text.trim() || !objective.trim()) { showError("Describe the incident and what you need to know."); return }
   send(event.currentTarget, async () => {
-    const result = await post("/incidents", { text })
+    const result = await command("/incidents", { text, objective, scope: { profile_ids: [...selectedProfiles] } })
     selectedIncident = result.incident_id
-    selectedCase = result.case_ids && result.case_ids.length > 0 ? result.case_ids[0] : null
+    selectedCase = result.support_case_id
+    els.newIncident.value = ""; els.newObjective.value = ""
   })
 }
 

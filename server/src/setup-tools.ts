@@ -336,8 +336,9 @@ async function main(): Promise<void> {
   if (sameIds(attached.map((tool) => tool.id), next)) {
     console.log("agent tools unchanged")
   } else {
+    const current = await cartesiaJson("GET", "/v1/agents/" + encodeURIComponent(agentId))
     await cartesiaJson("PATCH", "/v1/agents/" + encodeURIComponent(agentId), {
-      config: { tools: next.map((id) => ({ id })) },
+      config: { ...(isObject(current.config) ? current.config : {}), tools: next.map((id) => ({ id })) },
     })
     console.log("agent tools " + next.join(" "))
   }
