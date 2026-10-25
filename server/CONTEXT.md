@@ -69,7 +69,7 @@ Global context and working conventions. Read before making any change.
 
 ## What this is
 
-**RideOut** (working name): an information network for human-first evacuations. It calls the people around an emergency (family, neighbors, the person themselves), turns what they say into a picture of what is happening, and presents that to a human dispatcher who decides what happens. Mainly phone calls, because the people who cannot evacuate on their own are elderly, disabled, without a car, and often not app users. The agent gathers and synthesizes. It never dispatches help.
+**Sealert** (working name): an information network for human-first evacuations. It calls the people around an emergency (family, neighbors, the person themselves), turns what they say into a picture of what is happening, and presents that to a human dispatcher who decides what happens. Mainly phone calls, because the people who cannot evacuate on their own are elderly, disabled, without a car, and often not app users. The agent gathers and synthesizes. It never dispatches help.
 
 This is a **hackathon project**. Time is the scarcest resource.
 

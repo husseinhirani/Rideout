@@ -106,7 +106,7 @@ export async function getState(includeLegacyConfiguration = true): Promise<Recor
     simulate: process.env.SIMULATE === "1",
     demo_mode: {
       simulate: process.env.SIMULATE === "1", scripted: recordingMode(),
-      auto_coordinate: automatic(), database: process.env.SPACETIMEDB_DATABASE ?? "rideout",
+      auto_coordinate: automatic(), database: process.env.SPACETIMEDB_DATABASE ?? "sealert",
       helper_ids: includeLegacyConfiguration && automatic() ? configuredHelperIds() : [],
       reporter_id: includeLegacyConfiguration ? configuredReporterId() : null,
       inbound: process.env.INBOUND_REQUESTS === "1",
@@ -380,7 +380,7 @@ async function requireCase(supportCaseId: number): Promise<SupportCaseRow> {
 }
 
 // The dispatcher stops a call that has not started, or a simulated one. A real
-// call that may already be ringing is left alone: RideOut cannot hang it up.
+// call that may already be ringing is left alone: Sealert cannot hang it up.
 export async function cancelCall(
   attemptId: number,
 ): Promise<{ attempt_id: number; cancelled: boolean; reason: string }> {
@@ -403,12 +403,12 @@ export function cancelRefusal(attempt: AttemptRow, transport: string | undefined
   const simulated = attempt.call_id?.startsWith("sim_") === true
   if (transport === undefined) {
     if (attempt.outcome != null) return "Call already has an outcome."
-    return attempt.call_id && !simulated ? "A live call cannot be ended from RideOut." : ""
+    return attempt.call_id && !simulated ? "A live call cannot be ended from Sealert." : ""
   }
   if (transport === "queued" || (transport === "active" && simulated)) return ""
   if (transport === "ended" || transport === "cancelled") return "Call already finished."
   if (transport === "dispatching") return "The call is being placed and cannot be cancelled safely."
-  return "A live or unresolved call cannot be ended from RideOut."
+  return "A live or unresolved call cannot be ended from Sealert."
 }
 
 // ----------------------------------------------------------------- profiles

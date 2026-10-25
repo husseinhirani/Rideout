@@ -1,4 +1,8 @@
-# RideOut
+<div align="center">
+  <img src="mascot.jpg" alt="Sealert mascot" width="180" />
+  <h1>Sealert</h1>
+  <p><em>A dispatcher's reliable sidekick</em></p>
+</div>
 
 ## Tony's single-call wildfire drill
 
@@ -27,7 +31,7 @@ reports remain visible even while audio is unavailable.
 Only build/type checks have been performed for this slice; the actual click,
 phone conversation and audio availability need verification on the running app.
 
-RideOut helps an organizer collect information about an incident. Claude chooses
+Sealert helps an organizer collect information about an incident. Claude chooses
 questions and contacts within an authorized scope; Cartesia conducts phone calls;
 reports become attributed evidence for the organizer. Incident details are free
 text. The product does not require a particular scenario or participant count.

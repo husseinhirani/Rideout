@@ -232,7 +232,7 @@ export const recordCoordinationFailure = spacetimedb.reducer(
 )
 
 // The dispatcher stops a call that has not started, or a simulated one. A real
-// call that may be ringing stays as it is: RideOut has no way to hang it up.
+// call that may be ringing stays as it is: Sealert has no way to hang it up.
 export const cancelAttempt = spacetimedb.reducer(
   { attempt_id: t.u64() },
   (ctx, { attempt_id }) => {
@@ -242,7 +242,7 @@ export const cancelAttempt = spacetimedb.reducer(
     const progress = ctx.db.attemptProgress.attempt_id.find(attempt_id)
     if (!progress) {
       if (attempt.outcome !== undefined) throw new SenderError("Call already has an outcome")
-      if (attempt.call_id && !simulated) throw new SenderError("A live call cannot be ended from RideOut")
+      if (attempt.call_id && !simulated) throw new SenderError("A live call cannot be ended from Sealert")
       ctx.db.attempt.id.update({ ...attempt, outcome: CANCELLED })
       return
     }
@@ -260,6 +260,6 @@ export const cancelAttempt = spacetimedb.reducer(
     }
     if (progress.transport === "ended" || progress.transport === "cancelled") throw new SenderError("Call already finished")
     if (progress.transport === "dispatching") throw new SenderError("The call is being placed and cannot be cancelled safely")
-    throw new SenderError("A live or unresolved call cannot be ended from RideOut")
+    throw new SenderError("A live or unresolved call cannot be ended from Sealert")
   },
 )

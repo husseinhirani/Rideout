@@ -2,7 +2,7 @@ import assert from "node:assert/strict"
 import { test } from "node:test"
 import { createRecordingInbound } from "../src/recording-inbound"
 import type { RecordingState } from "../src/recording-demo"
-const base = { database: "rideout-recording-test", baseUrl: "http://127.0.0.1:8790", callbackSecret: "test-secret", pollMs: 0 }
+const base = { database: "sealert-recording-test", baseUrl: "http://127.0.0.1:8790", callbackSecret: "test-secret", pollMs: 0 }
 function fixture() {
   const state = { profiles: [{ id: 1, name: "Blair", phone: "+15555550102", lat: 0, lng: 0, contact_profile_ids: [] }, { id: 2, name: "Casey", phone: "+15555550103", lat: 0, lng: 0, contact_profile_ids: [] }, { id: 4, name: "Morgan (recording)", phone: "+15555550104", lat: 0, lng: 0, contact_profile_ids: [] }], cases: [], attempts: [], attempt_progress: [], notes: [], coordination: [], demo_mode: { helper_ids: [1, 2], simulate: true, scripted: true, auto_coordinate: true, database: base.database } } as RecordingState
   const calls: { url: string; body: any; headers: Headers }[] = []
@@ -35,7 +35,7 @@ test("HTTP adapter polls identical intake, replays it and binds distinct simulat
 })
 test("unsafe modes, real participant numbers and remote URLs fail before requests", async () => {
   assert.throws(() => createRecordingInbound({ ...base, baseUrl: "https://example.com" }), /local/)
-  assert.throws(() => createRecordingInbound({ ...base, database: "rideout" }), /dedicated/)
+  assert.throws(() => createRecordingInbound({ ...base, database: "sealert" }), /dedicated/)
   for (const change of ["mode", "parent", "helper"]) {
     const f = fixture()
     if (change === "mode") f.state.demo_mode!.scripted = false

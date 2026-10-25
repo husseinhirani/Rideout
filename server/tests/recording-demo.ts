@@ -4,7 +4,7 @@ import { runRecordingDemo } from "../src/recording-demo"
 
 function backend() {
   const state: any = {
-    demo_mode: { simulate: true, scripted: true, auto_coordinate: true, database: "rideout-recording-test", helper_ids: [1, 2] },
+    demo_mode: { simulate: true, scripted: true, auto_coordinate: true, database: "sealert-recording-test", helper_ids: [1, 2] },
     profiles: [{ id: 1, phone: "+15555550101" }, { id: 2, phone: "+15555550102" }, { id: 3, name: "Ava (recording)", phone: "" }],
     cases: [], attempts: [], attempt_progress: [], notes: [], coordination: [],
   }
@@ -42,7 +42,7 @@ function backend() {
 
 test("recording uses existing routes and discloses simulated/manual outcomes", async () => {
   const fake = backend()
-  const events = await runRecordingDemo({ database: "rideout-recording-test", fetch: fake.fetcher, pollMs: 0 })
+  const events = await runRecordingDemo({ database: "sealert-recording-test", fetch: fake.fetcher, pollMs: 0 })
   assert.deepEqual(events.map(event => event.stage), ["mode", "case-opened", "initial-calls", "helpers-accepted", "new-clue", "follow-up-calls", "possible-find-still-open", "manually-closed"])
   assert.equal(fake.mutations.filter(path => path === "/calls/report").length, 4)
   assert.equal(fake.mutations.at(-1), "/cases/1/close")
@@ -53,24 +53,24 @@ test("recording refuses unsafe modes and targets before writes", async () => {
   for (const flag of ["simulate", "scripted", "auto_coordinate"]) {
     const fake = backend()
     fake.state.demo_mode[flag] = false
-    await assert.rejects(runRecordingDemo({ database: "rideout-recording-test", fetch: fake.fetcher }), /Backend must report/)
+    await assert.rejects(runRecordingDemo({ database: "sealert-recording-test", fetch: fake.fetcher }), /Backend must report/)
     assert.equal(fake.mutations.length, 0)
   }
   const fake = backend()
-  await assert.rejects(runRecordingDemo({ database: "rideout", fetch: fake.fetcher }), /dedicated/)
-  await assert.rejects(runRecordingDemo({ database: "rideout-recording-test", baseUrl: "https://example.org", fetch: fake.fetcher }), /127.0.0.1/)
+  await assert.rejects(runRecordingDemo({ database: "sealert", fetch: fake.fetcher }), /dedicated/)
+  await assert.rejects(runRecordingDemo({ database: "sealert-recording-test", baseUrl: "https://example.org", fetch: fake.fetcher }), /127.0.0.1/)
   fake.state.demo_mode.database = "other"
-  await assert.rejects(runRecordingDemo({ database: "rideout-recording-test", fetch: fake.fetcher }), /matching dedicated database/)
+  await assert.rejects(runRecordingDemo({ database: "sealert-recording-test", fetch: fake.fetcher }), /matching dedicated database/)
   assert.equal(fake.mutations.length, 0)
 })
 
 test("recording refuses real helper numbers and missing child", async () => {
   const fake = backend()
   fake.state.profiles[0].phone = "+14155550123"
-  await assert.rejects(runRecordingDemo({ database: "rideout-recording-test", fetch: fake.fetcher }), /fictional/)
+  await assert.rejects(runRecordingDemo({ database: "sealert-recording-test", fetch: fake.fetcher }), /fictional/)
   fake.state.profiles[0].phone = "+15555550101"
   fake.state.profiles[2].phone = "+15555550103"
-  await assert.rejects(runRecordingDemo({ database: "rideout-recording-test", fetch: fake.fetcher }), /separate Ava/)
+  await assert.rejects(runRecordingDemo({ database: "sealert-recording-test", fetch: fake.fetcher }), /separate Ava/)
   assert.equal(fake.mutations.length, 0)
 })
 
@@ -81,14 +81,14 @@ test("recording bounds waits and gives progress diagnostics", async () => {
     if (new URL(String(input)).pathname === "/state" && fake.state.cases.length) return new Response(JSON.stringify({ ...fake.state, attempts: [] }))
     return response
   }) as typeof fetch
-  await assert.rejects(runRecordingDemo({ database: "rideout-recording-test", fetch: fetcher, timeoutMs: 1, pollMs: 0 }), /Timed out waiting for two initial helper calls.*coordination/)
+  await assert.rejects(runRecordingDemo({ database: "sealert-recording-test", fetch: fetcher, timeoutMs: 1, pollMs: 0 }), /Timed out waiting for two initial helper calls.*coordination/)
 })
 
 test("recording rejects unresolved calls left on closed cases before creating another case", async () => {
   const fake=backend()
   fake.state.cases.push({id:4,status:"closed"})
   fake.state.attempt_progress.push({attempt_id:7,transport:"active"})
-  await assert.rejects(runRecordingDemo({database:"rideout-recording-test",fetch:fake.fetcher,timeoutMs:1,pollMs:0}),/outstanding simulated calls/)
+  await assert.rejects(runRecordingDemo({database:"sealert-recording-test",fetch:fake.fetcher,timeoutMs:1,pollMs:0}),/outstanding simulated calls/)
   assert.equal(fake.mutations.length,0)
 })
 
@@ -96,7 +96,7 @@ test("internal adapter skips child seed and verifies persisted reunion", async (
   const fake = backend()
   fake.state.profiles.pop()
   const invoked: string[] = []
-  const events = await runRecordingDemo({ database: "rideout-recording-test", fetch: fake.fetcher, pollMs: 0,
+  const events = await runRecordingDemo({ database: "sealert-recording-test", fetch: fake.fetcher, pollMs: 0,
     caseInputs: {
       async open() { invoked.push("open"); await fake.fetcher("http://127.0.0.1/cases", { method: "POST", body: "{}" }); return { support_case_id: 1, incident_id: 1 } },
       async update(id, text) { invoked.push("update"); assert.match(text, /backpack/); await fake.fetcher(`http://127.0.0.1/cases/${id}/input`, { method: "POST", body: "{}" }) },
@@ -111,7 +111,7 @@ test("internal adapter is never called before safety guards", async () => {
   const fake = backend()
   fake.state.demo_mode.simulate = false
   let calls = 0
-  await assert.rejects(runRecordingDemo({ database: "rideout-recording-test", fetch: fake.fetcher,
+  await assert.rejects(runRecordingDemo({ database: "sealert-recording-test", fetch: fake.fetcher,
     caseInputs: { async open() { calls++; return { support_case_id: 1, incident_id: 1 } }, async update() { calls++ }, async confirm() { calls++ } },
   }), /Backend must report/)
   assert.equal(calls, 0)
@@ -124,5 +124,5 @@ test("recording sends callback bearer only to callback routes", async () => {
     assert.equal(new Headers(init?.headers).get("authorization"), path === "/calls/report" ? "Bearer recording-secret" : null)
     return fake.fetcher(input, init)
   }
-  await runRecordingDemo({ database: "rideout-recording-test", fetch: fetcher, callbackSecret: "recording-secret" })
+  await runRecordingDemo({ database: "sealert-recording-test", fetch: fetcher, callbackSecret: "recording-secret" })
 })

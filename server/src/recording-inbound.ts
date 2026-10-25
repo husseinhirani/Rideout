@@ -12,7 +12,7 @@ type RequestReply = { request_id: number; status: string; reply: string }
 export function createRecordingInbound(options: RecordingOptions): RecordingCaseInputs {
   const base = new URL(options.baseUrl ?? "http://127.0.0.1:8787")
   if (base.protocol !== "http:" || base.hostname !== "127.0.0.1" || base.pathname !== "/" || base.search || base.hash || base.username || base.password) throw new Error("Inbound recording requires a local http://127.0.0.1:<port> URL")
-  if (!/^rideout-recording-[a-z0-9-]+$/.test(options.database)) throw new Error("Inbound recording requires a dedicated rideout-recording-* database")
+  if (!/^sealert-recording-[a-z0-9-]+$/.test(options.database)) throw new Error("Inbound recording requires a dedicated sealert-recording-* database")
   const fetcher = options.fetch ?? fetch
   let openedId: number | undefined
   let helperPhone: string | undefined
@@ -73,7 +73,7 @@ export function createRecordingInbound(options: RecordingOptions): RecordingCase
 
 async function main(): Promise<void> {
   if (process.argv.includes("--help")) {
-    console.log("Usage: RECORDING_DATABASE=rideout-recording-<name> npm run demo:inbound\nOptional RECORDING_URL=http://127.0.0.1:8787 and CALLBACK_SECRET. Requires seeded scripted simulation. All intake, updates and confirmation use HTTP /requests with fictional phone metadata; no real call or hosted configuration changes.")
+    console.log("Usage: RECORDING_DATABASE=sealert-recording-<name> npm run demo:inbound\nOptional RECORDING_URL=http://127.0.0.1:8787 and CALLBACK_SECRET. Requires seeded scripted simulation. All intake, updates and confirmation use HTTP /requests with fictional phone metadata; no real call or hosted configuration changes.")
     return
   }
   if (process.argv.length > 2) throw new Error("Unknown argument; use --help")
