@@ -70,8 +70,7 @@
         },
         "human_review": {
           "type": "string",
-          "description": "Optional concrete unresolved issue needing the human dispatcher, such as possible real danger during a drill or a need outside supported fields. Preserve the person's words and uncertainty. Empty or omitted when no such issue exists; maximum 2000 characters. Never delay an immediate hang-up to submit this.",
-          "default": ""
+          "description": "Optional concrete unresolved issue needing the human dispatcher, such as possible real danger during a drill or a need outside supported fields. Preserve the person's words and uncertainty. Empty or omitted when no such issue exists; maximum 2000 characters. Never delay an immediate hang-up to submit this."
         }
       },
       "required": [
