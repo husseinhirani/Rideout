@@ -75,6 +75,27 @@ Tests execute the actual reducers in a transactional in-memory host and restart
 worker instances over retained rows. They do not prove SpacetimeDB deployment,
 real process/database restart recovery, Claude behavior, or phone delivery.
 
+## Persisted recording replay
+
+`COORDINATOR_SCRIPTED=1` selects explicit demonstration planner/interpreter fixtures,
+never an automatic fallback. Startup rejects this flag without both `SIMULATE=1`
+and `AUTO_COORDINATE=1`. Legacy summary calls are skipped in this mode; durable
+coordination reducers still update briefs. Unset the scripted flag for real Claude.
+
+`demo:recording` drives existing HTTP routes against a dedicated local database:
+create a structured point incident and a case, submit two explicit acceptances,
+record a new playground clue, wait for the real ten-second checkpoint, report a
+possible find and manually close as the dispatcher. It labels scripted output,
+unverified observations and manual closure. This does not implement inbound
+phone intake or parent-identity verification. It never deletes rows or changes
+hosted tools. Replays preserve prior closed cases and create a fresh incident.
+
+`GET /state.demo_mode` contains simulate/scripted/auto_coordinate booleans,
+database name and helper_ids. The runner refuses to write unless these match its
+explicit dedicated database and the helpers have fictional phone numbers.
+`seed:recording` inserts two fictional helpers and Ava with an empty phone only
+into an empty database named rideout-recording-<name>.
+
 ## 1. Glossary
 
 Use these terms exactly in code, comments, UI copy, and docs.

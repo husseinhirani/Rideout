@@ -28,6 +28,7 @@ import {
   type SupportCaseRow,
 } from "./db"
 import { ServiceError } from "./service"
+import { recordingMode, scriptedPlan, scriptedInterpret } from "./recording-model"
 
 // Legacy cases replan on dispatcher input. Opt-in coordinated cases instead use
 // the durable worker below; both paths share dial() and the provider adapter.
@@ -59,8 +60,10 @@ async function readCoordinationState(): Promise<CoordinationState> {
   })
 }
 const coordinationWorker = createCoordinatorWorker({
-  read: readCoordinationState, reduce: callReducer, plan: planStrict,
-  interpret: interpretCoordinationAnswer, now: Date.now, inspect: getCall,
+  read: readCoordinationState, reduce: callReducer,
+  plan: input => recordingMode() ? scriptedPlan(input) : planStrict(input),
+  interpret: input => recordingMode() ? scriptedInterpret(input) : interpretCoordinationAnswer(input),
+  now: Date.now, inspect: getCall,
   dial: (attempt, profile, context, claimToken) => dial({attemptId:attempt.id,profile,ask:attempt.ask,context,claimToken}),
 })
 let coordinatorTimer: ReturnType<typeof setInterval> | undefined
@@ -94,6 +97,11 @@ export async function getState(): Promise<Record<string, unknown>> {
   ])
   return {
     simulate: process.env.SIMULATE === "1",
+    demo_mode: {
+      simulate: process.env.SIMULATE === "1", scripted: recordingMode(),
+      auto_coordinate: automatic(), database: process.env.SPACETIMEDB_DATABASE ?? "rideout",
+      helper_ids: automatic() ? configuredHelperIds() : [],
+    },
     profiles: allProfiles,
     incidents: allIncidents,
     incident_people: people,
@@ -549,6 +557,7 @@ async function expire(attemptId: number): Promise<void> {
 // ------------------------------------------------------------------- briefs
 
 async function refreshBriefs(supportCaseId: number): Promise<void> {
+  if (recordingMode()) return
   if ((await caseProgress()).some(row => row.support_case_id === supportCaseId)) return
   const facts = await caseFacts(supportCaseId)
   const result = await brief(
@@ -579,6 +588,7 @@ async function refreshBriefs(supportCaseId: number): Promise<void> {
 }
 
 async function refreshIncidentBrief(incidentId: number): Promise<void> {
+  if (recordingMode()) return
   const incident = (await incidents()).find((row) => row.id === incidentId)
   if (!incident) return
   const cases = (await supportCases()).filter((row) => row.incident_id === incidentId)

@@ -45,7 +45,9 @@ automatic outreach in the HTTP server. Follow-up becomes due 10 seconds after
 acceptance, with at most two outbound calls per helper and parent confirmation
 required before closure. Ticket #5 adds opt-in automatic coordination (`AUTO_COORDINATE=1`) to the
 HTTP backend using persisted attempts, notes and progress records. It uses the
-same worker with simulated or real calls. Phone intake, unsolicited updates and
+same worker with simulated or real calls. `npm run server:recording` explicitly
+substitutes scripted model responses and simulated calls for reproducible recording,
+while keeping HTTP, the worker and SpacetimeDB intact. Phone intake, unsolicited updates and
 parent-confirmed closure still require ticket #6. The workflow below describes
 legacy cases when automatic coordination is disabled.
 
