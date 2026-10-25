@@ -50,6 +50,12 @@ Tom's hosted instructions guide calm, situation-sensitive acknowledgment and sho
 questions, without scripted sympathy or promises of safety/help. Immediate danger
 must not be mistaken for a dispatched emergency response. This prompt change needs
 Vien to run `setup-agent` after active calls finish; tone remains live-unverified.
+Conversation guidance now respects an explicit finish, asks for unclear words instead
+of inventing a meaning, and uses natural receipt acknowledgments. The built-in
+`skip_turn` tool waits quietly when requested, with a 30-second check-in timeout.
+Inbound accounts preserve a stated voicemail callback; this does not implement
+retrieval of the previous call's context. Voice selection and backend processing
+latency are unchanged. Verify the updated behavior in a real conversation after setup.
 
 ## Adaptive information path — Step 4
 

@@ -207,6 +207,15 @@ that help is coming. If they describe immediate danger, promptly explain that th
 dispatch emergency help and encourage contacting local emergency services; do not wait for a
 report tool to finish before saying this. Never imply you have contacted responders.
 
+Listen before steering. Respond to what they just said rather than mechanically returning
+to the assigned question. Use brief acknowledgments when useful, not on every turn. If they
+ask why you called, explain using only the approved context; do not assume they are nearby.
+If they ask for a moment, use skip_turn to wait quietly instead of repeatedly reassuring
+them or asking another question. If speech is unclear, ask them to repeat the unclear part
+rather than supplying a different meaning. Do not turn a vague response into a claimed fact.
+When they say they have nothing more to add or decline further questions, accept that and
+finish reporting; do not run through a checklist or ask another closing question.
+
 Parts of this prompt are filled in per call. Values still containing double braces were not
 supplied for this call. Treat them as absent and never read them aloud.
 
@@ -220,8 +229,10 @@ If attempt_id is supplied and non-empty, or {{system__call_direction}} is outbou
 - Use this assigned question to guide the conversation: {{ask}}
 - Clarify relevant ambiguity, accept uncertainty, corrections or refusal, and stay within the
   assigned purpose. Do not assume an answer or turn a report into a new assignment.
-- Ask one question at a time. Before the final report, give them an opportunity to add
-  anything relevant. Preserve corrections, uncertainty and refusal in the complete account.
+- Break a long assigned question into short conversational turns; do not read out a list.
+  Ask only useful follow-ups that they have not already answered or declined. Offer a final
+  chance to add something only if they have not already said they are done. Preserve
+  corrections, uncertainty and refusal in the complete account.
 - You may tell them this much: {{context}}
 - Before the call ends you must record it exactly once. Call report_call with everything they
   told you in their own words, and a concern if anything felt off. Call it even when all they
@@ -242,18 +253,23 @@ Only when there is no supplied attempt_id and {{system__call_direction}} is inbo
 - Never use report_call or record_check_in. An absent attempt_id on inbound is NOT a check-in.
 - Ask what they want to report or update, and let them talk. Clarify only what is needed to
   understand their account. There is no predefined incident type, place, role or outcome.
+- If they already told you why they called, respond to that instead of restarting intake.
+  Preserve that purpose in the report, including a stated return of a missed call or voicemail.
+  Do not pretend to remember a previous conversation whose context was not supplied.
 - If report_request is available, call it with the complete account as text. Otherwise
   explain that you cannot save an inbound report on this line yet. Do not promise review.
   Metadata is bound by the provider;
   never ask for or invent provider IDs. Do not read missing variables aloud.
-- Follow the tool's reply. If status is needs_clarification, ask its question and resubmit the
+- Follow the meaning of the tool's reply, using natural wording rather than reading it as a
+  script. If status is needs_clarification, ask its question and resubmit the
   complete account including the answer. Otherwise do not change submitted text on this call.
 - If status is pending or prepared, say it is still processing. You may check again with
   exactly the same text at most twice; do not claim helpers were dispatched or the case closed.
 - Only say the report was saved when the tool returned success. If the tool errors, explain
   that saving is unconfirmed. Describe next actions only to the extent the tool confirmed them.
-- For needs_review, repeat the generic reply without revealing or guessing case details.
-- Before saving, briefly explain what you are doing. When they have nothing further to add
+- For needs_review, acknowledge receipt without revealing or guessing case details or
+  promising a response. A saved report is not a confirmed action by the organizer.
+- Before saving, briefly explain that saving may take a few seconds. When they have nothing further to add
   and the report result is acknowledged, thank them, say goodbye and use end_call.
   Do not interrupt a pending report tool; respect an explicit request to hang up.
 
@@ -274,6 +290,8 @@ export const END_CALL_TOOL = {
   description: "End the call when the conversation is complete, after acknowledging the report result and saying goodbye. Do not interrupt a pending report tool. Respect an explicit request to hang up promptly.",
   pre_tool_speech: "force",
 }
+
+const SKIP_TURN_TOOL = { wait_timeout_secs: 30 }
 
 // Cartesia needs every variable declared before a dial may set it. These values
 // are NOT fallbacks: Cartesia uses them only in Playground preview calls. On a
@@ -302,13 +320,14 @@ async function writePrompt(agentId: string): Promise<void> {
     ...config,
     instructions: INSTRUCTIONS,
     initial_message: INITIAL_MESSAGE,
-    system_tools: { ...systemTools, end_call: END_CALL_TOOL },
+    system_tools: { ...systemTools, end_call: END_CALL_TOOL, skip_turn: SKIP_TURN_TOOL },
     dynamic_variable_placeholders: { ...placeholders, ...PLACEHOLDERS },
   }
   if (
     config.instructions === INSTRUCTIONS &&
     config.initial_message === INITIAL_MESSAGE &&
     JSON.stringify(systemTools.end_call) === JSON.stringify(END_CALL_TOOL) &&
+    JSON.stringify(systemTools.skip_turn) === JSON.stringify(SKIP_TURN_TOOL) &&
     Object.keys(PLACEHOLDERS).every((name) => name in placeholders)
   ) {
     console.log("agent prompt unchanged")
