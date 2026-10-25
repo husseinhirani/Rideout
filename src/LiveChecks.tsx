@@ -83,7 +83,7 @@ export function LiveChecks({
         {inbound.length === 0 ? <p className="term-wait">{state.demo_mode.inbound ? "No one has called in yet." : "Inbound calls are not enabled on this backend."}</p> : null}
         <div className="call-board">
           {inbound.slice(0, 8).map((item) => (
-            <div key={item.row.id} className={`call-item open${item.review ? " needs-you" : ""}`}>
+            <div key={item.row.id} className={`call-item inbound-item${item.review ? " needs-you" : ""}`}>
               <p className="call-hit">
                 <i className={`dot ${item.row.status === "recorded" ? "live" : item.review ? "holding" : "calling"}`} />
                 <span>{item.caller}</span>
@@ -213,7 +213,7 @@ function CheckIns({
         Check-in sweep · {count("safe")} safe · {count("victim")} need help · {count("unknown")} no answer · {count("checking_in")} calling
       </p>
       {simulate
-        ? waiting.slice(0, 6).map((person) => {
+        ? waiting.map((person) => {
             const profile = state.profiles.find((row) => row.id === person.profile_id);
             const house = houses.find((row) => row.name === profile?.name);
             return (

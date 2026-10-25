@@ -144,3 +144,12 @@ describe("inbound", () => {
     expect(views[1].caller).toMatch(/not verified/);
   });
 });
+
+describe("closed coordination", () => {
+  it("says a closed case plans nothing more, even with an unevaluated revision", () => {
+    const state = base();
+    state.cases[0].status = "closed";
+    state.coordination[0].input_revision = 9;
+    expect(coordinationOf(state, 7, 0).text).toBe("Case closed. No further calls are planned.");
+  });
+});

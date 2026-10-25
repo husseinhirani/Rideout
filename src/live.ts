@@ -87,6 +87,7 @@ export function caseStatus(row: SupportCaseRow, intake: CaseIntakeRow | null): C
 export type Coordination = { kind: "none" | "idle" | "pending" | "blocked" | "retrying"; text: string };
 
 export function coordinationOf(state: BackendState, caseId: number, now: number): Coordination {
+  if (state.cases.find((row) => row.id === caseId)?.status === "closed") return { kind: "idle", text: "Case closed. No further calls are planned." };
   const progress = state.coordination.find((row) => row.support_case_id === caseId);
   if (!progress) return { kind: "none", text: "Planned by the dispatcher-reviewed planner." };
   if (progress.blocked_reason) return { kind: "blocked", text: `Blocked: ${progress.blocked_reason}` };

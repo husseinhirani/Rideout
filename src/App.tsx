@@ -86,6 +86,12 @@ export function App() {
   const livePerson = liveHouses.find((house) => house.id === liveSelected) ?? null;
   const concern = live ? liveCalls.find((call) => call.attempt.concern && call.transport !== "ended" && call.transport !== "cancelled") : undefined;
 
+  // A newly opened case takes over the view; choosing one by hand holds until the next opens.
+  const newestCase = state?.cases.reduce((max, row) => Math.max(max, row.id), 0) ?? 0;
+  useEffect(() => {
+    setCaseId(null);
+  }, [newestCase]);
+
   useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), 1000);
     return () => window.clearInterval(timer);
@@ -340,7 +346,6 @@ export function App() {
                   now={now.getTime()}
                   onChoose={setCaseId}
                   onClose={(id) => {
-                    setCaseId(id);
                     void backend.run(() => api.closeCase(id)).catch(fail);
                   }}
                 />

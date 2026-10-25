@@ -122,7 +122,7 @@ export function CaseCard({
 
       {row.status !== "closed" ? (
         <div className="case-actions">
-          <button type="button" className="mark-found" onClick={() => onClose(row.id)}>
+          <button type="button" className="close-case" onClick={() => onClose(row.id)}>
             Close case manually
           </button>
           <small>Does not confirm reunion. Calls already active keep running.</small>

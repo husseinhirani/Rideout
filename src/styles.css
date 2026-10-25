@@ -938,3 +938,21 @@ h2, h3 { margin: 0; font-weight: 600; }
 
 .form-question { color: #ffb020; font-size: 15px; }
 .incident-form .warn { margin: 0; }
+.inbound-item .call-detail { grid-template-rows: 1fr; }
+.inbound-item .call-hit { cursor: default; }
+/* The Start menu drops over the floating cards. */
+.top { z-index: 6; }
+.incident-form label { align-content: start; }
+/* A dispatcher action, not a success state: no green. */
+.close-case {
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 999px;
+  padding: 10px 16px;
+  background: transparent;
+  color: #fff;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.close-case:hover { border-color: rgba(255, 122, 47, 0.8); }
