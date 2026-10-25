@@ -377,7 +377,7 @@ function stepsFor(call: CallCard, now: number) {
   return lines;
 }
 
-function Agent({
+export function Agent({
   title,
   name,
   duty,
@@ -404,7 +404,23 @@ function Agent({
   );
 }
 
-function FacilitatorChat({ chat, busy, onAsk }: { chat: ChatMessage[]; busy: boolean; onAsk: (request: string) => void }) {
+export function FacilitatorChat({
+  chat,
+  busy,
+  onAsk,
+  suggestions = SUGGESTIONS,
+  empty = "Tell Jonah which houses to call. He hands the job to Amina and reports back here.",
+  busyText = "Amina is on the phone…",
+  placeholder = "Call Luis, call 5530 Manila, call everyone on Manila Ave…",
+}: {
+  chat: ChatMessage[];
+  busy: boolean;
+  onAsk: (request: string) => void;
+  suggestions?: string[];
+  empty?: string;
+  busyText?: string;
+  placeholder?: string;
+}) {
   const [draft, setDraft] = useState("");
   const feed = useRef<HTMLDivElement>(null);
 
@@ -423,7 +439,7 @@ function FacilitatorChat({ chat, busy, onAsk }: { chat: ChatMessage[]; busy: boo
     <div className="chat">
       <div className="chat-feed" ref={feed} aria-live="polite">
         {chat.length === 0 ? (
-          <p className="chat-empty">Tell Jonah which houses to call. He hands the job to Amina and reports back here.</p>
+          <p className="chat-empty">{empty}</p>
         ) : (
           chat.map((message) => (
             <div key={message.id} className={`chat-msg ${message.from}`}>
@@ -432,10 +448,10 @@ function FacilitatorChat({ chat, busy, onAsk }: { chat: ChatMessage[]; busy: boo
             </div>
           ))
         )}
-        {busy ? <p className="chat-busy">Amina is on the phone…</p> : null}
+        {busy ? <p className="chat-busy">{busyText}</p> : null}
       </div>
       <div className="chat-chips">
-        {SUGGESTIONS.map((suggestion) => (
+        {suggestions.map((suggestion) => (
           <button key={suggestion} type="button" onClick={() => send(suggestion)}>
             {suggestion}
           </button>
@@ -451,7 +467,7 @@ function FacilitatorChat({ chat, busy, onAsk }: { chat: ChatMessage[]; busy: boo
         <input
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
-          placeholder="Call Luis, call 5530 Manila, call everyone on Manila Ave…"
+          placeholder={placeholder}
           aria-label="Message the facilitator"
         />
         <button type="submit" disabled={!draft.trim()}>

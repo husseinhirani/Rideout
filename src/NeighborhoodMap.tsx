@@ -605,7 +605,7 @@ export function NeighborhoodMap({ place, houses, onSelect, angle = "side", showF
       ))}
       {sightings.map((sighting) => (
         <p key={sighting.id} id={sighting.id} className={sighting.safe ? "pin pin-sighting safe" : "pin pin-sighting"} style={{ visibility: "hidden" }}>
-          {sighting.safe ? "Safe here" : "Seen here"} · {new Date(sighting.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+          {sighting.label ?? `${sighting.safe ? "Safe here" : "Seen here"} · ${new Date(sighting.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`}
         </p>
       ))}
       {problem ? <p className="scene-problem">{problem}</p> : null}

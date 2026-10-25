@@ -15,6 +15,8 @@ type Props = {
   now: number;
   onSaid: (text: string) => void;
   onHangUp: (outcome: OperatorOutcome) => void;
+  // Live mode: the dispatcher phones the person themselves. RideOut is not on that line.
+  outside?: boolean;
 };
 
 type Mic = "starting" | "recording" | "blocked";
@@ -36,7 +38,7 @@ const OUTCOMES: { status: HouseStatus | null; label: string }[] = [
   { status: null, label: "Keep status" },
 ];
 
-export function OperatorPanel({ session, call, house, now, onSaid, onHangUp }: Props) {
+export function OperatorPanel({ session, call, house, now, onSaid, onHangUp, outside = false }: Props) {
   const [mic, setMic] = useState<Mic>("starting");
   const [heard, setHeard] = useState("");
   const [note, setNote] = useState("");
@@ -132,8 +134,9 @@ export function OperatorPanel({ session, call, house, now, onSaid, onHangUp }: P
   const home = session.householdId !== null ? householdFor(session.householdId, house?.name) : null;
   const elapsed = Math.max(0, Math.round((now - session.startedAt) / 1000));
   const clock = `${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, "0")}`;
-  const lead =
-    session.mode === "escalation"
+  const lead = outside
+    ? "You are calling them yourself, outside RideOut. Your note is saved to the case as dispatcher input."
+    : session.mode === "escalation"
       ? `The AI handed this call to you. ${call?.escalation?.reason ?? ""}`
       : session.mode === "takeover"
         ? "You took over from the AI."
@@ -166,8 +169,12 @@ export function OperatorPanel({ session, call, house, now, onSaid, onHangUp }: P
         </div>
       ) : null}
       {heard ? <p className="operator-heard">You: {heard}…</p> : null}
-      <p className="operator-hint">Demo: only your side is live. With Twilio, both sides are recorded.</p>
-      <div className="operator-outcomes" role="group" aria-label="Outcome">
+      <p className="operator-hint">
+        {outside
+          ? "Only your side is recorded, in this browser, for the export. It is not transferred to the phone call or the backend."
+          : "Demo: only your side is live. With Twilio, both sides are recorded."}
+      </p>
+      <div className="operator-outcomes" role="group" aria-label="Outcome" hidden={outside}>
         {OUTCOMES.map((option) => (
           <button
             key={option.label}

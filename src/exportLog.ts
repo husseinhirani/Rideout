@@ -18,6 +18,8 @@ type Snapshot = {
   started: boolean;
   running: boolean;
   recordingFor: (callId: string) => Blob | null;
+  // Live mode: the backend snapshot the dashboard was showing.
+  backend?: unknown;
 };
 
 export async function downloadLog(snapshot: Snapshot) {
@@ -37,6 +39,7 @@ export async function downloadLog(snapshot: Snapshot) {
   }
   const log = buildLog(snapshot, exportedAt, audio);
   files.unshift({ name: "log.json", data: encode(JSON.stringify(log, null, 2)) });
+  if (snapshot.backend) files.push({ name: "backend/state.json", data: encode(JSON.stringify(snapshot.backend, null, 2)) });
   const blob = new Blob([zip(files)], { type: "application/zip" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
