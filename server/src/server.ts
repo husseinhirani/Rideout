@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs"
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http"
 import { resolve } from "node:path"
 import { loadEnv } from "./env"
+import { recordingMode } from "./recording-model"
 import {
   closeCase,
   getState,
@@ -20,6 +21,7 @@ const BODY_LIMIT = 1_000_000
 const UI = resolve(import.meta.dirname, "ui.html")
 
 loadEnv()
+if (recordingMode()) console.log("SCRIPTED RECORDING MODE: coordinator planning, report interpretation and calls are simulated. Use demo:recording for structured intake.")
 
 const server = createServer((req, res) => {
   handle(req, res).catch((error: unknown) => {

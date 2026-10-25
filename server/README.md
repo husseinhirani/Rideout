@@ -1,5 +1,9 @@
 # Running the server
 
+For a repeatable recording through the **actual persisted backend**, see
+[RECORDING.md](./RECORDING.md). It includes startup, replay and frontend field
+mapping. Model answers and calls are explicitly scripted in this mode.
+
 ## Coordinator demo without phone/database setup
 
 From `server/`, install dependencies with `npm ci`, then run:
