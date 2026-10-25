@@ -168,7 +168,7 @@ export function callsFor(state: BackendState, caseId: number | null): LiveCall[]
     .map((attempt) => {
       const progress = state.attempt_progress.find((row) => row.attempt_id === attempt.id);
       const savedFindings = state.assistance_sessions?.find(session => session.case_id === attempt.support_case_id)?.findings
-        .filter(finding => finding.attempt_id === attempt.id && finding.profile_id === attempt.profile_id)
+        .filter(finding => finding.attempt_id === attempt.id && finding.profile_id === attempt.profile_id && (finding.text.trim() || Object.keys(finding.changes).length > 0 || finding.human_review?.trim()))
         .sort((a, b) => a.at - b.at) ?? [];
       return {
         attempt,

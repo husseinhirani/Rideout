@@ -425,6 +425,7 @@ function LiveCallRow({
   if (!call.attempt.answer) {
     for (const finding of call.savedFindings) {
       if (finding.text.trim()) lines.push({ at: stamp(finding.at), who: `Saved finding · ${first}`, text: finding.text, kind: "them" });
+      if (finding.human_review?.trim()) lines.push({ at: stamp(finding.at), who: "Needs dispatcher review", text: finding.human_review, kind: "warn" });
     }
   }
   if (call.attempt.answer) lines.push({ at: stamp(reportedAt), who: `Call report · ${first}`, text: call.attempt.answer, kind: "them" });

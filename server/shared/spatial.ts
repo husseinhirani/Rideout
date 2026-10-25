@@ -1,4 +1,5 @@
 import { matchReasons, requiresInformationReview } from './assistance-eligibility'
+import { informationGaps } from './voice-mission'
 import type { AssistanceState, Location, Participant } from './assistance'
 
 type Coordinates = { lat: number; lng: number }
@@ -90,17 +91,7 @@ export function spatialMatching(state: AssistanceState): SpatialMatching {
   const incompletePeople = state.people.filter(participant => {
     if (!participant.consent || participant.contact_blocked || participant.unreachable || requiresInformationReview(state,participant.profile_id)) return false
     if (state.arrangements.some(arrangement => (['proposed','approved','accepted','confirmed','picked_up'].includes(arrangement.status) && [arrangement.recipient_id, arrangement.helper_id].includes(participant.profile_id)) || (arrangement.status === 'completed' && arrangement.recipient_id === participant.profile_id))) return false
-    const facts = participant.facts
-    const blocked = (kind: string) => state.tasks.some(task => task.profile_id === participant.profile_id && task.kind === kind && task.status === 'blocked')
-    if (facts.needs_transport === null) return !blocked('assess') && !blocked('needs')
-    if (facts.needs_transport) {
-      return (facts.location_id === null && !blocked('location'))
-        || ([facts.party_size, facts.wheelchair, facts.pets].some(value => value === null) && !blocked('needs'))
-    }
-    if (facts.can_help === false) return false // An independent non-helper is not a spatial candidate.
-    if (facts.can_help === null) return !blocked('capability')
-    return (facts.location_id === null && !blocked('location'))
-      || ([facts.seats, facts.wheelchair_space, facts.pets_allowed].some(value => value === null) && !blocked('capability'))
+    return informationGaps('assess',participant.facts).length > 0
   })
   const waiting = pendingInformation.length > 0 || incompletePeople.length > 0
   const recommended = waiting ? [] : assign(candidates)

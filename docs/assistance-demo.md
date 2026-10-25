@@ -14,7 +14,8 @@ spacetime start --listen-addr 127.0.0.1:3000
 From the repository, update and publish without deleting existing data:
 
 ```bash
-git pull --ff-only origin tony/ui-backend-integration
+git switch main
+git pull --ff-only origin main
 spacetime publish rideout-local-stage1 --server http://127.0.0.1:3000 --module-path server/spacetimedb --delete-data=never
 ```
 
@@ -117,3 +118,28 @@ exercise. The coordinator waits for outstanding
 relevant information so an early report does not reserve the only suitable helper before
 comparing the group. The map shows the same reported positions used in this comparison.
 A location correction changes the matching inputs; swapping names alone does not.
+
+## Validate the conversation mission update
+
+After publishing and restarting, run `npm --prefix server run setup-agent` before starting
+another drill. Backend deployment alone does not update the hosted phone agent prompt.
+Use natural answers rather than memorizing a question order:
+
+- A willing helper says they can leave and are willing to help. The agent should gather
+  available passenger capacity and relevant vehicle capabilities in that same conversation,
+  without ending merely because the initial independence question was answered.
+- A person needing assistance provides some details together, then corrects one. The agent
+  should preserve the correction, skip already answered questions, and clarify only the
+  remaining useful gaps. A change can alter matching; no named pairing is guaranteed.
+- An explicit unknown/refusal should be respected and become a human-review item. An urgent
+  or unsupported need should be preserved in their own words, rather than rejected because
+  no structured field exists. During a drill, possible real urgency should be clarified.
+- A stop request should end the call promptly. Previously saved findings remain visible even
+  if no final summary is submitted. Recordings remain available after provider processing.
+- If model-provider credits or authentication fail, the coordinator shows the actual issue,
+  retains findings, and offers Retry planning. Fix the provider configuration before retrying.
+  The retry control does not clear participant consent or information-review holds.
+
+The implementation has been checked with local mission walkthroughs and isolated database
+transitions. Natural conversation quality and provider timing still require the next live
+phone run. No new automated test files were added for this change.

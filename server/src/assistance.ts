@@ -4,6 +4,7 @@ import { verifiedAttemptCall } from './call-transcript'
 import { readInformationState, runInformationCommand } from './information'
 import { object, commandId, canonicalJson } from '../shared/information'
 import { person, taskInstruction, type AssistanceState, type VoiceUpdate } from '../shared/assistance'
+import { voiceMission, informationGaps } from '../shared/voice-mission'
 import { answerCoordinator } from './assistance-agent'
 import { ServiceError } from './service'
 
@@ -40,6 +41,7 @@ function voiceUpdate(input: Record<string,unknown>): VoiceUpdate | null {
   if(input.result && input.result!=='pending')result.result=input.result as VoiceUpdate['result']
   if(input.confirmation && input.confirmation!=='none')result.confirmation=input.confirmation as VoiceUpdate['confirmation']
   if(input.do_not_call===true)result.do_not_call=true
+  if(typeof input.human_review==='string' && input.human_review.trim())result.human_review=input.human_review.trim()
   if(input.operation==='finish')result.finished=true
   return result
 }
@@ -56,8 +58,24 @@ export async function nextVoiceTask(caseId:number,attemptId:number,callId:string
   const task=state.tasks.find(t=>t.attempt_id===attemptId&&t.status==='delivered')
   const p=state.people.find(p=>state.tasks.some(t=>t.attempt_id===attemptId&&t.profile_id===p.profile_id))
   if(p && (!p.consent || p.contact_blocked))return {status:'unavailable',next_sequence,instruction:'No further task is authorized for this participant. Do not disclose or repeat a previous arrangement instruction. Finish normally.'}
-  return task?{status:'task',next_sequence,task_id:task.id,kind:task.kind,instruction:taskInstruction(state,task),suggested_location:state.scenario.locations.find(l=>l.id===p?.start_location_id)??null,known_facts:person(state,task.profile_id).facts,locations:state.scenario.locations.map(l=>({id:l.id,label:l.label})),revision:state.revision}
-    :{status:'waiting',next_sequence,instruction:'No further question is ready. Do not promise a callback or keep the person waiting. If they are finished, submit the final report and end normally. Another authorized task can be handled by a later call.',known_facts:p?.facts??{},revision:state.revision}
+  if(p?.review_reason)return {status:'needs_review',next_sequence,instruction:'The participant’s concern is saved for dispatcher review. No new commitment or further ordinary questioning is authorized. Close naturally, and honor any immediate stop request.',review_reason:p.review_reason,known_facts:p.facts,revision:state.revision}
+  if(task) {
+    const instruction=taskInstruction(state,task)
+    return {status:'task',next_sequence,task_id:task.id,kind:task.kind,instruction,
+      mission:voiceMission(state,task,instruction),
+      suggested_location:state.scenario.locations.find(l=>l.id===p?.start_location_id)??null,
+      suggested_location_source:'Assigned scenario starting point; unconfirmed until the participant explicitly confirms it.',
+      known_facts:person(state,task.profile_id).facts,locations:state.scenario.locations.map(l=>({id:l.id,label:l.label})),revision:state.revision}
+  }
+  const recent=state.tasks.filter(t=>t.attempt_id===attemptId).at(-1)
+  const needsReview=Boolean(p?.review_reason) || recent?.status==='blocked' || Boolean(p && informationGaps('assess',p.facts).length && !state.arrangements.some(a=>[a.recipient_id,a.helper_id].includes(p.profile_id)&&a.status!=='cancelled'))
+  return {status:needsReview?'needs_review':'resolved',next_sequence,
+    instruction:needsReview
+      ? 'The findings are saved, but unresolved information needs dispatcher review. Do not repeat declined or unavailable questions or imply assistance is arranged. Close naturally if the person is finished; an immediate stop request takes priority.'
+      : 'The currently authorized conversation mission is resolved. Summarize the actual outcome briefly and close naturally; do not promise an unapproved arrangement or callback. Future milestones require their own authorization.',
+    mission:recent?{...voiceMission(state,recent,recent.reason),completion:needsReview?'needs_review':'resolved'}:null,
+    known_facts:p?.facts??{},revision:state.revision}
+
 }
 const chats=new Map<string,Promise<unknown>>()
 export async function coordinatorCommand(caseId:number,body:unknown,actor:string) {

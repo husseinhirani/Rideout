@@ -205,7 +205,7 @@ export const synchronizeAssistance = spacetimedb.reducer({ case_id:t.u64() }, (c
         else s.missing_report_attempts=[...(s.missing_report_attempts??[]),attemptId]
         changed=true
         const unreachable=['not_reached','no_answer'].includes(a.outcome??'')
-        const savedFindings=s.findings.some(f=>f.attempt_id===attemptId)
+        const savedFindings=s.findings.some(f=>f.attempt_id===attemptId && (f.text.trim() || Object.keys(f.changes).length > 0 || f.human_review?.trim()))
         const earlierFindings=s.findings.some(f=>f.profile_id===Number(a.profile_id))
         const missingSummary=savedFindings?'Call findings are saved, but the final summary is missing. Review any unanswered questions or unconfirmed commitments.':earlierFindings?'No new findings or final summary were saved from this call. Earlier findings remain available; review unresolved questions or commitments.':'The call ended without saved findings or a final summary. Their situation remains unknown; human follow-up is needed.'
         if(finalReport)participant.unreachable=unreachable

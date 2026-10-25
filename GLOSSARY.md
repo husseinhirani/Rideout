@@ -18,7 +18,8 @@ The missing-child story belongs to earlier demo fixtures. Child, parent, victim 
 
 - **Assistance session:** the persisted coordinator state for an incident case: reported facts, findings, tasks, arrangements, messages and revision.
 - **Finding:** an attributed update from a bound voice call. It can correct earlier reported facts without claiming independent verification.
-- **Task:** one authorized question or milestone check delivered to a voice agent, with pending, delivered, completed, cancelled or blocked status.
+- **Task:** one authorized conversation mission or milestone check delivered to a voice agent, with pending, delivered, completed, cancelled or blocked status.
+- **Conversation mission:** an outcome, attributed known information and relevant information gaps with their purpose. The voice agent chooses how to resolve those gaps; completion can mean useful information gathered, an explicit refusal/unknown, or human review needed.
 - **Arrangement:** a proposed pairing between someone who needs assistance and a suitable willing helper. Human approval, helper acceptance, recipient confirmation, pickup and arrival are separate states.
 - **Scenario location:** a supplied incident location and access category. In the drill it is fictional, and is not a claim about actual whereabouts or road safety.
 
