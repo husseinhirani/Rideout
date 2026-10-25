@@ -75,6 +75,11 @@ COORDINATOR_SCRIPTED=0
 INBOUND_REQUESTS=1
 ```
 
+The backend defaults to Claude Sonnet 5.5 (`claude-sonnet-5-5`). If an existing
+`.env.local` or shell exports `CLAUDE_MODEL`, update it to that ID or remove the
+override to use the default, then restart the API. No module publication or hosted
+voice-agent setup is needed for this backend model change.
+
 The database name here must match the publish command below. Choose a separate database
 name for an independent local dataset and change both together. Legacy
 `COORDINATOR_HELPER_IDS`, `COORDINATOR_REPORTER_ID`, and `WILDFIRE_DEMO_*` settings are not
