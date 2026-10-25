@@ -64,7 +64,7 @@ export function startAssistanceWorker():()=>void {
       const account=facts.needs_transport
         ? 'In this drill I am at '+location+' and need a ride for '+facts.party_size+' passenger(s). Wheelchair transport: '+(facts.wheelchair?'needed':'not needed')+'. Pets: '+(facts.pets?'yes':'no')+'.'
         : 'In this drill I am at '+location+' and can leave independently. '+(facts.can_help?'I am willing to help with '+facts.seats+' passenger seats. Wheelchair space: '+(facts.wheelchair_space?'yes':'no')+'. Pets allowed: '+(facts.pets_allowed?'yes':'no')+'.':'I cannot help with transport.')
-      const update:VoiceUpdate={sequence,text:'Simulated participant: '+account,facts,task_id:task.id,result:'answered'}
+      const update:VoiceUpdate={sequence,text:'Simulated participant: '+account,facts,task_id:task.id,result:'answered',mission_revision:task.coordinator_brief?.revision??0}
       if(task.kind==='helper_accept'||task.kind==='recipient_confirm')update.confirmation='accepted'
       if(task.kind==='pickup')update.confirmation='picked_up'
       if(task.kind==='arrival')update.confirmation='arrived'

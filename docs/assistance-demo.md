@@ -143,3 +143,28 @@ Use natural answers rather than memorizing a question order:
 The implementation has been checked with local mission walkthroughs and isolated database
 transitions. Natural conversation quality and provider timing still require the next live
 phone run. No new automated test files were added for this change.
+
+## Coordinator handoff and review resolution
+
+Deploy the module and restart the API/Vite before `npm --prefix server run setup-agent`.
+The updated API includes `assistance_protocol_version: 2` in authenticated `/state`.
+Fix any outstanding provider billing/authentication problem, then use **Retry planning**.
+A new call run cannot demonstrate model coordination while that provider remains unavailable.
+
+During an active assessment, give the dispatcher new relevant context in chat. The planner
+can revise that existing mission's information goal; the voice agent receives it on its
+next coordination tool exchange. The call/task identity stays the same. The coordinator
+feed records the updated objective. A response to an older goal saves findings but cannot
+silently finish the revised mission. Delivery timing depends on the conversation and model.
+
+For a reached participant with an unresolved information hold, open **Coordinate help**,
+find the participant, enter what needs clarification, and choose **Authorize reassessment**.
+This may place a bounded follow-up call; the button explicitly says so. Wait until their
+previous call has finished. The follow-up receives their prior findings/reports with source
+labels and the dispatcher’s clarification goal. It should not repeat already known facts
+unless those are what needs clarifying. Existing unknowns and the new objective must be
+resolved before matching. Refusal or continued uncertainty returns to human review.
+
+Reassessment does not clear withdrawn consent, retry an unreachable person, reopen a
+cancelled arrangement or invent a pickup confirmation. Names and phone numbers never
+select a predetermined pairing.

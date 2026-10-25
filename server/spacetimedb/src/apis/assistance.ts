@@ -170,6 +170,7 @@ export const assistanceOperator = spacetimedb.reducer({ case_id:t.u64(), command
     const task=addTask(s,participant.profile_id,'assess',now(ctx),'Dispatcher-authorized reassessment: '+note)
     if(!task)throw new SenderError('A reassessment cannot be queued within the current task limit; the review hold remains')
     task.review_reopened=true
+    task.coordinator_brief={objective:'Resolve the dispatcher’s requested clarification: '+note,reason:'Dispatcher explicitly authorized reassessment after reviewing the prior hold.',focus_fields:[],evidence_ids:s.findings.filter(f=>f.profile_id===participant.profile_id).slice(-3).map(f=>f.id),revision:1,issued_at:now(ctx)}
     const message='Dispatcher reviewed '+participant.name+' and authorized one new assessment task within existing contact limits. Follow-up calls may be placed. Note: '+note+(priorReview?' Previous review: '+priorReview:'')
     if(s.review?.startsWith(participant.name))s.review=participant.name+': reassessment authorized; previous findings remain unverified until clarified.'
     addMessage(s,message,now(ctx),'decision')

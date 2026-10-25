@@ -13,13 +13,15 @@ export type Location = { id: string; label: string; lat: number; lng: number; ac
 export type Scenario = { title: string; drill: boolean; context: string; locations: Location[]; community_routes: [string, string][]; destination: string; follow_up_ms: number; max_tasks_per_person: number };
 export type Participant = { profile_id: number; name: string; mode: 'real' | 'simulated'; start_location_id?: string; facts: Facts; sources: Partial<Record<keyof Facts, string>>; consent: boolean; contact_blocked?: string | null; review_reason?: string; simulation?: Facts; unreachable: boolean };
 export type TaskKind = 'assess' | 'needs' | 'location' | 'capability' | 'helper_accept' | 'recipient_confirm' | 'pickup' | 'arrival';
-export type Task = { id: string; profile_id: number; kind: TaskKind; arrangement_id: string | null; reason: string; status: 'pending' | 'delivered' | 'completed' | 'cancelled' | 'blocked'; attempt_id: number | null; created_at: number; delivered_at: number | null; call_count: number; completed_revision?: number; due_at: number; result: string; };
+export type MissionUpdate = { task_id: string; objective: string; reason: string; evidence_ids: string[]; focus_fields: (keyof Facts)[] };
+export type CoordinatorBrief = Omit<MissionUpdate, 'task_id'> & { revision: number; issued_at: number };
+export type Task = { review_reopened?: boolean; coordinator_brief?: CoordinatorBrief; id: string; profile_id: number; kind: TaskKind; arrangement_id: string | null; reason: string; status: 'pending' | 'delivered' | 'completed' | 'cancelled' | 'blocked'; attempt_id: number | null; created_at: number; delivered_at: number | null; call_count: number; completed_revision?: number; due_at: number; result: string; };
 export type Arrangement = { id: string; recipient_id: number; helper_id: number; evidence_ids: string[]; reason: string; status: 'proposed' | 'approved' | 'accepted' | 'confirmed' | 'picked_up' | 'completed' | 'cancelled'; helper_accepted: boolean; recipient_confirmed: boolean; pickup_confirmations: number[]; arrival_confirmations: number[]; reconsiderable?: boolean; created_at: number; updated_at: number; };
-export type Finding = { id: string; profile_id: number; attempt_id: number; text: string; changes: Partial<Facts>; human_review?: string; at: number };
+export type Finding = { id: string; profile_id: number; attempt_id: number; text: string; changes: Partial<Facts>; human_review?: string; mission_revision?: number; at: number };
 export type CoordinatorMessage = { id: string; from: 'lead' | 'facilitator'; text: string; at: number; kind: 'update' | 'decision' | 'review' | 'chat' };
 export type AssistanceState = { case_id: number; revision: number; planned_revision: number; paused: boolean; scenario: Scenario; people: Participant[]; findings: Finding[]; tasks: Task[]; arrangements: Arrangement[]; messages: CoordinatorMessage[]; review: string | null; planning_error?: { kind: 'billing' | 'authentication' | 'rate_limit' | 'network' | 'invalid_plan' | 'service' | 'unknown'; message: string; blocked: boolean }; failure_count: number; retry_at: number; error: string; processed_reports: number[]; missing_report_attempts?: number[]; closing_attempts?: number[]; };
-export type AssistancePlan = { summary: string; questions: { profile_id: number; kind: 'needs' | 'location' | 'capability'; reason: string; evidence_ids: string[] }[]; proposals: { recipient_id: number; helper_id: number; reason: string; evidence_ids: string[] }[]; cancel_task_ids: string[]; review: string | null };
-export type VoiceUpdate = { sequence: number; text: string; facts: Partial<Facts>; task_id?: string; result?: 'answered' | 'declined' | 'unknown'; confirmation?: 'accepted' | 'declined' | 'picked_up' | 'arrived'; finished?: boolean; do_not_call?: boolean; human_review?: string };
+export type AssistancePlan = { mission_updates?: MissionUpdate[]; summary: string; questions: { profile_id: number; kind: 'needs' | 'location' | 'capability'; reason: string; evidence_ids: string[] }[]; proposals: { recipient_id: number; helper_id: number; reason: string; evidence_ids: string[] }[]; cancel_task_ids: string[]; review: string | null };
+export type VoiceUpdate = { sequence: number; text: string; facts: Partial<Facts>; task_id?: string; result?: 'answered' | 'declined' | 'unknown'; confirmation?: 'accepted' | 'declined' | 'picked_up' | 'arrived'; finished?: boolean; do_not_call?: boolean; mission_revision?: number; human_review?: string };
 
 export function parseFacts(value: unknown, scenario: Scenario): Partial<Facts> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Facts must be an object');
@@ -130,10 +132,11 @@ function applyFindingToDraft(s: AssistanceState, profileId: number, attemptId: n
   if (update.do_not_call !== undefined && typeof update.do_not_call !== 'boolean') throw new Error('Invalid consent update');
   if (update.finished !== undefined && typeof update.finished !== 'boolean') throw new Error('Invalid finish flag');
   if (update.human_review !== undefined) boundedText(update.human_review,'human review reason',2000,true);
+  if (update.mission_revision !== undefined && (!Number.isSafeInteger(update.mission_revision) || update.mission_revision < 0)) throw new Error('Invalid mission revision');
   const p = person(s,profileId), facts = parseFacts(update.facts ?? {},s.scenario);
   const duplicate = s.findings.find(f => f.id === updateId);
   if (duplicate) {
-    if (duplicate.profile_id !== profileId || duplicate.attempt_id !== attemptId || duplicate.text !== update.text || JSON.stringify(duplicate.changes) !== JSON.stringify(facts) || (duplicate.human_review ?? '') !== (update.human_review?.trim() ?? '')) throw new Error('Update ID conflicts with another finding');
+    if (duplicate.profile_id !== profileId || duplicate.attempt_id !== attemptId || duplicate.text !== update.text || JSON.stringify(duplicate.changes) !== JSON.stringify(facts) || (duplicate.human_review ?? '') !== (update.human_review?.trim() ?? '') || duplicate.mission_revision !== update.mission_revision) throw new Error('Update ID conflicts with another finding');
     return;
   }
   const task = update.task_id ? s.tasks.find(t => t.id === update.task_id) : update.finished ? (s.tasks.find(t=>t.profile_id===profileId && t.attempt_id===attemptId && t.status==='delivered') ?? s.tasks.filter(t=>t.profile_id===profileId && t.attempt_id===attemptId && t.status==='completed').slice(-1)[0]) : undefined;
@@ -150,7 +153,7 @@ function applyFindingToDraft(s: AssistanceState, profileId: number, attemptId: n
   }
   if ((Object.keys(facts).length || update.result || update.confirmation) && !update.text.trim()) throw new Error('A finding needs the participant account supporting it');
   const previousFacts = { ...p.facts };
-  s.findings.push({id:updateId,profile_id:profileId,attempt_id:attemptId,text:update.text,changes:facts,...(update.human_review?.trim()?{human_review:update.human_review.trim()}:{}),at:now});
+  s.findings.push({id:updateId,profile_id:profileId,attempt_id:attemptId,text:update.text,changes:facts,...(update.mission_revision!==undefined?{mission_revision:update.mission_revision}:{}),...(update.human_review?.trim()?{human_review:update.human_review.trim()}:{}),at:now});
   Object.assign(p.facts,facts); for (const key of Object.keys(facts) as (keyof Facts)[]) p.sources[key] = updateId;
   // A correction during this same open conversation can change what the mission needs.
   // Never revive a blocked/refused task, a milestone, or a call already finishing.
@@ -191,14 +194,15 @@ function applyFindingToDraft(s: AssistanceState, profileId: number, attemptId: n
     if (!a) {
       const gaps = informationGaps(task.kind,p.facts);
       const humanReview = update.human_review?.trim();
-      const unresolved = update.result === 'declined' || update.result === 'unknown' || Boolean(humanReview) || (update.finished && gaps.length > 0);
+      const briefPending = Boolean(task.coordinator_brief && update.mission_revision !== task.coordinator_brief.revision);
+      const unresolved = update.result === 'declined' || update.result === 'unknown' || Boolean(humanReview) || (update.finished && (gaps.length > 0 || briefPending));
       // A premature "answered" preserves discoveries and the active mission. It must not
       // turn a useful live conversation into either a callback or a permanent review hold.
-      task.status = unresolved ? 'blocked' : gaps.length === 0 ? 'completed' : 'delivered';
-      task.result = task.status === 'delivered' ? '' : update.result ?? (unresolved ? 'unknown' : 'answered');
+      task.status = unresolved ? 'blocked' : gaps.length === 0 && !briefPending ? 'completed' : 'delivered';
+      task.result = task.status === 'delivered' ? '' : unresolved ? (update.result === 'declined' ? 'declined' : 'unknown') : 'answered';
       if (task.status === 'completed') task.completed_revision = s.revision + 1;
       if (task.status === 'blocked') {
-        s.review = p.name + ': ' + (humanReview || (update.result === 'declined' ? 'The participant declined further information gathering' : gaps.length ? 'Information remains unresolved: ' + gaps.map(g=>g.field).join(', ') : 'The participant could not resolve the requested information')) + '. Findings are saved; human review is needed.';
+        s.review = p.name + ': ' + (humanReview || (update.result === 'declined' ? 'The participant declined further information gathering' : briefPending ? 'The latest coordinator clarification was not resolved before the call finished' : gaps.length ? 'Information remains unresolved: ' + gaps.map(g=>g.field).join(', ') : 'The participant could not resolve the requested information')) + '. Findings are saved; human review is needed.';
         addMessage(s,s.review,now,'review');
       }
     } else if (update.confirmation === 'declined' || update.result === 'declined') {
@@ -250,8 +254,10 @@ function applyPlanToDraft(s: AssistanceState, plan: AssistancePlan, now: number)
   boundedText(plan.summary,'plan summary',5000);
   if (!Array.isArray(plan.questions) || plan.questions.length > 6 || !Array.isArray(plan.proposals) || plan.proposals.length > 6 || !Array.isArray(plan.cancel_task_ids) || plan.cancel_task_ids.length > 30) throw new Error('Invalid plan collections');
   if (plan.review !== null) boundedText(plan.review,'review',2000);
+  const updates = plan.mission_updates ?? [];
+  if (!Array.isArray(updates) || updates.length > 6) throw new Error('Invalid mission updates');
   const evidence = new Set(s.findings.map(f => f.id));
-  for (const action of [...plan.questions,...plan.proposals]) {
+  for (const action of [...plan.questions,...plan.proposals,...updates]) {
     if (!objectValue(action) || !Array.isArray(action.evidence_ids) || action.evidence_ids.length > 60 || action.evidence_ids.some(id => typeof id !== 'string' || !evidence.has(id)) || new Set(action.evidence_ids).size !== action.evidence_ids.length) throw new Error('Plan must reference known, distinct evidence IDs');
     boundedText(action.reason,'action reason',2000);
   }
@@ -261,6 +267,26 @@ function applyPlanToDraft(s: AssistanceState, plan: AssistancePlan, now: number)
     const task = s.tasks.find(t => t.id === id);
     if (!task || task.arrangement_id || !activeTask(task)) throw new Error('Only pending information tasks may be cancelled by a plan');
     task.status = 'cancelled'; task.result = 'Coordinator reconsidered the question';
+  }
+  const updatedTasks = new Set<string>();
+  for (const update of updates) {
+    boundedText(update.task_id,'mission task ID',300);
+    boundedText(update.objective,'mission objective',2000);
+    if (updatedTasks.has(update.task_id)) throw new Error('Duplicate mission update');
+    updatedTasks.add(update.task_id);
+    if (!Array.isArray(update.focus_fields) || update.focus_fields.length > Object.keys(emptyFacts()).length
+      || update.focus_fields.some(field=>typeof field !== 'string' || !Object.prototype.hasOwnProperty.call(emptyFacts(),field))
+      || new Set(update.focus_fields).size !== update.focus_fields.length) throw new Error('Invalid mission focus fields');
+    const task=s.tasks.find(t=>t.id===update.task_id);
+    if (!task || !activeTask(task) || task.arrangement_id || !['assess','needs','location','capability'].includes(task.kind)) throw new Error('Only active information missions can be revised');
+    const participant=person(s,task.profile_id);
+    if (!participant.consent || participant.contact_blocked || participant.unreachable || requiresInformationReview(s,participant.profile_id)) throw new Error('Mission participant is unavailable or needs human review');
+    if (task.attempt_id !== null && s.closing_attempts?.includes(task.attempt_id)) throw new Error('Cannot revise a finishing conversation');
+    const brief={objective:update.objective,reason:update.reason,evidence_ids:[...update.evidence_ids],focus_fields:[...update.focus_fields]};
+    const old=task.coordinator_brief;
+    if (old && old.objective===brief.objective && old.reason===brief.reason && JSON.stringify(old.evidence_ids)===JSON.stringify(brief.evidence_ids) && JSON.stringify(old.focus_fields)===JSON.stringify(brief.focus_fields)) continue;
+    task.coordinator_brief={...brief,revision:(old?.revision??0)+1,issued_at:now};
+    addMessage(s,'Updated the conversation mission for '+participant.name+': '+brief.objective,now,'decision');
   }
   const seenQuestions = new Set<string>();
   for (const q of plan.questions) {

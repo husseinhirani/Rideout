@@ -27,8 +27,8 @@ unsupported need can be recorded as free text with `human_review`; it holds that
 and withdraws outstanding arrangements before any new commitment advances. The voice agent
 clarifies possible real urgency during a drill rather than assuming it is fictional. A stop
 request takes precedence over reporting tools. This does not dispatch emergency services.
-There is no automatic release of a participant review hold; human resolution and renewed
-authorization are separate work, not permission implied by a chat response or retry button.
+There is no automatic release of a participant review hold. ADR 0006 adds explicit
+dispatcher reassessment with renewed authorization; chat or planning retry never releases it.
 
 Consent, contact scope, evidence attribution, human approval, explicit acceptance, pickup
 and arrival remain deterministic constraints. Mission completion is not incident resolution
