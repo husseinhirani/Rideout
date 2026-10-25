@@ -344,6 +344,6 @@ export function inboundFrom(state: BackendState): InboundView[] {
 
 export function demoLabel(state: BackendState): string {
   const mode = state.demo_mode;
-  const parts = [mode.simulate ? "Simulated calls" : "Real phone calls", mode.scripted ? "scripted model" : "Claude model", `db ${mode.database}`];
+  const parts = [mode.simulate ? "Drill mode" : "Phone calling enabled", mode.scripted ? "scripted model" : "Claude model", `db ${mode.database}`];
   return parts.join(" · ");
 }

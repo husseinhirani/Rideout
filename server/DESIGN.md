@@ -45,7 +45,7 @@ Completion means reported arrival in the scenario, not independently verified sa
 The dashboard shows proposals/evidence, task progress, reported needs, explicit controls
 and persistent coordinator chat. Polling does not duplicate chat entries. Only a changed
 message advances the scroll position. New sessions do not use the old scripted UI wave.
-The Start menu can include 12 backend-simulated neighbors; their `mode=simulated` is checked
+Every new wildfire drill includes 12 backend-simulated neighbors; their `mode=simulated` is checked
 before provider calls, and their non-dialable synthetic destinations also fail ordinary
 contact eligibility. Simulations follow the same task/report/milestone state transitions.
 
@@ -53,8 +53,8 @@ Deployment: publish the module without deleting data, restart API and Vite, then
 `npm --prefix server run setup-agent` to attach `coordinate_call` and its prompt. Do not
 apply the hosted prompt before the new callback route is running. No real call is made
 by database publication, startup or agent setup; an explicit Start action creates work.
-Existing active authorized work can resume after restart. The first live test should use
-only the saved real roster; simulated neighbors are optional after that loop is confirmed.
+Existing active authorized work can resume after restart. Only saved real participants receive phone calls; the 12 simulated neighbors also
+participate in the same coordination workflow and remain labeled as simulated.
 
 ## Wildfire drill calling (foundation and compatibility)
 
@@ -64,7 +64,7 @@ names, preserves existing consent, rejects duplicate destinations and records a
 private roster of profile IDs in the command log. Configuration places no calls.
 It supports 1–10 participants; real phone numbers are not committed as fixtures.
 
-`POST /drills/wildfire` accepts an operator command ID and optional `include_simulated` flag. The backend resolves
+`POST /drills/wildfire` accepts an operator command ID. New drills always include 12 simulated neighbors; legacy `include_simulated` inputs cannot disable them. Existing command receipts replay their original roster and payload, preserving old successful drills without adding calls. The backend resolves
 the saved roster, with the earlier environment/prior-drill participant fallback
 for existing installations. The reducer atomically creates one case with the roster
 as its permitted scope, and queues one call for each person. Initial calls cover the roster; bounded follow-up calls are included in the

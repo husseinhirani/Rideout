@@ -75,8 +75,8 @@ export const api = {
     'coordinator:' + id + ':' + JSON.stringify(action) + (action.action === 'message' ? '' : ':revision:' + expectedRevision),
     () => ({ path: '/cases/' + id + '/coordinator', body: { ...action, expected_revision: expectedRevision } }), undefined, action.action === 'message' ? 75000 : 15000, true,
   ),
-  wildfireDrill: (commandId: string, includeSimulated = false) => command<{ incident_id: number; support_case_id: number; attempt_id: number; profile_id: number }>(
-    'wildfire:' + commandId, () => ({ path: '/drills/wildfire', body: { include_simulated: includeSimulated } }), commandId,
+  wildfireDrill: (commandId: string) => command<{ incident_id: number; support_case_id: number; attempt_id: number; profile_id: number }>(
+    'wildfire:' + commandId, () => ({ path: '/drills/wildfire', body: {} }), commandId,
   ),
   incident: async (input: IncidentInput) => {
     const result = await command<{ incident_id: number; support_case_id: number }>('incident:' + JSON.stringify(input), state => {
@@ -145,7 +145,7 @@ export function savedConversation(state: BackendState | null, caseId: number | n
       const name = call.person?.name ?? 'Unknown participant';
       const created = Date.parse(call.attempt.created_at);
       const messages = [{ id: `call-start-${call.attempt.id}`, from: 'facilitator' as const,
-        text: `${call.simulated ? 'Simulated call' : 'Call'} to ${name}: ${call.attempt.call_id ? 'placed' : 'queued'}.`,
+        text: `${call.simulated ? 'Drill call' : 'Call'} to ${name}: ${call.attempt.call_id ? 'placed' : 'queued'}.`,
         at: call.progress?.claimed_at_ms ?? created }];
       const text = notReached(call) ? `${name} was not reached. Their situation remains unknown. I’ve kept this in the follow-up inbox for your review.`
         : call.attempt.answer ? `Report from the call to ${name}: ${call.attempt.answer}${call.attempt.concern ? ` Review needed: ${call.attempt.concern}` : ''}`

@@ -28,7 +28,7 @@ The demonstration is a fictional evacuation incident with consenting real phone
 participants. Supplied locations and community routes are simulation assumptions, not
 live navigation or evacuation advice. A specialist-only location creates a human review
 request; this version does not contact emergency services or dispatch specialist teams.
-Real participants' roles are discovered from their answers. Optional synthetic neighbors
+Real participants' roles are discovered from their answers. Every new drill includes 12 synthetic neighbors. They
 are explicitly marked and use the same durable workflow without provider dialing.
 Their hidden simulation answers are excluded from model snapshots and browser state.
 

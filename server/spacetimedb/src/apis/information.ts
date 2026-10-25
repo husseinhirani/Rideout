@@ -333,11 +333,11 @@ export const startWildfireDrill = spacetimedb.reducer({ command_id: t.string(), 
   const input = parse(args.payload_json)
   if (replay(ctx, args.command_id, "wildfire_drill", input)) return
   const realPeople = drillProfiles(ctx, input)
-  const simulated = input.include_simulated === true ? SIMULATED_NEIGHBORS.map((p,index) => {
+  const simulated = SIMULATED_NEIGHBORS.map((p,index) => {
     const phone = 'simulation:neighbor:' + index
     const existing = [...ctx.db.profile.iter()].find(row => row.phone === phone)
     return existing ?? ctx.db.profile.insert({ id:0n,name:p.name,phone,lat:0,lng:0,contact_profile_ids:[] })
-  }) : []
+  })
   const people = [...realPeople,...simulated]
   const area = { lat: 37.8462, lng: -122.2499, radius_m: 400 }
   const context = "This is a consented RideOut wildfire evacuation drill, not a real emergency. The Rockridge incident and location are fictional. Coordination is enabled: use coordinate_call after identity confirmation, after important discoveries, and before finishing. Introduce yourself as Tom, an AI agent from RideOut, and confirm the person's name before discussing the situation. Then clearly say this is a drill. Ask about the participant's imagined evacuation situation, listen naturally, and save their answer using report_call. Do not use record_check_in. Do not promise a ride or instruct real-world action."
