@@ -42,6 +42,9 @@ function creation(state: BackendState, text: string, objective: string, area?: {
     disclosure_facts: defaults?.disclosure_facts ?? [] };
 }
 export const api = {
+  wildfireDrill: (commandId: string) => command<{ incident_id: number; support_case_id: number; attempt_id: number; profile_id: number }>(
+    'wildfire:' + commandId, () => ({ path: '/drills/wildfire', body: {} }), commandId,
+  ),
   incident: async (input: IncidentInput) => {
     const result = await command<{ incident_id: number; support_case_id: number }>('incident:' + JSON.stringify(input), state => {
       const text = 'text' in input ? input.text : input.type;

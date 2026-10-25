@@ -54,6 +54,8 @@ export function App() {
   const [chatBusy, setChatBusy] = useState(false);
   const [liveSelected, setLiveSelected] = useState<number | null>(null);
   const [outside, setOutside] = useState<{ session: OperatorSession; call: LiveCall } | null>(null);
+  const [startingDrill, setStartingDrill] = useState(false);
+  const drillLock = useRef(false);
   const [notice, setNotice] = useState<string | null>(null);
   const recordings = useRef(new Map<string, Blob>());
   const waiting = ride.calls.find((call) => call.phase === "holding");
@@ -61,7 +63,7 @@ export function App() {
   const selected = ride.selected;
   const clock = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   const state = useMemo(() => backend.state ? presentationState(backend.state) : null, [backend.state]);
-  const live = Boolean(backend.connected && state && !preferOffline);
+  const live = Boolean(state && !preferOffline);
 
   const residents = useMemo(() => assignHouses(), []);
   const spots = useMemo(
@@ -160,15 +162,23 @@ export function App() {
   };
 
   const startWildfire = async () => {
+    if (drillLock.current || !backend.connected) return;
+    drillLock.current = true;
+    setStartingDrill(true);
     try {
-      const radius_m = 400;
-      const result = await backend.run(() =>
-        api.incident({ type: "wildfire evacuation drill", lat: (GEO.south + GEO.north) / 2, lng: (GEO.west + GEO.east) / 2, radius_m }),
-      );
-      setNotice(`Incident #${result.incident_id} opened. ${result.reason}`);
+      const key = "rideout:wildfire-command";
+      const commandId = sessionStorage.getItem(key) || crypto.randomUUID();
+      sessionStorage.setItem(key, commandId);
+      const result = await backend.run(() => api.wildfireDrill(commandId));
+      sessionStorage.removeItem(key);
+      setCaseId(result.support_case_id);
+      setNotice(`${state?.wildfire_demo?.name ?? "Demo participant"}'s call is queued. Open Outgoing calls to follow it.`);
       setTab("checks");
     } catch (error) {
       fail(error);
+    } finally {
+      drillLock.current = false;
+      setStartingDrill(false);
     }
   };
 
@@ -235,7 +245,7 @@ export function App() {
               onClick={() => setPreferOffline((value) => !value)}
               title={live ? "Switch to the offline demo" : "Switch back to the live backend"}
             >
-              {live ? `Live · ${demoLabel(state)}` : "Offline demo · switch to live"}
+              {live ? `${backend.connected ? "Live" : "Disconnected"} · ${demoLabel(state)}` : "Offline demo · switch to live"}
             </button>
           ) : (
             <span className="mode-pill offline" title={backend.error ?? undefined}>
@@ -273,7 +283,7 @@ export function App() {
             Export log
           </button>
           <div className="start-menu">
-            <button type="button" onClick={() => setMenu((open) => !open)} disabled={!live && ride.running} aria-expanded={menu}>
+            <button type="button" onClick={() => setMenu((open) => !open)} disabled={(!preferOffline && !backend.connected) || startingDrill || (!live && ride.running)} aria-expanded={menu}>
               {live ? "Start ▾" : ride.running ? "Live" : ride.started ? "New incident ▾" : "Start ▾"}
             </button>
             {menu && live && state ? (
@@ -281,13 +291,14 @@ export function App() {
                 <button
                   type="button"
                   role="menuitem"
+                  disabled={!backend.connected || startingDrill || !state.wildfire_demo?.ready}
                   onClick={() => {
                     setMenu(false);
                     void startWildfire();
                   }}
                 >
-                  <b>Wildfire drill</b>
-                  <small>{state.demo_mode.simulate ? "Simulated check-in calls to every registered neighbor" : "Places real check-in calls to every registered neighbor"}</small>
+                  <b>{startingDrill ? "Starting call…" : "Wildfire drill"}</b>
+                  <small>{state.wildfire_demo?.ready ? `${state.demo_mode.simulate ? "Simulated call" : "Call"} to ${state.wildfire_demo.name}` : "Configure the demo participant on the backend"}</small>
                 </button>
                 <button
                   type="button"
@@ -343,6 +354,7 @@ export function App() {
         </div>
       </header>
 
+      {live && !backend.connected && <div className="live-notice" role="status"><p>Disconnected. Showing the last saved call state; reconnect before starting a call.</p></div>}
       {notice ? (
         <div className="live-notice" role="status">
           <p>{notice}</p>

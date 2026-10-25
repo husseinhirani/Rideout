@@ -1,5 +1,32 @@
 # RideOut
 
+## Tony's single-call wildfire drill
+
+On `tony/ui-backend-integration`, **Start → Wildfire drill** now queues one call
+to the participant configured privately on the backend. In the root `.env.local`,
+set `WILDFIRE_DEMO_NAME=Tony Nguyen` and `WILDFIRE_DEMO_PHONE` to the consenting
+participant's E.164 number. Keep the number out of committed files. The current
+local implementation has Tony's number in ignored configuration; it is not
+transferred by Git and must be configured on the machine running the backend.
+
+Publish the updated `server/spacetimedb` module to your existing database using
+`--delete-data=never`, then restart the API and Vite. Keep the existing database
+and callback tunnel running. Use `SIMULATE=0` for a real call. Clicking Start
+creates/reuses the profile and saves one queued attempt atomically; it does not
+call other directory profiles. The existing worker places the call. No automatic
+follow-up calls are enabled for this initial slice. Existing withdrawn consent
+must be renewed explicitly through organizer settings.
+
+Open **Checks → Outgoing calls → Tony Nguyen** for actual call state and the
+saved report. **Listen · delayed audio** requests real provider audio; **Mute**
+stops playback on this device while the phone call continues. Cartesia may only
+make its recording available after hang-up. This control does not establish
+live monitoring, and it does not synthesize the transcript. Call states and
+reports remain visible even while audio is unavailable.
+
+Only build/type checks have been performed for this slice; the actual click,
+phone conversation and audio availability need verification on the running app.
+
 RideOut helps an organizer collect information about an incident. Claude chooses
 questions and contacts within an authorized scope; Cartesia conducts phone calls;
 reports become attributed evidence for the organizer. Incident details are free

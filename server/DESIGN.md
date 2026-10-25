@@ -1,5 +1,39 @@
 # design.md
 
+## One-participant wildfire calling
+
+`POST /drills/wildfire` accepts an operator command ID. The Node handler supplies
+the participant name and phone from `WILDFIRE_DEMO_NAME` / `WILDFIRE_DEMO_PHONE`;
+the browser sends neither a destination nor credentials. The `startWildfireDrill`
+reducer atomically finds/creates the profile, records initial consent when there
+is no preference, creates one case and queues one explicit information call.
+Existing withdrawn consent remains blocked. An existing queued/active/unknown
+call to that destination blocks another start. An exact command retry returns
+the original result, including after the first call has ended.
+
+The case permits only this participant and one call. Automatic planning is off
+for this first calling slice; the existing worker executes the explicit call,
+reconciles transport and interprets the report. The fictional drill context is
+provided to the real hosted agent. Profile and case creation do not dial inside
+the database transaction. Publishing the updated database module is required;
+no tables or schema changes are introduced.
+
+`GET /state` includes only the demo name/readiness. The UI keeps an uncertain
+start command in session storage so retry/refresh cannot create a second case.
+The outgoing row uses the existing backend profile/attempt join.
+
+`GET /attempts/:id/audio` is an operator-only proxy that verifies the provider
+call binding and fetches actual WAV audio. The browser polls every three seconds
+while listening and plays only newly available samples. Mute/unmount stops local
+playback and polling without ending the phone call. This is buffered provider
+audio, not guaranteed live monitoring: Cartesia documents recordings as available
+after the call ends. Before audio is available the UI states that limitation.
+No synthesized transcript audio substitutes for the phone conversation.
+
+Provider references: [call recordings](https://docs.cartesia.ai/line/infrastructure/observability#call-recordings)
+and [download audio](https://docs.cartesia.ai/api-reference/agents/calls/download-call-audio).
+True during-call playback remains unverified with this provider path.
+
 ## UI/backend integration
 
 The integration branch combines the dashboard at `3a5b293` with the generic

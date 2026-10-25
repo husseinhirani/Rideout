@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { CallAudio } from "./CallAudio";
 import type { BackendState } from "./api";
 import { eventKey } from "./backend";
 import { FacilitatorChat } from "./Checks";
@@ -480,6 +481,7 @@ function LiveCallRow({
             </div>
           ) : null}
           <Timeline lines={lines} />
+          {shown && !call.simulated && <CallAudio attemptId={call.attempt.id} ended={call.transport === "ended"} disabled={!call.attempt.call_id || call.transport === "cancelled"} />}
           {showReport ? (
             <form
               className="dash-sim"

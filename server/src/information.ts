@@ -70,7 +70,7 @@ function reducerError(error: unknown): never {
   const conflict = /conflict|stale|already|unresolved|budget|cooldown|processed first|queued attempt|not currently authorized|mismatch/i.test(message)
   throw new ServiceError(conflict ? 409 : /not found/i.test(message) ? 404 : 400, message)
 }
-async function command(reducer: string, body: unknown, actor: string, caseId?: number): Promise<InformationCommandResult> {
+export async function runInformationCommand(reducer: string, body: unknown, actor: string, caseId?: number): Promise<InformationCommandResult> {
   let input: Record<string, unknown>, command_id: string
   try { input = { ...object(body, "request") }; command_id = commandId(input.command_id); delete input.command_id; if (caseId !== undefined) id(caseId, "case_id") } catch (error) { throw new ServiceError(400, (error as Error).message) }
   try { await callReducer(reducer, [...(caseId === undefined ? [] : [caseId]), command_id, canonicalJson(input), actor]) } catch (error) { reducerError(error) }
@@ -79,6 +79,7 @@ async function command(reducer: string, body: unknown, actor: string, caseId?: n
   if (!row) throw new ServiceError(500, "Command result is missing")
   return JSON.parse(asString(row.result_json)) as InformationCommandResult
 }
+const command = runInformationCommand
 export const createInformationCase = (body: unknown, actor: string) => command("createInformationCase", body, actor)
 export const configureInformationCase = (caseId: number, body: unknown, actor: string) => command("configureInformationCase", body, actor, caseId)
 export const requestInformationCall = (caseId: number, body: unknown, actor: string) => command("requestInformationCall", body, actor, caseId)

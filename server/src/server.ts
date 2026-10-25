@@ -10,6 +10,8 @@ import { receiveInformationRequest } from "./information-incoming"
 import { startInformationWorker } from "./information-worker"
 import { asId, asNumber, asString, ServiceError } from "./service"
 import { contactScope } from "../shared/information"
+import { startWildfireDrill, wildfireDemo } from "./wildfire-drill"
+import { attemptAudio } from "./call-audio"
 
 const BODY_LIMIT = 1_000_000
 loadEnv()
@@ -41,6 +43,7 @@ async function state() {
   const [legacy, information, incoming, coordination, inbound] = await Promise.all([getState(false), readInformationState(), incomingRequests(), readInformationPlanning(), readInformationIncomingState()])
   return {
     ...legacy, read_model_version: 2, server_time_ms: Date.now(),
+    wildfire_demo: wildfireDemo(),
     profiles: (legacy.profiles as ProfileRow[]).map(({phone, ...profile}) => ({...profile, phone_last4: phone.slice(-4)})),
     incidents: [...legacy.incidents as unknown[], ...information.incidents.map(i => ({...i, kind: "information", type: "Information investigation", brief: ""}))],
     cases: [...legacy.cases as unknown[], ...information.cases.map(c => ({...c, kind: "information", goal: c.objective, victim_profile_id: null}))],
@@ -69,6 +72,13 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
   const url = new URL(req.url ?? "/", "http://127.0.0.1")
   const path = url.pathname
   if (req.method === "GET") {
+    const audio = /^\/attempts\/(\d+)\/audio$/.exec(path)
+    if (audio) {
+      const data = await attemptAudio(asId(audio[1], "attempt_id"))
+      if (!data) { send(res, 202, { status: "waiting", message: "Waiting for provider audio. Cartesia may release the recording only after the call ends." }); return }
+      res.writeHead(200, { "Content-Type": "audio/wav", "Content-Length": data.length, "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" })
+      res.end(data); return
+    }
     if (path === "/state") { send(res, 200, await state()); return }
     if (path === "/intake-configuration") { send(res, 200, (await readInformationIncomingState()).configuration); return }
     if (path === "/profiles") {
@@ -103,6 +113,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     send(res, 200, await receiveInformationRequest(body)); return
   }
   if (path === "/incidents") { send(res, 200, await createInformationCase(body, actor)); return }
+  if (path === "/drills/wildfire") { send(res, 200, await startWildfireDrill(body, actor)); return }
   if (path === "/intake-configuration") { send(res, 200, await configureInformationIntake(body, actor)); return }
   const review = /^\/incoming-requests\/(\d+)\/review$/.exec(path)
   if (review) { send(res, 200, await reviewInformationIncoming(asId(review[1], "request_id"), body, actor)); return }

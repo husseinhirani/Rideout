@@ -1,5 +1,17 @@
 # Context
 
+## Single-participant wildfire drill
+
+The current user-directed slice connects the existing Wildfire drill button to one
+real call for a consenting demo participant. The participant's name and phone are
+server-only environment configuration. The incident/location are fictional; the
+phone conversation and saved report use the real provider path when `SIMULATE=0`.
+This serves RideOut's community rescue mission. It is a calling milestone, with
+one call per click and no automatic follow-up calls in this slice.
+See `DESIGN.md` for the command and audio behavior. The older information-only
+product framing below is superseded by the user's rescue-coordination direction
+recorded in GitHub #15.
+
 ## Current product — GitHub #15
 
 Integration update: Vien's testing handoff is complete. Tony owns the remaining

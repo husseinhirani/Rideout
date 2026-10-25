@@ -31,3 +31,4 @@ export { retryInformationReport } from "./apis/information"
 
 export { configureInformationIntake, reviewInformationIncoming, prepareInformationIncoming } from "./apis/information"
 export { closeInformationCase, cancelInformationAttempt } from "./apis/information"
+export { startWildfireDrill } from "./apis/information"
