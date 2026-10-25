@@ -1,13 +1,15 @@
+import type { DisclosureFact } from "./information-plan"
 /** Shared generic investigation inputs. No incident-specific roles or facts. */
 export type AreaFilter = { lat: number; lng: number; radius_m: number }
 export type ContactScope = { profile_ids?: number[]; radius?: AreaFilter; related_to_profile_id?: number; tags?: string[] }
 export type InformationPolicy = { paused: boolean; max_concurrent_calls: number; max_calls_total: number; max_calls_per_destination: number; min_repeat_ms: number }
 export type ProfilePreference = { profile_id: number; call_consent?: boolean; availability?: "unknown" | "available" | "unavailable"; tags?: string[]; location_source?: string; intake_allowed?: boolean }
-export type CreateInformationInput = { command_id: string; text: string; objective: string; scope?: ContactScope; area?: AreaFilter; policy?: Partial<InformationPolicy>; preferences?: ProfilePreference[] }
-export type ConfigureInformationInput = { command_id: string; expected_input_revision: number; objective?: string; scope?: ContactScope; policy?: Partial<InformationPolicy>; preferences?: ProfilePreference[] }
+export type CreateInformationInput = { command_id: string; text: string; objective: string; scope?: ContactScope; area?: AreaFilter; policy?: Partial<InformationPolicy>; preferences?: ProfilePreference[]; coordination_enabled?: boolean; disclosure_facts?: DisclosureFact[] }
+export type ConfigureInformationInput = { command_id: string; expected_input_revision: number; objective?: string; scope?: ContactScope; policy?: Partial<InformationPolicy>; preferences?: ProfilePreference[]; coordination_enabled?: boolean; disclosure_facts?: DisclosureFact[] }
+export type InputInformationInput = { command_id: string; expected_input_revision: number; text: string }
 export type QueueDisposition = { attempt_id: number; disposition: "retain" | "cancel" }
 export type RequestInformationCallInput = { command_id: string; expected_input_revision: number; profile_id: number; question: string; context: string; queued?: QueueDisposition[] }
-export type InformationCommandResult = { incident_id?: number; support_case_id?: number; input_revision?: number; attempt_id?: number; status: string }
+export type InformationCommandResult = { incident_id?: number; support_case_id?: number; input_revision?: number; attempt_id?: number; note_id?: number; status: string }
 export type InformationIncidentRow = { id: number; description: string; area: AreaFilter | null; status: string; created_at: string }
 export type InformationCaseRow = { id: number; incident_id: number; objective: string; scope: ContactScope; policy: InformationPolicy; input_revision: number; evaluated_revision: number; status: string; brief: string }
 export type ProfileSettingsRow = { profile_id: number; call_consent: boolean; availability: "unknown" | "available" | "unavailable"; tags: string[]; location_source: string; intake_allowed: boolean }

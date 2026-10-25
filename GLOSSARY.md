@@ -7,7 +7,8 @@
 - **Attempt:** one authorized outbound conversation with a profile about a case. Its transport and report status are separate.
 - **Report:** what a caller said, preserved with its source. A report is not a verified fact.
 - **Note:** an attributed interpretation of a report or organizer input.
-- **Coordinator:** the application and Claude planning loop that gathers useful information within the organizer's scope. Stage 1 uses explicit organizer questions; adaptive selection follows after its live gate.
+- **Coordinator:** the application and Claude planning loop that gathers useful information within the organizer's scope. Automatic selection is enabled explicitly per case; manual questions remain the default.
+- **Accepted decision:** one validated plan at a case input revision, with evidence references, queued-work decisions and the IDs of any newly authorized attempts. Saving it does not count as new evidence.
 - **Contact scope:** the explicit profiles or directory filters the organizer permits. Combined filters intersect. Consent is checked separately.
 - **Command receipt:** the persisted input and result of an organizer action, allowing a retry without performing it twice.
 

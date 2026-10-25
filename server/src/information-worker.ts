@@ -2,7 +2,8 @@ import { randomUUID } from "node:crypto"
 import { interpretInformationAccount } from "./agent"
 import { getCall, isTerminalCallStatus, placeCall } from "./cartesia"
 import * as db from "./db"
-import { readInformationState } from "./information"
+import { readInformationState, readInformationPlanning } from "./information"
+import { buildInformationSnapshot, planInformationSnapshot } from "./information-planner"
 import { verifyOutboundCallBinding } from "./provider-binding"
 import { normalizePhone } from "../shared/information"
 import { collectPendingInformationRequests } from "./information-incoming"
@@ -13,6 +14,7 @@ export function startInformationWorker(): () => void {
   const interpreting = new Set<number>()
   const inspecting = new Set<number>()
   const inspectedAt = new Map<number, number>()
+  const planning = new Set<number>()
   let scanning = false
   let dispatching = false
   let nextStartAt = 0
@@ -25,6 +27,43 @@ export function startInformationWorker(): () => void {
     return { ...information, attempts, progress, profiles }
   }
   type Snapshot = Awaited<ReturnType<typeof read>>
+
+  async function planCase(caseId: number) {
+    if (stopped || process.env.AUTO_COORDINATE !== "1" || planning.has(caseId)) return
+    planning.add(caseId)
+    let revision: number | undefined
+    try {
+      // Bracket the separate SQL reads with the case revision. A snapshot assembled
+      // during a new report must not be mistaken for a complete view of that revision.
+      const before = await readInformationState()
+      const current = before.cases.find(c => c.id === caseId)
+      if (!current || current.status !== "open" || current.policy.paused || current.input_revision === current.evaluated_revision) return
+      revision = current.input_revision
+      const [coordination, profiles, attempts, progress, notes] = await Promise.all([
+        readInformationPlanning(), db.profiles(), db.attempts(), db.attemptProgress(), db.notes(),
+      ])
+      const control = coordination.planning.find(p => p.support_case_id === caseId)
+      if (!control?.enabled || (control.failure_revision === revision
+        && (control.failure_count >= 3 || (control.retry_at_ms ?? 0) > Date.now()))) return
+      // Raw receipts stay durable during interpretation/binding; they cannot be
+      // used as evidence or silently bypassed by an automatic call decision.
+      if (progress.some(p => p.support_case_id === caseId && p.report_received && !p.report_processed)) return
+      const information = await readInformationState()
+      if (information.cases.find(c => c.id === caseId)?.input_revision !== revision) return
+      const snapshot = buildInformationSnapshot({ information, planning: control,
+        decisions: coordination.decisions, profiles, attempts, progress, notes, caseId, nowMs: Date.now() })
+      const result = await planInformationSnapshot(snapshot)
+      if (stopped) return
+      await db.callReducer("commitInformationPlan", [caseId, revision, JSON.stringify(result.plan), result.model, result.request_id])
+    } catch (error) {
+      if (revision !== undefined && !stopped) {
+        // The reducer ignores failures for superseded/evaluated revisions. Real
+        // model/validation failures have a persisted, bounded retry budget.
+        await db.callReducer("recordInformationPlanFailure", [caseId, revision,
+          error instanceof Error ? error.message.slice(0, 2000) : "Planning failed"])
+      }
+    } finally { planning.delete(caseId) }
+  }
 
   async function inspect(snapshot: Snapshot, attempt: db.AttemptRow) {
     const meta = snapshot.metadata.find(m => m.attempt_id === attempt.id)
@@ -77,6 +116,7 @@ export function startInformationWorker(): () => void {
   async function dispatch(snapshot: Snapshot) {
     if (dispatching || stopped || Date.now() < nextStartAt) return
     const queued = snapshot.progress.filter(p => p.transport === "queued"
+      && (process.env.AUTO_COORDINATE === "1" || !snapshot.metadata.find(m => m.attempt_id === p.attempt_id)?.decision_command_id.startsWith("plan:"))
       && snapshot.cases.some(c => c.id === p.support_case_id && c.status === "open"
         && !c.policy.paused && c.input_revision === c.evaluated_revision))
     if (!queued.length) return
@@ -131,6 +171,9 @@ export function startInformationWorker(): () => void {
       const snapshot = await read()
       for (const attempt of snapshot.attempts) background(inspect(snapshot, attempt))
       for (const progress of snapshot.progress) background(interpret(snapshot, progress))
+      if (process.env.AUTO_COORDINATE === "1") for (const current of snapshot.cases) {
+        if (current.status === "open" && !current.policy.paused && current.input_revision !== current.evaluated_revision) background(planCase(current.id))
+      }
       background(dispatch(snapshot))
     } catch { console.error("Information worker cannot read persisted work") }
     finally { scanning = false }

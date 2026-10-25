@@ -15,7 +15,11 @@ numeric ID allocation keeps existing attempts and notes unambiguous.
 Stage 1 persists an organizer's explicit call intent and executes it through a
 claim, a provider request and a durable report receipt. Claude interprets the
 account after acknowledgment. Adaptive planning and inbound association come
-after the Stage 1 live checkpoint. Future timer-based follow-ups are deferred.
+after the Stage 1 live checkpoint. Tony subsequently authorized separate-branch
+adaptive implementation while Vien tests Stage 1; activation and live checkpoints
+remain sequential. Adaptive cases require explicit opt-in, use real Claude and
+persist complete revision-checked decisions. They share the existing transport,
+binding and receipt path. Future timer-based follow-ups are deferred.
 
 The localhost test console and provider callbacks use separate access paths and
 credentials. Only the callback/API port is tunneled; the database stays private.

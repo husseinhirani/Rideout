@@ -1,5 +1,36 @@
 # design.md
 
+## Adaptive information path — Step 4
+
+On the separate Step 4 branch, an organizer explicitly enables coordination for
+a case and approves disclosure facts, optionally restricted to recipients.
+`AUTO_COORDINATE=1` enables the worker; it never enrolls historical cases.
+Manual call commands are rejected while that case is automatically coordinated.
+
+The worker brackets snapshot reads with the case revision. Real Claude returns
+a bounded plan with evidence references, a complete retain/cancel partition of
+queued work, at most two new information calls, and waiting/review reasons.
+The commit reducer checks current scope, consent, evidence, disclosure, budgets
+and queue state before saving the whole decision and attempts atomically.
+Claims do not dirty the case, so one claim does not invalidate a sibling call.
+New answers and organizer input do dirty it. There is no timed follow-up here.
+
+The additive `information_planning` table stores opt-in, disclosure facts and
+bounded revision-specific failure retries. `information_decision` stores accepted
+plans, model/request metadata and created attempt IDs. Context is rendered from
+approved facts, not free model-written context. Questions remain model-generated
+under information-only/disclosure instructions; semantic privacy cannot be
+guaranteed by the schema alone. Reports remain attributed claims.
+
+Planning, interpretation and transport reconciliation have separate in-flight
+guards. Failed planning cannot stop recording reports or observing hang-up.
+An organizer-review decision pauses new calls. Explicit configuration can resume
+it. The console displays reasons, evidence IDs and whether the summary is stale.
+Inbound association and final closure remain later checkpoints.
+
+See `ADAPTIVE-TEST-HANDOFF.md` for the API and VM checks. This implementation has
+been inspected as code only; compilation and runtime checks await Vien's VM.
+
 ## Generic information path — Stage 1
 
 Current domain language is in root `GLOSSARY.md`. New investigations use additive

@@ -198,6 +198,12 @@ const operatorCommand = table({ name: "operator_command", public: true }, {
 const informationAttempt = table({ name: "information_attempt", public: true }, {
   attempt_id: t.u64().primaryKey(), decision_command_id: t.string(), authorized_revision: t.u64(), report_provider_call_id: t.string(), report_direction: t.string(), binding_status: t.string(), terminal_observed_at_ms: t.option(t.f64()), provider_terminal_status: t.string(), provider_end_reason: t.string(), interpretation_failure_count: t.u8(), interpretation_retry_at_ms: t.option(t.f64()), interpretation_error: t.string(),
 })
+const informationPlanning = table({ name: "information_planning", public: true }, {
+  support_case_id: t.u64().primaryKey(), enabled: t.bool(), disclosure_json: t.string(), failure_revision: t.u64(), failure_count: t.u8(), retry_at_ms: t.option(t.f64()), error: t.string(),
+})
+const informationDecision = table({ name: "information_decision", public: true }, {
+  id: t.string().primaryKey(), support_case_id: t.u64().index("btree"), based_on_revision: t.u64(), created_at: t.timestamp(), model: t.string(), request_id: t.string(), plan_json: t.string(), attempt_ids: t.array(t.u64()),
+})
 
-const spacetimedb = schema({ profile, incident, incidentPerson, supportCase, attempt, note, caseProgress, attemptProgress, caseIntake, caseInput, incomingRequest, informationIncident, informationCase, profileSettings, informationLine, operatorCommand, informationAttempt })
+const spacetimedb = schema({ profile, incident, incidentPerson, supportCase, attempt, note, caseProgress, attemptProgress, caseIntake, caseInput, incomingRequest, informationIncident, informationCase, profileSettings, informationLine, operatorCommand, informationAttempt, informationPlanning, informationDecision })
 export default spacetimedb

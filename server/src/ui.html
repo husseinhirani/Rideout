@@ -94,6 +94,11 @@
       <textarea id="newIncident" rows="2" placeholder="Describe what is happening"></textarea>
       <label><input id="contactConsent" type="checkbox" style="width:auto"> Selected people have agreed to receive these calls</label>
       <label>What do you need to find out?</label><textarea id="newObjective" rows="2" placeholder="Which entrances are accessible?"></textarea>
+      <label><input id="newCoordination" type="checkbox" style="width:auto"> Let Claude choose contacts and questions within this scope</label>
+      <div class="sub">When enabled, opening this investigation may start calls. Otherwise you choose each call manually.</div>
+      <label>Information the agent may share with these contacts (optional)</label>
+      <textarea id="newDisclosure" rows="2" placeholder="Only put information here that these contacts may hear."></textarea>
+      <div class="sub">The incident description and organizer instructions are not automatically approved for disclosure.</div>
       <div class="bar">
         <button class="go" id="openIncident" disabled>Open incident</button>
         <span class="sub" id="newHint"></span>
@@ -119,6 +124,7 @@ let lastSeenAt = 0
 let directory = null
 const selectedProfiles = new Set()
 const pendingCommands = new Map()
+const drafts = new Map()
 
 const els = {
   sim: document.getElementById("sim"),
@@ -183,8 +189,7 @@ async function poll() {
   els.sim.classList.toggle("sim", state.simulate)
   const mode = state.demo_mode || {}
   els.environment.textContent = "Database: " + (mode.database || "not reported")
-    + " · Planning: " + (mode.scripted === true ? "SCRIPTED" : mode.scripted === false ? "Manual selection; Claude interprets reports" : "not reported")
-    + " · Automatic coordination: " + (mode.auto_coordinate === true ? "on" : mode.auto_coordinate === false ? "off" : "not reported")
+    + " · Planning: " + (mode.scripted === true ? "SCRIPTED" : state.adaptive_planning_available === true ? "Real Claude; enabled per investigation" : mode.scripted === false ? "Manual selection; Claude interprets reports" : "not reported")
   renderProfiles()
   renderIncoming()
   els.dot.classList.remove("off")
@@ -297,6 +302,17 @@ function el(tag, className, text) {
   return node
 }
 
+function draftField(key, tag, initial = "") {
+  const field = el(tag)
+  field.value = drafts.has(key) ? drafts.get(key) : initial
+  field.oninput = () => drafts.set(key, field.value)
+  return field
+}
+
+function clearDrafts(prefix) {
+  for (const key of drafts.keys()) if (key.startsWith(prefix)) drafts.delete(key)
+}
+
 function briefBlock(brief) {
   const box = document.createDocumentFragment()
   if (!brief) {
@@ -400,7 +416,8 @@ function caseSection(current) {
   const body = el("div", "body")
 
   body.append(el("div", "sub", "goal: " + current.goal))
-  body.append(briefBlock(parseBrief(current.brief)))
+  if (current.kind === "information") body.append(decisionBlock(current))
+  else body.append(briefBlock(parseBrief(current.brief)))
 
   const calls = (state.attempts || []).filter((row) => row.support_case_id === current.id)
   body.append(el("h2", "", "Calls"))
@@ -478,17 +495,118 @@ function simulateBox(attemptId) {
   return box
 }
 
+function decisionBlock(current) {
+  const box = el("div")
+  const planning = (state.information_planning || []).find(row => row.support_case_id === current.id)
+  const decision = (state.information_decisions || []).filter(row => row.support_case_id === current.id)
+    .sort((a, b) => b.based_on_revision - a.based_on_revision)[0]
+  box.append(el("h2", "", "Coordinator"))
+  box.append(el("div", "sub", (planning?.enabled ? "Automatic questions enabled" : "Manual calls")
+    + (current.policy?.paused ? " · Paused" : "") + " · Input revision " + current.input_revision))
+  if (planning?.blocked_reason) box.append(el("div", "flag", planning.blocked_reason))
+  if (planning?.error && planning.failure_revision === current.input_revision) {
+    const retry = planning.retry_at_ms == null ? "No automatic retry scheduled; send a direction or update configuration after addressing the error."
+      : "Next retry eligible at " + new Date(planning.retry_at_ms).toLocaleTimeString()
+    box.append(el("div", "flag", "Planning failed: " + planning.error))
+    box.append(el("div", "sub", retry))
+  }
+  if (!decision) {
+    box.append(el("div", "muted", planning?.enabled ? "No accepted decision yet. Waiting for the coordinator." : "No adaptive decision yet."))
+    return box
+  }
+  const plan = decision.plan
+  box.append(el("div", "sub", "Decision " + decision.id + " · Based on revision " + decision.based_on_revision
+    + (decision.based_on_revision === current.input_revision ? " · current" : " · stale: newer input awaits evaluation")
+    + " · " + clock(decision.created_at) + " · " + decision.model))
+  box.append(el("div", "", plan.summary))
+  if (plan.evidence_ids.length) box.append(el("div", "sub", "Evidence: " + plan.evidence_ids.join(", ")))
+  if (plan.open_questions.length) {
+    box.append(el("div", "sub", "Unanswered questions"))
+    const list = el("ul")
+    for (const question of plan.open_questions) list.append(el("li", "", question))
+    box.append(list)
+  }
+  for (const concern of plan.concerns) box.append(el("div", "flag", concern.explanation + " · " + concern.evidence_ids.join(", ")))
+  if (plan.wait_reason) box.append(el("div", "sub", "Waiting: " + plan.wait_reason))
+  if (plan.organizer_review) box.append(el("div", "flag", "Organizer review: " + plan.organizer_review))
+  for (const [index, call] of plan.calls.entries()) {
+    box.append(el("div", "sub", personName(call.profile_id) + " · Attempt #" + (decision.attempt_ids[index] ?? "not recorded") + ": " + call.question))
+    box.append(el("div", "sub", "Reason: " + call.reason + " · Evidence: " + call.evidence_ids.join(", ")))
+  }
+  for (const queued of plan.queued) box.append(el("div", "sub", "Attempt #" + queued.attempt_id + " · " + queued.disposition + ": " + queued.reason))
+  return box
+}
+
 function informationBox(current) {
   const box = el("div")
+  const planning = (state.information_planning || []).find(row => row.support_case_id === current.id)
+  const prefix = "case:" + current.id + ":"
+  if (!planning?.enabled) box.append(manualCallBox(current, prefix))
+  else box.append(el("div", "sub", "Claude chooses calls within the permitted scope. Disable automatic questions before placing a manual call."))
+
+  box.append(el("h2", "", "Give the coordinator a direction or correction"))
+  const direction = draftField(prefix + "direction", "textarea")
+  direction.placeholder = "What should be investigated further? What needs correcting?"
+  const instruct = el("button", "go", "Save organizer input")
+  instruct.dataset.locked = String(current.status !== "open")
+  instruct.onclick = () => {
+    if (!direction.value.trim()) { showError("Write a direction or correction first."); return }
+    send(instruct, async () => {
+      await command("/cases/" + current.id + "/input", { expected_input_revision: current.input_revision, text: direction.value })
+      drafts.delete(prefix + "direction"); direction.value = ""
+    })
+  }
+  box.append(direction, instruct)
+  box.append(el("div", "sub", "Input is saved as organizer evidence. It triggers reconsideration when automatic questions are enabled and the case is not paused."))
+
+  box.append(el("h2", "", "Objective, scope and coordination"))
+  const configPrefix = prefix + "config:"
+  const objective = draftField(configPrefix + "objective", "textarea", current.goal)
+  const scope = draftField(configPrefix + "scope", "input", JSON.stringify(current.scope || { profile_ids: [] }))
+  const enabled = el("input"); enabled.type = "checkbox"; enabled.style.width = "auto"
+  enabled.checked = drafts.has(configPrefix + "enabled") ? drafts.get(configPrefix + "enabled") : planning?.enabled === true
+  enabled.onchange = () => drafts.set(configPrefix + "enabled", enabled.checked)
+  const enableLabel = el("label"); enableLabel.append(enabled, document.createTextNode(" Let Claude choose contacts and questions within this scope"))
+  const disclosure = draftField(configPrefix + "disclosure", "textarea", JSON.stringify(planning?.disclosure_facts || [], null, 2))
+  disclosure.rows = 4
+  const save = el("button", "", "Save configuration")
+  save.dataset.locked = String(current.status !== "open")
+  save.onclick = () => send(save, async () => {
+    await command("/cases/" + current.id + "/configuration", {
+      expected_input_revision: current.input_revision, objective: objective.value, scope: JSON.parse(scope.value),
+      coordination_enabled: enabled.checked, disclosure_facts: JSON.parse(disclosure.value || "[]"),
+    })
+    clearDrafts(configPrefix)
+  })
+  box.append(el("label", "", "Objective"), objective, el("label", "", "Permitted contact scope (JSON)"), scope, enableLabel)
+  box.append(el("div", "sub", "Enabling coordination may initiate calls. Existing conversations continue when it is disabled."))
+  box.append(el("label", "", "Approved disclosure facts (JSON)"), disclosure)
+  box.append(el("div", "sub", 'Example: [{"id":"briefing","text":"Approved information","profile_ids":null}]. Use profile IDs to limit recipients; null permits all contacts within scope.'))
+  box.append(save)
+  if (current.policy?.paused) {
+    const resume = el("button", "", "Resume this investigation")
+    resume.dataset.locked = String(current.status !== "open")
+    resume.onclick = () => send(resume, () => command("/cases/" + current.id + "/configuration", {
+      expected_input_revision: current.input_revision, policy: { paused: false },
+    }))
+    box.append(el("div", "flag", "Paused. Review the findings and configuration before resuming."), resume)
+  }
+  return box
+}
+
+function manualCallBox(current, prefix) {
+  const box = el("div")
   box.append(el("h2", "", "Organizer-directed information call"))
-  box.append(el("div", "sub", "Revision " + current.input_revision + ". This step calls the selected person with your question. Automatic planning comes after this checkpoint."))
+  box.append(el("div", "sub", "Revision " + current.input_revision + ". Call the selected person with your question."))
   const person = el("select")
   for (const profile of state.profiles || []) {
     const option = el("option", "", profile.name)
     option.value = profile.id; person.append(option)
   }
-  const question = el("textarea"); question.placeholder = "What should Tom ask?"
-  const context = el("textarea"); context.placeholder = "Context this person may be told (optional)"
+  if (drafts.has(prefix + "person")) person.value = drafts.get(prefix + "person")
+  person.onchange = () => drafts.set(prefix + "person", person.value)
+  const question = draftField(prefix + "question", "textarea"); question.placeholder = "What should Tom ask?"
+  const context = draftField(prefix + "context", "textarea"); context.placeholder = "Context this person may be told (optional)"
   const call = el("button", "go", state.simulate ? "Start simulated call" : "Call selected person")
   call.dataset.locked = String(current.status !== "open")
   call.onclick = () => {
@@ -501,18 +619,10 @@ function informationBox(current) {
         question: question.value, context: context.value, queued: [],
       })
       question.value = ""; context.value = ""
+      drafts.delete(prefix + "question"); drafts.delete(prefix + "context")
     })
   }
   box.append(person, question, context, call)
-  box.append(el("h2", "", "Update objective or contact scope"))
-  const objective = el("textarea"); objective.value = current.goal
-  const scope = el("input"); scope.value = JSON.stringify(current.scope || { profile_ids: [] })
-  const save = el("button", "", "Save configuration")
-  save.dataset.locked = String(current.status !== "open")
-  save.onclick = () => send(save, () => command("/cases/" + current.id + "/configuration", {
-    expected_input_revision: current.input_revision, objective: objective.value, scope: JSON.parse(scope.value),
-  }))
-  box.append(objective, scope, save)
   return box
 }
 
@@ -530,12 +640,16 @@ document.getElementById("openIncident").onclick = (event) => {
   const objective = els.newObjective.value
   if (!text.trim() || !objective.trim()) { showError("Describe the incident and what you need to know."); return }
   send(event.currentTarget, async () => {
+    const sharedText = document.getElementById("newDisclosure").value.trim()
     const result = await command("/incidents", { text, objective, scope: { profile_ids: [...selectedProfiles] },
+      coordination_enabled: document.getElementById("newCoordination").checked,
+      disclosure_facts: sharedText ? [{ id: "briefing", text: sharedText, profile_ids: null }] : [],
       ...(document.getElementById("contactConsent").checked ? { preferences: [...selectedProfiles].map(profile_id => ({profile_id,call_consent:true})) } : {}),
     })
     selectedIncident = result.incident_id
     selectedCase = result.support_case_id
     els.newIncident.value = ""; els.newObjective.value = ""; document.getElementById("contactConsent").checked = false
+    document.getElementById("newDisclosure").value = ""; document.getElementById("newCoordination").checked = false
   })
 }
 

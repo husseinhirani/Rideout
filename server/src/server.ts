@@ -4,8 +4,8 @@ import { loadEnv } from "./env"
 import { authorizeRequest, readAccessConfig } from "./operator-auth"
 import { createLocalConsole } from "./local-console"
 import { getState } from "./loop"
-import { attempts, callReducer, incomingRequests, type ProfileRow } from "./db"
-import { configureInformationCase, createInformationCase, directory, readInformationState, receiveInformationReport, requestInformationCall } from "./information"
+import { attempts, callReducer, incomingRequests, type ProfileRow, type AttemptProgressRow } from "./db"
+import { configureInformationCase, createInformationCase, directory, readInformationState, readInformationPlanning, receiveInformationReport, requestInformationCall, inputInformationCase } from "./information"
 import { receiveInformationRequest } from "./information-incoming"
 import { startInformationWorker } from "./information-worker"
 import { asId, ServiceError } from "./service"
@@ -17,8 +17,11 @@ const access = readAccessConfig()
 const port = Number(process.env.PORT ?? 8787)
 const consolePort = Number(process.env.CONSOLE_PORT ?? 8788)
 const actor = "local-operator"
-if (process.env.AUTO_COORDINATE === "1" || process.env.COORDINATOR_SCRIPTED === "1") {
-  throw new Error("Stage 1 uses explicit organizer calls. Disable AUTO_COORDINATE and COORDINATOR_SCRIPTED; adaptive planning follows its live checkpoint.")
+if (process.env.COORDINATOR_SCRIPTED === "1") {
+  throw new Error("Generic investigations require real Claude; scripted planning is not supported.")
+}
+if (process.env.AUTO_COORDINATE === "1" && !process.env.ANTHROPIC_API_KEY?.trim()) {
+  throw new Error("ANTHROPIC_API_KEY is required for automatic coordination.")
 }
 const server = createServer((req, res) => {
   handle(req, res).catch((error: unknown) => {
@@ -35,13 +38,21 @@ createLocalConsole({ port: consolePort, apiPort: port, operatorSecret: access.op
 }).listen(consolePort, "127.0.0.1", () => console.log("Local test console: http://127.0.0.1:" + consolePort))
 
 async function state() {
-  const [legacy, information, incoming] = await Promise.all([getState(), readInformationState(), incomingRequests()])
+  const [legacy, information, incoming, coordination] = await Promise.all([getState(false), readInformationState(), incomingRequests(), readInformationPlanning()])
   return {
     ...legacy, read_model_version: 2, server_time_ms: Date.now(),
     profiles: (legacy.profiles as ProfileRow[]).map(({phone, ...profile}) => ({...profile, phone_last4: phone.slice(-4)})),
     incidents: [...legacy.incidents as unknown[], ...information.incidents.map(i => ({...i, kind: "information", type: "Information investigation", brief: ""}))],
     cases: [...legacy.cases as unknown[], ...information.cases.map(c => ({...c, kind: "information", goal: c.objective, victim_profile_id: null}))],
     profile_settings: information.settings, information_attempts: information.metadata,
+    adaptive_planning_available: process.env.AUTO_COORDINATE === "1",
+    information_planning: coordination.planning.map(p => ({ ...p, blocked_reason: !p.enabled ? null
+      : process.env.AUTO_COORDINATE !== "1" ? "Automatic coordination is disabled on this server."
+      : information.cases.find(c => c.id === p.support_case_id)?.policy.paused ? "Paused; organizer action is required."
+      : (legacy.attempt_progress as AttemptProgressRow[]).some(a => a.support_case_id === p.support_case_id && a.report_received && !a.report_processed)
+        ? "A saved report is awaiting verified binding or interpretation. Inspect the attempt's report status."
+        : null })),
+    information_decisions: coordination.decisions,
     incoming_requests: incoming.map(({from_phone, decision_json, ...row}) => ({...row, phone_last4: from_phone.slice(-4), identity_status: "unverified"})),
   }
 }
@@ -78,9 +89,10 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     await callReducer("observeInformationTerminal", [attempt.id, attempt.call_id, "completed", "simulation completed"])
     send(res, 200, receipt); return
   }
-  const route = /^\/cases\/(\d+)\/(configuration|calls)$/.exec(path)
+  const route = /^\/cases\/(\d+)\/(configuration|calls|input)$/.exec(path)
   if (route) {
     const result = route[2] === "configuration" ? await configureInformationCase(Number(route[1]), body, actor)
+      : route[2] === "input" ? await inputInformationCase(Number(route[1]), body, actor)
       : await requestInformationCall(Number(route[1]), body, actor)
     send(res, 200, result); return
   }
