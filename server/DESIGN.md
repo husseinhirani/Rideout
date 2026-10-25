@@ -12,6 +12,8 @@ a bounded plan with evidence references, a complete retain/cancel partition of
 queued work, at most two new information calls, and waiting/review reasons.
 The commit reducer checks current scope, consent, evidence, disclosure, budgets
 and queue state before saving the whole decision and attempts atomically.
+Array-size limits are enforced in application/reducer validation; the provider
+schema omits `maxItems`, which the live API rejected during the Step 4 checkpoint.
 Claims do not dirty the case, so one claim does not invalidate a sibling call.
 New answers and organizer input do dirty it. There is no timed follow-up here.
 

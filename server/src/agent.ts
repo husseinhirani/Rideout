@@ -235,17 +235,19 @@ organizer_review blocks new outreach: return no calls and cancel queued work. Pr
 wait_reason or organizer_review whenever you propose no work. No exact phrase is required.`
 
 const planText = { type: "string" }
-const planRefs = { type: "array", items: planText, maxItems: 20 }
+// The provider rejects maxItems in this structured-output schema. Collection
+// limits remain enforced by parseInformationPlan and the transactional reducer.
+const planRefs = { type: "array", items: planText }
 const nullablePlanText = { anyOf: [planText, { type: "null" }] }
 const INFORMATION_PLAN_SCHEMA = objectSchema({
   summary: planText,
-  open_questions: { type: "array", items: planText, maxItems: 10 },
-  concerns: { type: "array", maxItems: 10, items: objectSchema({ explanation: planText, evidence_ids: planRefs }, ["explanation", "evidence_ids"]) },
+  open_questions: { type: "array", items: planText },
+  concerns: { type: "array", items: objectSchema({ explanation: planText, evidence_ids: planRefs }, ["explanation", "evidence_ids"]) },
   evidence_ids: planRefs,
   queued: { type: "array", items: objectSchema({ attempt_id: { type: "integer" }, disposition: { type: "string", enum: ["retain", "cancel"] }, reason: planText }, ["attempt_id", "disposition", "reason"]) },
-  calls: { type: "array", maxItems: 2, items: objectSchema({
+  calls: { type: "array", items: objectSchema({
     profile_id: { type: "integer" }, question: planText, evidence_ids: planRefs,
-    disclose_fact_ids: { type: "array", items: planText, maxItems: 30 }, reason: planText,
+    disclose_fact_ids: { type: "array", items: planText }, reason: planText,
   }, ["profile_id", "question", "evidence_ids", "disclose_fact_ids", "reason"]) },
   wait_reason: nullablePlanText,
   organizer_review: nullablePlanText,
