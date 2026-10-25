@@ -92,6 +92,7 @@
     <h2>What is happening?</h2>
     <div class="body">
       <textarea id="newIncident" rows="2" placeholder="Describe what is happening"></textarea>
+      <label><input id="contactConsent" type="checkbox" style="width:auto"> Selected people have agreed to receive these calls</label>
       <label>What do you need to find out?</label><textarea id="newObjective" rows="2" placeholder="Which entrances are accessible?"></textarea>
       <div class="bar">
         <button class="go" id="openIncident" disabled>Open incident</button>
@@ -529,10 +530,12 @@ document.getElementById("openIncident").onclick = (event) => {
   const objective = els.newObjective.value
   if (!text.trim() || !objective.trim()) { showError("Describe the incident and what you need to know."); return }
   send(event.currentTarget, async () => {
-    const result = await command("/incidents", { text, objective, scope: { profile_ids: [...selectedProfiles] } })
+    const result = await command("/incidents", { text, objective, scope: { profile_ids: [...selectedProfiles] },
+      ...(document.getElementById("contactConsent").checked ? { preferences: [...selectedProfiles].map(profile_id => ({profile_id,call_consent:true})) } : {}),
+    })
     selectedIncident = result.incident_id
     selectedCase = result.support_case_id
-    els.newIncident.value = ""; els.newObjective.value = ""
+    els.newIncident.value = ""; els.newObjective.value = ""; document.getElementById("contactConsent").checked = false
   })
 }
 
