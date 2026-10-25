@@ -40,3 +40,15 @@ export function decodeCoordinatorFailure(message: string): CoordinatorFailure {
   } catch { /* Older callers send an unstructured error message. */ }
   return classifyCoordinatorError(message)
 }
+
+/** Read compatibility for incidents saved before structured planning failures existed. */
+export function hydrateLegacyCoordinatorFailure<T extends { error: string; planning_error?: CoordinatorFailure; review?: string | null }>(state: T): T {
+  if (!state.planning_error && state.error?.trim()) {
+    state.planning_error = decodeCoordinatorFailure(state.error)
+    state.error = state.planning_error.message
+    // This older operational warning misidentified provider failures as invalid plans.
+    // Preserve every other review: it may describe an unresolved participant need.
+    if (state.planning_error.blocked && state.review === 'The coordinator could not produce a valid plan. Please review the incident.') state.review = null
+  }
+  return state
+}
