@@ -16,6 +16,7 @@ import {
   attemptProgress,
   caseProgress,
   caseIntakes,
+  incomingRequests,
   callReducer,
   incidentPeople,
   incidents,
@@ -29,6 +30,7 @@ import {
   type SupportCaseRow,
 } from "./db"
 import { DEMO_LOCATIONS } from "../shared/locations"
+import { createCaseFromIntake } from "./case-inputs"
 import { ServiceError } from "./service"
 import { recordingMode, scriptedPlan, scriptedInterpret } from "./recording-model"
 
@@ -87,7 +89,7 @@ function configuredHelperIds(): number[] {
 // ------------------------------------------------------------------ reading
 
 export async function getState(): Promise<Record<string, unknown>> {
-  const [allProfiles, allIncidents, people, cases, allAttempts, allNotes, coordination, attempt_progress, case_intakes] = await Promise.all([
+  const [allProfiles, allIncidents, people, cases, allAttempts, allNotes, coordination, attempt_progress, case_intakes, incoming_requests] = await Promise.all([
     profiles(),
     incidents(),
     incidentPeople(),
@@ -97,6 +99,7 @@ export async function getState(): Promise<Record<string, unknown>> {
     caseProgress(),
     attemptProgress(),
     caseIntakes(),
+    incomingRequests(),
   ])
   return {
     simulate: process.env.SIMULATE === "1",
@@ -104,6 +107,8 @@ export async function getState(): Promise<Record<string, unknown>> {
       simulate: process.env.SIMULATE === "1", scripted: recordingMode(),
       auto_coordinate: automatic(), database: process.env.SPACETIMEDB_DATABASE ?? "rideout",
       helper_ids: automatic() ? configuredHelperIds() : [],
+      reporter_id: configuredReporterId(),
+      inbound: process.env.INBOUND_REQUESTS === "1",
     },
     locations: DEMO_LOCATIONS,
     profiles: allProfiles,
@@ -115,6 +120,39 @@ export async function getState(): Promise<Record<string, unknown>> {
     coordination,
     attempt_progress,
     case_intakes,
+    // Dispatcher view only. The caller-facing reply never carries case facts.
+    incoming_requests,
+  }
+}
+
+function configuredReporterId(): number | null {
+  const id = Number(process.env.COORDINATOR_REPORTER_ID)
+  return Number.isSafeInteger(id) && id > 0 ? id : null
+}
+
+// ------------------------------------------------------------------- intake
+
+// The dispatcher's missing-child form. It goes through the same intake service
+// as an inbound call, so the case gets the same receipt, intake row and
+// parent-confirmed closure. The reporter is self-reported, never verified.
+export async function openDispatcherIntake(input: {
+  event_key: string
+  reporter_profile_id: number | null
+  intake: unknown
+}): Promise<Awaited<ReturnType<typeof createCaseFromIntake>>> {
+  if (!automatic()) throw new ServiceError(503, "Dispatcher intake requires AUTO_COORDINATE=1 with two configured helpers")
+  const eventKey = input.event_key.trim()
+  if (!/^[A-Za-z0-9-]{8,100}$/.test(eventKey)) throw new ServiceError(400, "event_key must be 8-100 letters, digits or dashes")
+  const reporterProfileId = input.reporter_profile_id ?? configuredReporterId()
+  if (reporterProfileId === null) throw new ServiceError(400, "Choose the reporter's profile")
+  try {
+    const result = await createCaseFromIntake(input.intake, {
+      eventKey: "dispatcher:" + eventKey, reporterProfileId, helperProfileIds: configuredHelperIds(),
+    })
+    if (result.status === "recorded") background("intake plan", coordinationWorker.tick())
+    return result
+  } catch (error) {
+    throw new ServiceError(409, "Intake was not recorded: " + errorMessage(error))
   }
 }
 

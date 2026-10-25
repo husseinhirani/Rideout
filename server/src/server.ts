@@ -13,6 +13,7 @@ import {
   onReport,
   openCaseForVictim,
   openIncidentFromText,
+  openDispatcherIntake,
   openIncidentStructured,
   startCoordinatorWorker,
 } from "./loop"
@@ -77,6 +78,14 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
       lat: asNumber(body.lat, "lat"),
       lng: asNumber(body.lng, "lng"),
       radius_m: asNumber(body.radius_m, "radius_m"),
+    }))
+    return
+  }
+  if (path === "/intake") {
+    send(res, 200, await openDispatcherIntake({
+      event_key: asString(body.event_key, "event_key"),
+      reporter_profile_id: optionalId(body.reporter_profile_id, "reporter_profile_id"),
+      intake: { child: body.child, reporter: body.reporter },
     }))
     return
   }
