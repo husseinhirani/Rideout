@@ -114,7 +114,7 @@ export type IncomingRequestRow = {
   direction: string
   text: string
   revision: number
-  status: "pending" | "prepared" | "needs_clarification" | "recorded" | "needs_review"
+  status: "pending" | "prepared" | "needs_clarification" | "recorded" | "needs_review" | "attached" | "rejected"
   decision_json: string
   reply: string
   support_case_id: number | null

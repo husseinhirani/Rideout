@@ -42,13 +42,15 @@
   .badge.needs_dispatcher { border-color: #6b5a2a; color: #d6b45c; }
   .flag { color: #d6b45c; }
   label { display: block; font-size: 11px; color: #8d969e; margin-bottom: 4px; }
-  textarea, input {
+  textarea, input, select.review-case {
     width: 100%; box-sizing: border-box;
     background: #0d1013; color: #d7dde3;
     border: 1px solid #333a41; border-radius: 3px; padding: 6px 8px;
     font: inherit; resize: vertical;
   }
-  textarea:focus, input:focus { outline: none; border-color: #4a6f8c; }
+  textarea:focus, input:focus, select.review-case:focus { outline: none; border-color: #4a6f8c; }
+  summary { cursor: pointer; }
+  .incoming-account { white-space: pre-wrap; overflow-wrap: anywhere; margin: 8px 0; }
   button {
     background: #22292f; color: #d7dde3; border: 1px solid #3a4148;
     border-radius: 3px; padding: 5px 12px; font: inherit; cursor: pointer;
@@ -107,7 +109,8 @@
   </section>
 
   <div id="view"></div>
-  <section><h2>Incoming reports awaiting association</h2><div class="body" id="incoming"></div></section>
+  <section><h2>Incoming reports and association</h2><div class="body" id="incoming"></div></section>
+  <section><div class="body"><details id="intakeDetails"><summary>Phone intake configuration</summary><div id="intakeConfiguration"></div></details></div></section>
 </div>
 
 <script>
@@ -125,6 +128,7 @@ let directory = null
 const selectedProfiles = new Set()
 const pendingCommands = new Map()
 const drafts = new Map()
+let intakeDraftRevision = null
 
 const els = {
   sim: document.getElementById("sim"),
@@ -175,6 +179,7 @@ async function send(button, work) {
   } finally {
     if (button) button.textContent = label
     busy = false
+    if (state) { renderIncoming(); renderIntakeConfiguration() }
     updateControls()
   }
 }
@@ -192,6 +197,7 @@ async function poll() {
     + " · Planning: " + (mode.scripted === true ? "SCRIPTED" : state.adaptive_planning_available === true ? "Real Claude; enabled per investigation" : mode.scripted === false ? "Manual selection; Claude interprets reports" : "not reported")
   renderProfiles()
   renderIncoming()
+  renderIntakeConfiguration()
   els.dot.classList.remove("off")
   els.dotText.textContent = "connected"
   updateControls()
@@ -221,18 +227,129 @@ function renderProfiles() {
   if (!(directory || state.profiles || []).length) els.profiles.textContent = "No profiles loaded."
 }
 
-// The poll must never eat half-typed text. Anything the dispatcher has
-// started writing holds the render until they send or clear it.
+// Keep focus and drafts while polling still collects the latest backend state.
+function editingWithin(target) {
+  const active = document.activeElement
+  return target.contains(active) && ["INPUT", "TEXTAREA", "SELECT"].includes(active.tagName)
+}
+
 function renderIncoming() {
   const target = document.getElementById("incoming")
+  if (busy || editingWithin(target)) return
   target.replaceChildren()
+  const cases = (state.cases || []).filter(row => row.kind === "information" && row.status !== "closed")
   for (const request of state.incoming_requests || []) {
-    const row = el("div", "row")
-    row.append(el("span", "sub", "#" + request.id + " · " + request.status))
-    row.append(el("span", "grow", request.text))
+    const row = el("section", "body")
+    row.append(el("div", "", "Report #" + request.id + " · " + request.status + " · revision " + request.revision))
+    row.append(el("div", "sub", "Source: incoming phone report · "
+      + (request.phone_last4 ? "phone ending " + request.phone_last4 : "caller number unavailable")
+      + " · identity: " + (request.identity_status || "unverified")))
+    row.append(el("div", "incoming-account", request.text))
+    if (request.review_reason) row.append(el("div", "flag", "Review reason: " + request.review_reason))
+    for (const resolution of (state.information_incoming_resolutions || []).filter(item => item.request_id === request.id)) {
+      row.append(el("div", "sub", "Resolution: " + resolution.kind
+        + (resolution.support_case_id == null ? "" : " · Case #" + resolution.support_case_id)
+        + (resolution.note_id == null ? "" : " · Note #" + resolution.note_id)
+        + " · " + resolution.actor + " · " + clock(resolution.created_at)))
+      if (resolution.reason) row.append(el("div", "sub", resolution.reason))
+    }
+    if (request.status === "needs_review") {
+      const prefix = "incoming:" + request.id + ":" + request.revision + ":"
+      const picker = el("select", "review-case")
+      picker.append(el("option", "", "Choose an open information case"))
+      picker.firstChild.value = ""
+      for (const item of cases) {
+        const option = el("option", "", "Case #" + item.id + " · " + item.goal)
+        option.value = String(item.id)
+        picker.append(option)
+      }
+      picker.value = drafts.get(prefix + "case") || ""
+      picker.onchange = () => drafts.set(prefix + "case", picker.value)
+      const reason = draftField(prefix + "reason", "textarea")
+      reason.rows = 2; reason.placeholder = "Why should this report be attached or rejected?"
+      const attach = el("button", "go", "Attach to case")
+      attach.dataset.locked = String(cases.length === 0)
+      attach.onclick = () => send(attach, async () => {
+        if (!picker.value) throw new Error("Choose an open information case first.")
+        if (!reason.value.trim()) throw new Error("Add a reason for the review decision.")
+        await command("/incoming-requests/" + request.id + "/review", {
+          expected_revision: request.revision, decision: "attach", support_case_id: Number(picker.value), reason: reason.value.trim(),
+        })
+        clearDrafts("incoming:" + request.id + ":")
+      })
+      const reject = el("button", "", "Reject report")
+      reject.onclick = () => send(reject, async () => {
+        if (!reason.value.trim()) throw new Error("Add a reason for the review decision.")
+        await command("/incoming-requests/" + request.id + "/review", {
+          expected_revision: request.revision, decision: "reject", reason: reason.value.trim(),
+        })
+        clearDrafts("incoming:" + request.id + ":")
+      })
+      const bar = el("div", "bar"); bar.append(attach, reject)
+      row.append(el("label", "", "Associate the original report"), picker, reason, bar)
+      row.append(el("div", "sub", "Attachment saves an unverified account; it does not enroll the caller or permit calls. Enabled coordination reconsiders the case unless paused. A paused case stays paused until you resume it."))
+      if (!cases.length) row.append(el("div", "sub", "Open an information case before attaching this report."))
+    }
     target.append(row)
   }
   if (!target.childNodes.length) target.textContent = "No incoming reports."
+}
+
+function renderIntakeConfiguration() {
+  const target = document.getElementById("intakeConfiguration")
+  if (busy || editingWithin(target)) return
+  target.replaceChildren()
+  const config = state.information_intake_configuration
+  if (!config) { target.textContent = "Intake configuration is not available from this backend."; return }
+  const revision = intakeDraftRevision ?? config.revision
+  const markEdited = () => { if (intakeDraftRevision === null) intakeDraftRevision = revision }
+  const checkbox = (key, initial, label) => {
+    const field = el("input"); field.type = "checkbox"; field.style.width = "auto"
+    field.checked = drafts.has(key) ? drafts.get(key) : initial
+    field.onchange = () => { markEdited(); drafts.set(key, field.checked) }
+    const wrapper = el("label"); wrapper.append(field, document.createTextNode(" " + label))
+    return { field, wrapper }
+  }
+  const jsonField = (key, initial) => {
+    const field = draftField(key, "textarea", JSON.stringify(initial, null, 2))
+    field.rows = 3
+    field.oninput = () => { markEdited(); drafts.set(key, field.value) }
+    return field
+  }
+  const enabled = checkbox("intake:enabled", config.enabled, "Allow permitted callers to open investigations by phone")
+  const automatic = checkbox("intake:automatic", config.coordination_enabled === true, "Enable automatic questions for new phone-created investigations")
+  target.append(el("div", "sub", "Configuration revision " + config.revision + ". These defaults apply to new phone intake; existing investigations keep their settings."))
+  if (revision !== config.revision) target.append(el("div", "flag", "Configuration changed while you were editing. Discard drafts and reload before saving."))
+  target.append(enabled.wrapper, el("div", "sub", "Intake permission lets a known profile create a case. It does not grant consent to receive calls or verify their identity."))
+  const permissions = []
+  for (const profile of state.profiles || []) {
+    const setting = (state.profile_settings || []).find(item => item.profile_id === profile.id)
+    const allowed = checkbox("intake:profile:" + profile.id, setting?.intake_allowed === true, "Intake allowed · #" + profile.id + " " + profile.name)
+    permissions.push({ profile_id: profile.id, field: allowed.field })
+    target.append(allowed.wrapper)
+  }
+  const scope = jsonField("intake:scope", config.default_scope || {})
+  const disclosures = jsonField("intake:disclosures", config.disclosure_facts || [])
+  target.append(el("label", "", "Default permitted contact scope (JSON)"), scope, automatic.wrapper,
+    el("div", "sub", "Automatic questions may start calls after intake. Contacts still need call consent. Leave off for manual selection."),
+    el("label", "", "Approved disclosure facts (JSON)"), disclosures,
+    el("div", "sub", "Only include information the selected contacts may hear. Example: [{\"id\":\"briefing\",\"text\":\"Approved information\",\"profile_ids\":null}]."))
+  const save = el("button", "go", "Save intake configuration")
+  save.dataset.locked = String(revision !== config.revision)
+  save.onclick = () => send(save, async () => {
+    let defaultScope, disclosureFacts
+    try { defaultScope = JSON.parse(scope.value); disclosureFacts = JSON.parse(disclosures.value) }
+    catch { throw new Error("Contact scope and disclosure facts must be valid JSON.") }
+    await command("/intake-configuration", {
+      expected_revision: revision, enabled: enabled.field.checked, default_scope: defaultScope,
+      coordination_enabled: automatic.field.checked, disclosure_facts: disclosureFacts,
+      preferences: permissions.map(item => ({ profile_id: item.profile_id, intake_allowed: item.field.checked })),
+    })
+    clearDrafts("intake:"); intakeDraftRevision = null
+  })
+  const discard = el("button", "", "Discard drafts / reload")
+  discard.onclick = () => { clearDrafts("intake:"); intakeDraftRevision = null; renderIntakeConfiguration(); updateControls() }
+  const bar = el("div", "bar"); bar.append(save, discard); target.append(bar)
 }
 
 // A retry of the same command reuses its receipt key; changed content is a new command.

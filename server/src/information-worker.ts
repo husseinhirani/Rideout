@@ -167,7 +167,7 @@ export function startInformationWorker(): () => void {
     scanning = true
     try {
       await db.callReducer("recoverInformationClaims", [])
-      await collectPendingInformationRequests()
+      background(collectPendingInformationRequests())
       const snapshot = await read()
       for (const attempt of snapshot.attempts) background(inspect(snapshot, attempt))
       for (const progress of snapshot.progress) background(interpret(snapshot, progress))

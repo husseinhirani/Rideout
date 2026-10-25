@@ -27,3 +27,5 @@ export { receiveIncomingRequest, prepareIncomingRequest, finishIncomingRequest, 
 export { createInformationCase, configureInformationCase, requestInformationCall, claimInformationAttempt, validateInformationClaim, releaseInformationClaim, recordInformationDispatch, receiveInformationReport, observeInformationTerminal, finishInformationReport, failInformationReport, recoverInformationClaims } from "./apis/information"
 export { inputInformationCase, recordInformationPlanFailure, commitInformationPlan } from "./apis/information"
 export { retryInformationReport } from "./apis/information"
+
+export { configureInformationIntake, reviewInformationIncoming, prepareInformationIncoming } from "./apis/information"

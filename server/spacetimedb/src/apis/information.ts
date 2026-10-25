@@ -3,6 +3,7 @@ import spacetimedb from "../models"
 import { nextCaseId, nextIncidentId } from "../ids"
 import { canonicalJson, commandId, contactEligibility, contactScope, informationPolicy, matchesScope, normalizePhone, object, profilePreferences, revision, text, id, areaFilter, type ContactScope, type InformationPolicy, type ProfileSettingsRow } from "../../../shared/information"
 import { disclosureFacts, parseInformationPlan, type DisclosureFact } from "../../../shared/information-plan"
+import { incomingCandidateIds, parseInformationIncomingAssessment, type InformationIncomingProposal, type InformationIncomingResolution } from "../../../shared/information-incoming"
 type Ctx = ReducerCtx<typeof spacetimedb.schemaType>
 const now = (ctx: Ctx) => Number(ctx.timestamp.microsSinceUnixEpoch) / 1000
 const fail = (message: string): never => { throw new SenderError(message) }
@@ -67,6 +68,95 @@ function replay(ctx: Ctx, command: string, operation: string, payload: unknown):
 }
 function save(ctx: Ctx, command_id: string, operation: string, payload: unknown, result: unknown, actor: string) { ctx.db.operatorCommand.insert({ command_id, operation, payload_json: canonicalJson(payload), result_json: canonicalJson(result), actor: text(actor, "operator", 200), created_at: ctx.timestamp }) }
 function newMetadata(attempt_id: bigint, decision_command_id = "", authorized_revision = 0n) { return { attempt_id, decision_command_id, authorized_revision, report_provider_call_id: "", report_direction: "", binding_status: "unbound", terminal_observed_at_ms: undefined as number | undefined, provider_terminal_status: "", provider_end_reason: "", interpretation_failure_count: 0, interpretation_retry_at_ms: undefined as number | undefined, interpretation_error: "" } }
+const incomingSavedReply = "I've saved your report for the coordinator."
+function incomingProfile(ctx: Ctx, phone: string) {
+  const matches = [...ctx.db.profile.iter()].filter(p => normalizePhone(p.phone) === normalizePhone(phone))
+  return matches.length === 1 ? matches[0] : undefined
+}
+function incomingCandidates(ctx: Ctx, profileId: bigint | undefined) {
+  if (profileId === undefined) return []
+  const cases = [...ctx.db.informationCase.iter()]
+  const candidates = incomingCandidateIds(Number(profileId), cases.map(c => ({ id: Number(c.id), status: c.status, scope: JSON.parse(c.scope_json) as ContactScope })),
+    [...ctx.db.attempt.iter()].map(a => ({ profile_id: Number(a.profile_id), support_case_id: Number(a.support_case_id), dispatched: !!a.call_id || !!ctx.db.attemptProgress.attempt_id.find(a.id)?.claim_token })),
+    [...ctx.db.informationIncomingResolution.iter()].map(r => ({ kind: r.kind as InformationIncomingResolution["kind"], reporter_profile_id: r.reporter_profile_id === undefined ? null : Number(r.reporter_profile_id), support_case_id: r.support_case_id === undefined ? null : Number(r.support_case_id) })))
+  return candidates.map(case_id => ({ case_id, input_revision: Number(getCase(ctx, BigInt(case_id)).input_revision) }))
+}
+function incomingNote(ctx: Ctx, caseId: bigint, request: { id: bigint; text: string }, source: string, profile: { name: string } | undefined) {
+  const attribution = profile ? `${profile.name} (phone association only; identity unverified)` : "Unverified caller"
+  return ctx.db.note.insert({ id: 0n, support_case_id: caseId, attempt_id: 0n, source, text: `${attribution}, incoming request ${request.id}: ${request.text}`, lat: undefined, lng: undefined, radius_m: undefined, at: ctx.timestamp })
+}
+export const configureInformationIntake = spacetimedb.reducer({ command_id: t.string(), payload_json: t.string(), actor: t.string() }, (ctx, { command_id, payload_json, actor }) => {
+  const input = parse(payload_json)
+  if (replay(ctx, command_id, "configure_information_intake", input)) return
+  const old = ctx.db.informationIntakeConfiguration.id.find(1), line = ctx.db.informationLine.id.find(1)
+  if (BigInt(revision(input.expected_revision)) !== (old?.revision ?? 0n)) fail("Stale intake configuration revision; refresh")
+  for (const key of ["enabled", "coordination_enabled"]) if (input[key] !== undefined && typeof input[key] !== "boolean") fail(key + " must be boolean")
+  const scope = contactScope(input.default_scope ?? (line ? JSON.parse(line.default_scope_json) : { profile_ids: [] }))
+  const policy = informationPolicy(input.policy ?? {}, old ? JSON.parse(old.policy_json) : undefined)
+  const facts = disclosureFacts(input.disclosure_facts ?? (old ? JSON.parse(old.disclosure_json) : []))
+  for (const profileId of [...(scope.profile_ids ?? []), ...(scope.related_to_profile_id ? [scope.related_to_profile_id] : []), ...facts.flatMap(f => f.profile_ids ?? [])]) if (!ctx.db.profile.id.find(BigInt(profileId))) fail("Configured profile not found")
+  preferences(ctx, input.preferences)
+  const row = { id: 1, revision: (old?.revision ?? 0n) + 1n, enabled: input.enabled === undefined ? old?.enabled ?? false : input.enabled as boolean, policy_json: canonicalJson(policy), coordination_enabled: input.coordination_enabled === undefined ? old?.coordination_enabled ?? false : input.coordination_enabled as boolean, disclosure_json: canonicalJson(facts) }
+  if (old) ctx.db.informationIntakeConfiguration.id.update(row); else ctx.db.informationIntakeConfiguration.insert(row)
+  const scopeRow = { id: 1, default_scope_json: canonicalJson(scope) }
+  if (line) ctx.db.informationLine.id.update(scopeRow); else ctx.db.informationLine.insert(scopeRow)
+  save(ctx, command_id, "configure_information_intake", input, { revision: Number(row.revision), status: "configured" }, actor)
+})
+export const reviewInformationIncoming = spacetimedb.reducer({ request_id: t.u64(), command_id: t.string(), payload_json: t.string(), actor: t.string() }, (ctx, { request_id, command_id, payload_json, actor }) => {
+  const input = parse(payload_json), payload = { ...input, request_id: Number(request_id) }
+  if (replay(ctx, command_id, "review_information_incoming", payload)) return
+  const request = ctx.db.incomingRequest.id.find(request_id)
+  if (!request || request.revision !== BigInt(revision(input.expected_revision)) || request.status !== "needs_review" || ctx.db.informationIncomingResolution.request_id.find(request_id)) return fail("Stale incoming request revision or already reviewed; refresh")
+  if (input.decision !== "attach" && input.decision !== "reject") fail("Review decision must be attach or reject")
+  if (input.decision === "reject" && input.support_case_id !== undefined) fail("Rejected reports cannot select a case")
+  const reason = text(input.reason, "reason", 2000), operator = text(actor, "operator", 200), profile = incomingProfile(ctx, request.from_phone)
+  let caseId: bigint | undefined, noteId: bigint | undefined, inputRevision: number | undefined
+  if (input.decision === "attach") {
+    caseId = BigInt(id(input.support_case_id, "support_case_id"))
+    const c = getCase(ctx, caseId); if (c.status !== "open") fail("Cannot attach a report to a closed case")
+    noteId = incomingNote(ctx, caseId, request, "external_unverified", profile).id
+    dirty(ctx, caseId); inputRevision = Number(c.input_revision + 1n)
+  }
+  const status = input.decision === "attach" ? "attached" : "rejected"
+  ctx.db.informationIncomingResolution.insert({ request_id, request_revision: request.revision, support_case_id: caseId, note_id: noteId, reporter_profile_id: profile?.id, kind: input.decision === "attach" ? "operator_attach" : "operator_reject", reason, actor: operator, created_at: ctx.timestamp })
+  ctx.db.incomingRequest.id.update({ ...request, status, support_case_id: caseId, reply: incomingSavedReply, retry_at_ms: 0n })
+  save(ctx, command_id, "review_information_incoming", payload, { request_id: Number(request_id), status, support_case_id: caseId === undefined ? undefined : Number(caseId), note_id: noteId === undefined ? undefined : Number(noteId), input_revision: inputRevision }, operator)
+})
+export const prepareInformationIncoming = spacetimedb.reducer({ request_id: t.u64(), expected_revision: t.u64(), proposal_json: t.string() }, (ctx, { request_id, expected_revision, proposal_json }) => {
+  const request = ctx.db.incomingRequest.id.find(request_id)
+  if (!request || request.revision !== expected_revision || request.status !== "pending" || ctx.db.informationIncomingResolution.request_id.find(request_id)) return fail("Incoming request revision changed or decision already saved")
+  if (proposal_json.length > 40_000) fail("Incoming proposal is too long")
+  const input = parse(proposal_json), assessment = parseInformationIncomingAssessment(input.assessment)
+  const profileId = input.profile_id === null ? null : id(input.profile_id, "profile_id"), profile = incomingProfile(ctx, request.from_phone)
+  if (profileId !== (profile ? Number(profile.id) : null)) fail("Stale incoming context: caller association changed; refresh")
+  const config = ctx.db.informationIntakeConfiguration.id.find(1)
+  if (BigInt(revision(input.line_revision)) !== (config?.revision ?? 0n)) fail("Stale incoming context: intake configuration changed; refresh")
+  if (!Array.isArray(input.candidate_revisions)) return fail("Invalid incoming candidate revisions")
+  const candidateRevisions = input.candidate_revisions.map(value => { const c = object(value, "candidate"); return { case_id: id(c.case_id, "case_id"), input_revision: revision(c.input_revision) } })
+  const candidates = incomingCandidates(ctx, profile?.id)
+  if (canonicalJson(candidateRevisions) !== canonicalJson(candidates)) fail("Stale incoming context: candidate cases changed; refresh")
+  if (!profile && assessment.kind !== "review") fail("Unknown or ambiguous callers require organizer review")
+  const mayIntake = !!config?.enabled && !!profile && !!ctx.db.profileSettings.profile_id.find(profile.id)?.intake_allowed
+  if ((assessment.kind === "intake" || assessment.kind === "clarification") && !mayIntake) fail("Caller is not permitted to create an investigation")
+  const proposal: InformationIncomingProposal = { profile_id: profileId, line_revision: Number(config?.revision ?? 0n), candidate_revisions: candidateRevisions, assessment }
+  let caseId: bigint | undefined, noteId: bigint | undefined
+  if (assessment.kind === "update") {
+    if (!candidates.some(c => c.case_id === assessment.case_id)) fail("Incoming update is outside the caller's associated cases")
+    caseId = BigInt(assessment.case_id!)
+    noteId = incomingNote(ctx, caseId, request, "incoming_unverified", profile).id
+    dirty(ctx, caseId)
+  } else if (assessment.kind === "intake") {
+    const line = ctx.db.informationLine.id.find(1)
+    if (!line || !config) return fail("Intake configuration is missing")
+    const incidentId = nextIncidentId(ctx); caseId = nextCaseId(ctx)
+    ctx.db.informationIncident.insert({ id: incidentId, description: assessment.description, area: undefined, status: "active", created_at: ctx.timestamp })
+    ctx.db.informationCase.insert({ id: caseId, incident_id: incidentId, objective: assessment.objective, scope_json: canonicalJson(contactScope(JSON.parse(line.default_scope_json))), policy_json: canonicalJson(informationPolicy(JSON.parse(config.policy_json))), input_revision: 1n, evaluated_revision: 0n, status: "open", brief: "" })
+    configurePlanning(ctx, caseId, { coordination_enabled: config.coordination_enabled, disclosure_facts: JSON.parse(config.disclosure_json) }, 1n)
+    noteId = incomingNote(ctx, caseId, request, "incoming_unverified", profile).id
+  }
+  if (caseId !== undefined) ctx.db.informationIncomingResolution.insert({ request_id, request_revision: request.revision, support_case_id: caseId, note_id: noteId, reporter_profile_id: profile?.id, kind: assessment.kind === "intake" ? "intake" : "automatic_update", reason: assessment.reason, actor: "incoming coordinator", created_at: ctx.timestamp })
+  ctx.db.incomingRequest.id.update({ ...request, status: caseId !== undefined ? "recorded" : assessment.kind === "clarification" ? "needs_clarification" : "needs_review", decision_json: canonicalJson(proposal), support_case_id: caseId, reply: assessment.kind === "clarification" ? assessment.clarification! : incomingSavedReply, retry_at_ms: 0n })
+})
 function budget(ctx: Ctx, caseId: bigint, profileId: bigint, excluding?: bigint) {
   const policy = JSON.parse(getCase(ctx, caseId).policy_json) as InformationPolicy, phone = normalizePhone(ctx.db.profile.id.find(profileId)?.phone ?? "")
   const history = [...ctx.db.attempt.support_case_id.filter(caseId)].filter(a => a.id !== excluding && !(ctx.db.attemptProgress.attempt_id.find(a.id)?.transport === "cancelled" && !ctx.db.attemptProgress.attempt_id.find(a.id)?.claim_token))

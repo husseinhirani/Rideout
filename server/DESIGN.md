@@ -1,5 +1,26 @@
 # design.md
 
+## Incoming information — Step 5
+
+`/requests` saves the raw account before classification. A unique phone match is
+an association hint, not verified identity. Claude can associate a clear update
+with an open case linked through explicit contact selection, dispatched calls,
+or that caller's original intake. Ambiguous and unfamiliar reports need review.
+
+Phone intake requires an enabled line and a profile with `intake_allowed`.
+The caller supplies the incident and information objective; missing essentials
+prompt clarification. The organizer's stored scope, policy and disclosure facts
+govern the new case. Intake permission never grants call consent.
+
+Two additive tables store line configuration and incoming resolutions. Reducers
+check request, configuration and candidate-case revisions before atomically
+saving a case/note and resolution. Attach/reject commands are replay-safe and
+preserve the original report. Attachment adds unverified evidence without
+enrolling the caller; paused cases stay paused. Phone replies disclose neither
+case association nor operator decisions. Existing provider bindings are unchanged.
+
+Implementation is source-reviewed; compilation and live verification await Vien's VM.
+
 ## Adaptive information path — Step 4
 
 On the separate Step 4 branch, an organizer explicitly enables coordination for
@@ -28,7 +49,7 @@ Planning, interpretation and transport reconciliation have separate in-flight
 guards. Failed planning cannot stop recording reports or observing hang-up.
 An organizer-review decision pauses new calls. Explicit configuration can resume
 it. The console displays reasons, evidence IDs and whether the summary is stale.
-Inbound association and final closure remain later checkpoints.
+Inbound association is added in Step 5; final closure remains a later checkpoint.
 
 After three interpretation failures, an operator can explicitly retry the same
 saved, matched account via `POST /attempts/:id/retry-interpretation` with a stable

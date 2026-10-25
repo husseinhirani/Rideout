@@ -5,7 +5,7 @@ import { authorizeRequest, readAccessConfig } from "./operator-auth"
 import { createLocalConsole } from "./local-console"
 import { getState } from "./loop"
 import { attempts, callReducer, incomingRequests, type ProfileRow, type AttemptProgressRow } from "./db"
-import { configureInformationCase, createInformationCase, directory, readInformationState, readInformationPlanning, receiveInformationReport, requestInformationCall, inputInformationCase, retryInformationReport } from "./information"
+import { configureInformationCase, createInformationCase, directory, readInformationState, readInformationPlanning, receiveInformationReport, requestInformationCall, inputInformationCase, retryInformationReport, readInformationIncomingState, configureInformationIntake, reviewInformationIncoming } from "./information"
 import { receiveInformationRequest } from "./information-incoming"
 import { startInformationWorker } from "./information-worker"
 import { asId, ServiceError } from "./service"
@@ -38,7 +38,7 @@ createLocalConsole({ port: consolePort, apiPort: port, operatorSecret: access.op
 }).listen(consolePort, "127.0.0.1", () => console.log("Local test console: http://127.0.0.1:" + consolePort))
 
 async function state() {
-  const [legacy, information, incoming, coordination] = await Promise.all([getState(false), readInformationState(), incomingRequests(), readInformationPlanning()])
+  const [legacy, information, incoming, coordination, inbound] = await Promise.all([getState(false), readInformationState(), incomingRequests(), readInformationPlanning(), readInformationIncomingState()])
   return {
     ...legacy, read_model_version: 2, server_time_ms: Date.now(),
     profiles: (legacy.profiles as ProfileRow[]).map(({phone, ...profile}) => ({...profile, phone_last4: phone.slice(-4)})),
@@ -53,7 +53,14 @@ async function state() {
         ? "A saved report is awaiting verified binding or interpretation. Inspect the attempt's report status."
         : null })),
     information_decisions: coordination.decisions,
-    incoming_requests: incoming.map(({from_phone, decision_json, ...row}) => ({...row, phone_last4: from_phone.slice(-4), identity_status: "unverified"})),
+    information_intake_configuration: inbound.configuration,
+    information_incoming_resolutions: inbound.resolutions,
+    incoming_requests: incoming.map(({from_phone, decision_json, ...row}) => {
+      let review_reason = ""
+      try { const decision = JSON.parse(decision_json); review_reason = decision.assessment?.reason ?? decision.reason ?? "" } catch { /* No prepared interpretation yet. */ }
+      if (!review_reason && row.failure_count >= 3) review_reason = "Automatic interpretation failed; organizer review is needed."
+      return {...row, phone_last4: from_phone.slice(-4), identity_status: "unverified", review_reason}
+    }),
   }
 }
 async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -62,6 +69,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
   const path = url.pathname
   if (req.method === "GET") {
     if (path === "/state") { send(res, 200, await state()); return }
+    if (path === "/intake-configuration") { send(res, 200, (await readInformationIncomingState()).configuration); return }
     if (path === "/profiles") {
       let filter
       try { filter = contactScope(JSON.parse(url.searchParams.get("filter") ?? "{}")) }
@@ -77,6 +85,9 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
   if (req.method !== "POST") { send(res, 404, {error: "not found"}); return }
   const body = await readJson(req)
   if (path === "/incidents") { send(res, 200, await createInformationCase(body, actor)); return }
+  if (path === "/intake-configuration") { send(res, 200, await configureInformationIntake(body, actor)); return }
+  const review = /^\/incoming-requests\/(\d+)\/review$/.exec(path)
+  if (review) { send(res, 200, await reviewInformationIncoming(asId(review[1], "request_id"), body, actor)); return }
   if (path === "/calls/report") { send(res, 200, await receiveInformationReport(body)); return }
   if (path === "/requests") {
     if (process.env.INBOUND_REQUESTS !== "1") throw new ServiceError(503, "Inbound receipt is not enabled")

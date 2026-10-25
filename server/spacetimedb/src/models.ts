@@ -192,6 +192,12 @@ const profileSettings = table({ name: "profile_settings", public: true }, {
 const informationLine = table({ name: "information_line", public: true }, {
   id: t.u8().primaryKey(), default_scope_json: t.string(),
 })
+const informationIntakeConfiguration = table({ name: "information_intake_configuration", public: true }, {
+  id: t.u8().primaryKey(), revision: t.u64(), enabled: t.bool(), policy_json: t.string(), coordination_enabled: t.bool(), disclosure_json: t.string(),
+})
+const informationIncomingResolution = table({ name: "information_incoming_resolution", public: true }, {
+  request_id: t.u64().primaryKey(), request_revision: t.u64(), support_case_id: t.option(t.u64()), note_id: t.option(t.u64()), reporter_profile_id: t.option(t.u64()), kind: t.string(), reason: t.string(), actor: t.string(), created_at: t.timestamp(),
+})
 const operatorCommand = table({ name: "operator_command", public: true }, {
   command_id: t.string().primaryKey(), operation: t.string(), payload_json: t.string(), result_json: t.string(), actor: t.string(), created_at: t.timestamp(),
 })
@@ -205,5 +211,5 @@ const informationDecision = table({ name: "information_decision", public: true }
   id: t.string().primaryKey(), support_case_id: t.u64().index("btree"), based_on_revision: t.u64(), created_at: t.timestamp(), model: t.string(), request_id: t.string(), plan_json: t.string(), attempt_ids: t.array(t.u64()),
 })
 
-const spacetimedb = schema({ profile, incident, incidentPerson, supportCase, attempt, note, caseProgress, attemptProgress, caseIntake, caseInput, incomingRequest, informationIncident, informationCase, profileSettings, informationLine, operatorCommand, informationAttempt, informationPlanning, informationDecision })
+const spacetimedb = schema({ profile, incident, incidentPerson, supportCase, attempt, note, caseProgress, attemptProgress, caseIntake, caseInput, incomingRequest, informationIncident, informationCase, profileSettings, informationLine, operatorCommand, informationAttempt, informationPlanning, informationDecision, informationIntakeConfiguration, informationIncomingResolution })
 export default spacetimedb

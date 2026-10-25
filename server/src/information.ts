@@ -1,7 +1,27 @@
 import { query, asId, asString, asArea, asTimestamp, asOption, optionalNumber, callReducer, profiles, attempts } from "./db"
 import { ServiceError } from "./service"
-import { canonicalJson, commandId, contactScope, matchesScope, contactEligibility, object, id, type InformationIncidentRow, type InformationCaseRow, type ProfileSettingsRow, type InformationAttemptRow, type InformationCommandResult, type DirectoryQuery } from "../shared/information"
+import { canonicalJson, commandId, contactScope, matchesScope, contactEligibility, object, id, DEFAULT_INFORMATION_POLICY, type InformationIncidentRow, type InformationCaseRow, type ProfileSettingsRow, type InformationAttemptRow, type InformationCommandResult, type DirectoryQuery } from "../shared/information"
 import type { InformationPlanningRow, InformationDecisionRow } from "../shared/information-plan"
+import type { InformationIntakeConfiguration, InformationIncomingResolution } from "../shared/information-incoming"
+
+export async function readInformationIncomingState(): Promise<{ configuration: InformationIntakeConfiguration; resolutions: InformationIncomingResolution[] }> {
+  const [lines, configurations, resolutions] = await Promise.all([
+    query("SELECT * FROM information_line"), query("SELECT * FROM information_intake_configuration"), query("SELECT * FROM information_incoming_resolution"),
+  ])
+  const line = lines.find(r => asId(r.id) === 1), config = configurations.find(r => asId(r.id) === 1)
+  return {
+    configuration: {
+      revision: config ? asId(config.revision) : 0, enabled: config?.enabled === true,
+      default_scope: line ? JSON.parse(asString(line.default_scope_json)) : { profile_ids: [] },
+      policy: config ? JSON.parse(asString(config.policy_json)) : { ...DEFAULT_INFORMATION_POLICY },
+      coordination_enabled: config?.coordination_enabled === true,
+      disclosure_facts: config ? JSON.parse(asString(config.disclosure_json)) : [],
+    },
+    resolutions: resolutions.map(r => ({ request_id: asId(r.request_id), request_revision: asId(r.request_revision),
+      support_case_id: optionalNumber(r.support_case_id), note_id: optionalNumber(r.note_id), reporter_profile_id: optionalNumber(r.reporter_profile_id),
+      kind: asString(r.kind) as InformationIncomingResolution["kind"], reason: asString(r.reason), actor: asString(r.actor), created_at: asTimestamp(r.created_at) })),
+  }
+}
 
 export async function readInformationPlanning(): Promise<{ planning: InformationPlanningRow[]; decisions: InformationDecisionRow[] }> {
   const [planning, decisions] = await Promise.all([query("SELECT * FROM information_planning"), query("SELECT * FROM information_decision")])
@@ -64,6 +84,8 @@ export const configureInformationCase = (caseId: number, body: unknown, actor: s
 export const requestInformationCall = (caseId: number, body: unknown, actor: string) => command("requestInformationCall", body, actor, caseId)
 export const inputInformationCase = (caseId: number, body: unknown, actor: string) => command("inputInformationCase", body, actor, caseId)
 export const retryInformationReport = (attemptId: number, body: unknown, actor: string) => command("retryInformationReport", body, actor, attemptId)
+export const configureInformationIntake = (body: unknown, actor: string) => command("configureInformationIntake", body, actor)
+export const reviewInformationIncoming = (requestId: number, body: unknown, actor: string) => command("reviewInformationIncoming", body, actor, requestId)
 export async function receiveInformationReport(body: unknown) {
   let input: Record<string, unknown>, attemptId: number
   try { input = object(body, "report"); attemptId = id(typeof input.attempt_id === "string" && /^\d+$/.test(input.attempt_id) ? Number(input.attempt_id) : input.attempt_id, "attempt_id") } catch (error) { throw new ServiceError(400, (error as Error).message) }

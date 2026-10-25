@@ -12,7 +12,10 @@ Stage 1 provides a generic organizer-directed call and durable report path.
 Step 4 adds opt-in adaptive contact/question selection on a separate development
 branch while Vien verifies Stage 1. Runtime verification and integration remain
 sequential on Vien's VM. Inbound case association and timer follow-ups are not
-part of Step 4. See `ADAPTIVE-TEST-HANDOFF.md`. The older sections below describe
+part of Step 4. Step 5 adds generic phone intake, clear-update association, and
+organizer attach/reject actions on `tony/incoming-association`; VM verification
+is pending. Intake uses organizer-configured permissions and contact scope.
+See `INFORMATION-API.md`. The older sections below describe
 legacy fixtures and must not introduce scenario rules into new product logic.
 Tony owns the backend and manual HTML console; Vien owns the product frontend.
 The legacy `server:recording` command is retired; `server:adaptive:sim` runs real

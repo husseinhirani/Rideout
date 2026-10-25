@@ -6,10 +6,10 @@ contract and VM verification sequence. Existing manual requests below retain
 their behavior when `coordination_enabled` is omitted/false. These Step 4 changes
 are implemented separately and await compilation/program/live checks on Vien's VM.
 
-The current Step 3 human checkpoint is GitHub #25, tracked in #27. With the
-manual configuration below no adaptive planner runs. There is no timer follow-up
-or inbound case matching in either current slice. Incoming
-accounts are saved for review. Legacy cases remain readable history.
+Step 3's human checkpoint (#25) passed; #27 tracks the remaining checkpoints.
+With the manual configuration below no adaptive planner runs. Step 5 adds inbound
+association and intake, pending VM verification. There is no timer follow-up.
+Legacy cases remain readable history.
 
 Run with a published module, private database URL/name, configured provider and
 Claude credentials, distinct `OPERATOR_SECRET`/`CALLBACK_SECRET`, and:
@@ -96,7 +96,34 @@ waits for matching dispatch metadata before interpretation.
 `POST /requests` retains the bound inbound envelope: `from_phone`,
 `provider_call_id`, `direction:"inbound"`, `text`. It saves the complete account
 and returns a neutral receipt, without case details or a promised callback.
-Stage 1 leaves association to the next stage. The console shows these reports.
+Step 5 associates clear updates, requests clarification for incomplete permitted
+intake, and leaves unfamiliar or ambiguous accounts in review. Final retries must
+repeat the same account; only a `needs_clarification` response permits a revised
+complete account under the same provider call ID.
+
+## Incoming configuration and review — Step 5
+
+`GET /intake-configuration` returns `revision`, `enabled`, `default_scope`,
+`policy`, `coordination_enabled` and `disclosure_facts`. `POST` to the same route
+takes `command_id`, `expected_revision` and supplied configuration fields, plus
+optional `preferences:[{profile_id,intake_allowed}]`. Defaults disable intake and
+automatic calls. Intake permission is separate from call consent. Defaults apply
+to newly created cases; they do not reconfigure existing cases.
+
+`POST /incoming-requests/:id/review` takes `command_id`, `expected_revision`,
+`decision:"attach"|"reject"`, and `reason`. Attach also requires
+`support_case_id` for an open generic case; reject must omit it. Results include
+`request_id` and `status`, plus case/note/revision IDs for attachment. Repeating
+the same command returns the stored result. Changed or stale commands reject.
+
+`/state` adds `information_intake_configuration`,
+`information_incoming_resolutions`, and incoming `review_reason`. Resolutions
+link the original request to its note, case, actor and reason. Phone callbacks
+map reviewed outcomes to a neutral receipt without exposing those associations.
+
+Publish the additive module before starting this backend. The new tables are
+`information_intake_configuration` and `information_incoming_resolution`;
+existing records and hosted tools do not need replacement.
 
 Real transport ends only after observing provider `completed` or `failed`.
 Report receipt does not imply hang-up. Unknown dispatch is never blindly retried.
