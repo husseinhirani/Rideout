@@ -1,7 +1,7 @@
 {
   "name": "report_call",
   "description": "For outbound calls only; never use for inbound calls. Use for normal completion when attempt_id has a value. An explicit request to stop or hang up takes priority: end immediately instead of delaying for this tool. Report everything this person told you, whatever they were asked, including when the answer is that they are safe. Call it once, just before the call ends. Never use record_check_in on these calls.",
-  "pre_tool_speech": "auto",
+  "pre_tool_speech": "off",
   "execution_mode": "immediate",
   "response_timeout_secs": 45,
   "api_schema": {
