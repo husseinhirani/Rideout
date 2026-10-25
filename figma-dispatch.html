@@ -1,0 +1,87 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+  * { box-sizing: border-box; margin: 0; }
+  body { width: 1440px; height: 900px; background: #090b0e; color: #e8edf2; font-family: Inter, Arial, sans-serif; }
+  .shell { height: 900px; display: grid; grid-template-columns: 68px 1fr; }
+  .rail { background: #0c0f14; border-right: 1px solid rgba(255,255,255,.06); display: flex; flex-direction: column; align-items: center; padding-top: 16px; gap: 8px; }
+  .mark { width: 36px; height: 36px; border-radius: 10px; background: #f2f5f8; color: #101318; display: grid; place-items: center; font-size: 12px; font-weight: 700; margin-bottom: 12px; }
+  .dot { width: 40px; height: 40px; border-radius: 12px; background: #1a2230; }
+  .main { padding: 14px 14px 14px 14px; display: grid; grid-template-rows: 44px 92px 1fr; gap: 12px; }
+  .top { display: flex; justify-content: space-between; align-items: center; }
+  .crumbs { color: #9aa3af; font-size: 14px; }
+  .crumbs b { color: #f4f7fb; }
+  .badge { display: inline-block; margin-left: 8px; background: #e23b32; color: white; border-radius: 99px; padding: 4px 8px; font-size: 11px; font-weight: 700; }
+  .go { background: #f4f7fb; color: #101318; border-radius: 99px; padding: 9px 14px; font-size: 13px; font-weight: 650; }
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  .stat { background: #12161c; border: 1px solid rgba(255,255,255,.06); border-radius: 14px; padding: 14px 16px; }
+  .stat p { color: #8b93a0; font-size: 12px; letter-spacing: .04em; text-transform: uppercase; }
+  .stat strong { display: block; font-size: 34px; margin-top: 6px; letter-spacing: -.04em; }
+  .stat.alert strong { color: #ff6b57; }
+  .stage { display: grid; grid-template-columns: 340px 1fr 300px; gap: 10px; min-height: 0; }
+  .panel { background: #10141a; border: 1px solid rgba(255,255,255,.06); border-radius: 16px; padding: 14px; }
+  h2 { font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: #c5ccd6; margin-bottom: 10px; }
+  .call { display: grid; grid-template-columns: 4px 1fr auto; gap: 10px; background: #161b22; border-radius: 12px; padding: 10px; margin-bottom: 6px; }
+  .bar { width: 4px; border-radius: 99px; }
+  .red { background: #ff5d4a; } .green { background: #3dd68c; } .gold { background: #f0a202; } .gray { background: #8b93a0; }
+  .call b { display: block; font-size: 14px; }
+  .call small { color: #8b93a0; font-size: 12px; }
+  .call em { font-style: normal; font-size: 11px; color: #ff8d7d; }
+  .map { position: relative; border-radius: 16px; overflow: hidden; background: #1c2830; }
+  .blocks { position: absolute; inset: 40px 30px 50px 40px; display: grid; grid-template-columns: repeat(8, 1fr); gap: 8px; align-content: center; transform: perspective(800px) rotateX(18deg); }
+  .b { height: 36px; background: #8b939e; border-radius: 3px; }
+  .b.g { background: #3dd68c; height: 48px; } .b.r { background: #ff5d4a; height: 52px; } .b.y { background: #f0a202; height: 44px; }
+  .wash { position: absolute; right: 40px; bottom: 70px; width: 180px; height: 140px; background: rgba(240,162,2,.28); }
+  .chip { position: absolute; top: 12px; left: 12px; background: rgba(8,10,14,.72); border-radius: 99px; padding: 6px 10px; font-size: 12px; }
+  .rec { background: #171c24; border-radius: 14px; padding: 14px; }
+  .eye { color: #7eb6ff; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }
+  .rec h3 { font-size: 22px; margin: 6px 0; }
+  .rec p { color: #c5ccd6; font-size: 13px; line-height: 1.45; }
+</style>
+</head>
+<body>
+  <div class="shell">
+    <aside class="rail"><div class="mark">RO</div><div class="dot"></div><div class="dot"></div><div class="dot"></div></aside>
+    <div class="main">
+      <div class="top">
+        <div class="crumbs">Main Center / <b>Evacuation Dispatch</b> <span class="badge">1 OPEN</span></div>
+        <div class="go">Start drill</div>
+      </div>
+      <div class="stats">
+        <article class="stat alert"><p>Without a ride</p><strong>1</strong></article>
+        <article class="stat"><p>Already out</p><strong>9</strong></article>
+        <article class="stat"><p>No answer</p><strong>1</strong></article>
+        <article class="stat"><p>On the list</p><strong>12</strong></article>
+      </div>
+      <div class="stage">
+        <section class="panel">
+          <h2>Incoming checks</h2>
+          <div class="call"><i class="bar red"></i><span><b>Luis Ortega</b><small>Wheelchair. No ride.</small></span><em>No ride</em></div>
+          <div class="call"><i class="bar gray"></i><span><b>Priya Shah</b><small>No answer. Unknown.</small></span><em>No answer</em></div>
+          <div class="call"><i class="bar gold"></i><span><b>Maya Chen</b><small>Van. Route crosses the fire.</small></span><em>Not offered</em></div>
+          <div class="call"><i class="bar green"></i><span><b>Helen Cho</b><small>Daniel Ruiz, gray Honda.</small></span><em>Out</em></div>
+          <div class="call"><i class="bar green"></i><span><b>Daniel Ruiz</b><small>Gray Honda. Two seats.</small></span><em>Out</em></div>
+        </section>
+        <section class="map">
+          <div class="wash"></div>
+          <div class="blocks">
+            <div class="b g"></div><div class="b g"></div><div class="b"></div><div class="b g"></div><div class="b r"></div><div class="b"></div><div class="b y"></div><div class="b"></div>
+            <div class="b"></div><div class="b g"></div><div class="b"></div><div class="b"></div><div class="b g"></div><div class="b"></div><div class="b"></div><div class="b"></div>
+          </div>
+          <div class="chip">Rockridge block · simulated fire</div>
+        </section>
+        <aside class="panel">
+          <h2>Match</h2>
+          <div class="rec">
+            <div class="eye">Recommended</div>
+            <h3>Daniel accepted</h3>
+            <p>Helen hears his name, the car, and to call 911 if he does not arrive. Luis still has no ride.</p>
+          </div>
+        </aside>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
