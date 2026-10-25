@@ -160,5 +160,23 @@ const caseInput = table(
   },
 )
 
-const spacetimedb = schema({ profile, incident, incidentPerson, supportCase, attempt, note, caseProgress, attemptProgress, caseIntake, caseInput })
+const incomingRequest = table(
+  { name: "incoming_request", public: true },
+  {
+    id: t.u64().primaryKey().autoInc(),
+    provider_call_id: t.string().unique(),
+    from_phone: t.string(),
+    direction: t.string(),
+    text: t.string(),
+    revision: t.u64(),
+    status: t.string(),
+    decision_json: t.string(),
+    reply: t.string(),
+    support_case_id: t.option(t.u64()),
+    failure_count: t.u32(),
+    retry_at_ms: t.u64(),
+  },
+)
+
+const spacetimedb = schema({ profile, incident, incidentPerson, supportCase, attempt, note, caseProgress, attemptProgress, caseIntake, caseInput, incomingRequest })
 export default spacetimedb

@@ -1,0 +1,21 @@
+{
+  "name": "report_request",
+  "description": "Only for an INBOUND call, where system__call_direction is inbound. Submit the caller's complete account in their own words. Never use report_call or record_check_in for inbound calls. Follow the returned status and reply: pending/prepared means still processing, needs_clarification means ask the question and resubmit the full account, recorded means saved, needs_review means no automated action is confirmed. Never claim success after a tool error.",
+  "pre_tool_speech": "auto",
+  "execution_mode": "immediate",
+  "response_timeout_secs": 45,
+  "api_schema": {
+    "url": "/requests",
+    "method": "POST",
+    "request_body_schema": {
+      "type": "object",
+      "properties": {
+        "from_phone": {"type": "string", "dynamic_variable": "system__caller_id"},
+        "provider_call_id": {"type": "string", "dynamic_variable": "system__conversation_id"},
+        "direction": {"type": "string", "dynamic_variable": "system__call_direction"},
+        "text": {"type": "string", "description": "The caller's complete account in their own words, including any clarification already given. Preserve uncertainty and negation. For a status retry send exactly the same text."}
+      },
+      "required": ["text"]
+    }
+  }
+}

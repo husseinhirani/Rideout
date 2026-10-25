@@ -3,8 +3,8 @@ import { resolve } from "node:path"
 
 export function loadEnv(): void {
   const seen = new Set<string>()
-  for (const root of [process.cwd(), resolve(import.meta.dirname, "../.."), resolve(import.meta.dirname, "..")]) {
-    const path = resolve(root, ".env")
+  const roots = [process.cwd(), resolve(import.meta.dirname, "../.."), resolve(import.meta.dirname, "..")]
+  for (const path of [".env.local", ".env"].flatMap(name => roots.map(root => resolve(root, name)))) {
     if (seen.has(path)) continue
     seen.add(path)
     let text: string

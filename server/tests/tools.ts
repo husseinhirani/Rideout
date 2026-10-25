@@ -38,9 +38,9 @@ assert.equal(sameIds(["old"], ["keep", "old"]), false)
 
 const dir = resolve(import.meta.dirname, "../tools")
 const files = readdirSync(dir).filter((name) => name.endsWith(".json")).sort()
-assert.deepEqual(files, ["record_check_in.json", "report_call.json"])
+assert.deepEqual(files, ["record_check_in.json", "report_call.json", "report_request.json"])
 const definitions = files.map((file) => parseToolFile(JSON.parse(readFileSync(resolve(dir, file), "utf8")) as unknown, file))
-assert.deepEqual(definitions.map((definition) => definition.api_schema.url), ["/check-ins", "/calls/report"])
+assert.deepEqual(definitions.map((definition) => definition.api_schema.url), ["/check-ins", "/calls/report", "/requests"])
 for (const definition of definitions) {
   const required = new Set(definition.api_schema.request_body_schema.required)
   for (const [name, schema] of Object.entries(definition.api_schema.request_body_schema.properties)) {
@@ -48,6 +48,13 @@ for (const definition of definitions) {
     if (typeof field.dynamic_variable === "string") assert.equal(required.has(name), false)
   }
 }
+const inbound = definitions.find(definition => definition.name === "report_request")!
+assert.deepEqual(inbound.api_schema.request_body_schema.required, ["text"])
+const inboundFields = inbound.api_schema.request_body_schema.properties as Record<string, {dynamic_variable?: string}>
+assert.equal(inboundFields.from_phone.dynamic_variable, "system__caller_id")
+assert.equal(inboundFields.provider_call_id.dynamic_variable, "system__conversation_id")
+assert.equal(inboundFields.direction.dynamic_variable, "system__call_direction")
+assert.equal(inboundFields.text.dynamic_variable, undefined)
 const created = toolRequest(definitions[0], "https://rideout.ngrok.app", true, "s3cret")
 const updated = toolRequest(definitions[0], "https://rideout.ngrok.app", false, "")
 assert.equal(created.type, "webhook")

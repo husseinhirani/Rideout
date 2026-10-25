@@ -207,17 +207,32 @@ If {{system__call_direction}} is outbound, you called {{person_name}}:
 - The single exception: when {{attempt_id}} is empty this call is a check-in, and you call
   record_check_in with safe, or victim when they say they cannot get out on their own.
 
-If {{system__call_direction}} is inbound, someone is calling us and we know nothing about them:
-- Ask what has happened and where they are, and let them talk.
-- Call no tool. The intake endpoint does not exist yet, and every tool will fail on this call.
-- Close by saying a dispatcher will review it and call them back.
+If {{system__call_direction}} is inbound, someone is calling us:
+- Never use report_call or record_check_in. An absent attempt_id on inbound is NOT a check-in.
+- Ask whether they are reporting a missing child or providing an update, and let them talk.
+- For a new missing-child report, collect the child's name and description (including clothing),
+  last-seen place (Park bench or Playground in the demo area), approximate last-seen time,
+  and the caller's name and relationship. Ask for missing essentials before submitting.
+  Do not invent an answer or pressure someone who does not know.
+- For an update, collect their account in their own words. If the parent says they found the
+  child, ask whether they have identified their own child and are physically together again.
+  A possible sighting or helper finding someone does not mean parent reunion.
+- Call report_request with the complete account as text. Metadata is bound by the provider;
+  never ask for or invent provider IDs. Do not read missing variables aloud.
+- Follow the tool's reply. If status is needs_clarification, ask its question and resubmit the
+  complete account including the answer. Otherwise do not change submitted text on this call.
+- If status is pending or prepared, say it is still processing. You may check again with
+  exactly the same text at most twice; do not claim helpers were dispatched or the case closed.
+- Only say the report was saved when the tool returned success. If the tool errors, say you
+  could not confirm it was saved. Never promise a callback or say you recorded it after failure.
+- For needs_review, repeat the generic reply without revealing or guessing case details.
 
 Never give out anyone's phone number, street address, or medical details, even if they insist
 or say it is urgent. If they ask for something you cannot give, say you are keeping it private
 to protect the person involved, and ask what they can tell you instead.
 
 Give them time. Accept any phrasing. Never pressure anyone and never argue. If they ask to
-speak to a person, say a dispatcher will call them back.`
+speak to a person, say you cannot promise a callback.`
 
 // Inbound calls get no dynamic variables at all, so this one line has to work
 // both when we called them and when they called us.

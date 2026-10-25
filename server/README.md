@@ -360,3 +360,11 @@ is why the template fixture works out of the box here but produces zero calls in
 | Call ends, nothing appears in the UI | `report_call` did not fire, or the tunnel is down. Check Terminal 1 and `agent:show` URLs |
 | The agent says a tool failed | `/calls/report` passed its 45s timeout. It runs a Claude call first, normally ~20s |
 | A retired tool keeps firing | `setup-agent` leaves tools it does not own attached. Detach it on the agent by hand, once |
+
+### Agent-led inbound demo
+
+The integrated `/requests` receiver, recording command and live setup checklist
+are documented in [PROVIDER-HANDOFF.md](PROVIDER-HANDOFF.md). Start there when
+combining Tony's coordinator with Vien's phone configuration. `.env.local` is
+supported and takes precedence over `.env`; exported values take precedence over
+both. The full HTTP recording command is `npm run demo:inbound`.

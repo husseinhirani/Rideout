@@ -116,3 +116,13 @@ test("internal adapter is never called before safety guards", async () => {
   }), /Backend must report/)
   assert.equal(calls, 0)
 })
+
+test("recording sends callback bearer only to callback routes", async () => {
+  const fake = backend()
+  const fetcher: typeof fetch = async (input, init) => {
+    const path = new URL(String(input)).pathname
+    assert.equal(new Headers(init?.headers).get("authorization"), path === "/calls/report" ? "Bearer recording-secret" : null)
+    return fake.fetcher(input, init)
+  }
+  await runRecordingDemo({ database: "rideout-recording-test", fetch: fetcher, callbackSecret: "recording-secret" })
+})

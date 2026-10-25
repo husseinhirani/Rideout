@@ -19,6 +19,7 @@ export type RecordingCaseInputs = {
   confirm: (caseId: number) => Promise<void>
 }
 export type RecordingOptions = {
+  callbackSecret?: string
   caseInputs?: RecordingCaseInputs
   database: string
   baseUrl?: string
@@ -49,7 +50,7 @@ export async function runRecordingDemo(options: RecordingOptions): Promise<Recor
     try {
       response = await fetcher(new URL(path, base), {
         method: body === undefined ? "GET" : "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...(path === "/calls/report" && options.callbackSecret ? { Authorization: "Bearer " + options.callbackSecret } : {}) },
         body: body === undefined ? undefined : JSON.stringify(body),
         signal: AbortSignal.timeout(10_000),
       })
@@ -143,7 +144,7 @@ async function main(): Promise<void> {
   }
   if (process.argv.length > 2) throw new Error("Unknown argument; use --help")
   loadEnv()
-  await runRecordingDemo({ database: process.env.RECORDING_DATABASE ?? "", baseUrl: process.env.RECORDING_URL, report: event => console.log(JSON.stringify(event)) })
+  await runRecordingDemo({ callbackSecret: process.env.CALLBACK_SECRET?.trim(), database: process.env.RECORDING_DATABASE ?? "", baseUrl: process.env.RECORDING_URL, report: event => console.log(JSON.stringify(event)) })
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
