@@ -291,7 +291,7 @@ function mark(houses: House[], name: string, status: HouseStatus, note: string):
   return houses.map((house) => (house.name === name ? { ...house, status, note } : house));
 }
 
-export function useSealert() {
+export function useRideOut() {
   const initial = useMemo(() => assignHouses(), []);
   const [houses, setHouses] = useState<House[]>(initial);
   const [calls, setCalls] = useState<CallCard[]>([]);
@@ -657,7 +657,7 @@ export function useSealert() {
       ),
       window.setTimeout(() => {
         const summary =
-          "Leo is not home. He was at a friend’s on Colby and is not picking up. Logged for the neighborhood lead. Sealert does not call 911.";
+          "Leo is not home. He was at a friend’s on Colby and is not picking up. Logged for the neighborhood lead. RideOut does not call 911.";
         const report: InboundReport = { from: "Ken Abe", transcript: inboundLine, phase: "filed", summary, at: Date.now() };
         setInbound(report);
         setInboundLog((current) => [...current, report]);

@@ -3,7 +3,7 @@ import { barHeight, Bars, DashRail, FacilitatorTile, FocusView, Icon, initials, 
 import type { CallCard, ChatMessage, House, InboundReport, Incident } from "./types";
 
 /**
- * Sealert agents for the neighborhood lead. Not a city dispatch center.
+ * RideOut agents for the neighborhood lead. Not a city dispatch center.
  * Check-in caller: operations welfare checks, the outbound calls.
  * Call taker: a 911 call-taker. She interviews and records. She does not send a ride.
  * Facilitator: the liaison between those desks and the lead. The lead chats with it,
@@ -77,7 +77,7 @@ function facilitatorCopy(houses: House[], started: boolean, inbound: InboundRepo
   if (inbound?.phase === "filed") {
     notes.push({
       key: "inbound",
-      text: "Ken Abe’s call is with the lead. Sealert does not call 911.",
+      text: "Ken Abe’s call is with the lead. RideOut does not call 911.",
       warn: false,
     });
   }
@@ -116,7 +116,7 @@ function facilitatorCopy(houses: House[], started: boolean, inbound: InboundRepo
     return {
       live: false,
       kicker: "Passed to the lead",
-      lead: "Ken Abe’s call is with the lead. His son Leo is not home. Sealert does not call 911.",
+      lead: "Ken Abe’s call is with the lead. His son Leo is not home. RideOut does not call 911.",
       notes: notes.filter((note) => note.key !== "inbound"),
     };
   }

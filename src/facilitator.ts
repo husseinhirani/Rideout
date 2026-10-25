@@ -199,7 +199,7 @@ export const SAMPLE_CHILD: MissingChild = {
 };
 
 export function alertMessage(child: MissingChild) {
-  return `A child is missing in your neighborhood: ${child.name}, age ${child.age}, wearing ${child.clothing}. Last seen at ${child.lastSeen}. If you see ${child.name.split(" ")[0]}, call Sealert back at ${child.callback}.`;
+  return `A child is missing in your neighborhood: ${child.name}, age ${child.age}, wearing ${child.clothing}. Last seen at ${child.lastSeen}. If you see ${child.name.split(" ")[0]}, call RideOut back at ${child.callback}.`;
 }
 
 const ALERT_REPLIES = [

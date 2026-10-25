@@ -7,8 +7,8 @@ import { runRecordingDemo, type RecordingCaseInputs } from "./recording-demo"
 
 export function recordingCaseInputConfig(env: NodeJS.ProcessEnv): { database: string; baseUrl?: string } {
   const database = env.RECORDING_DATABASE ?? ""
-  if (!/^sealert-recording-[a-z0-9-]+$/.test(database) || env.SPACETIMEDB_DATABASE !== database) {
-    throw new Error("Explicit matching RECORDING_DATABASE and SPACETIMEDB_DATABASE must name a dedicated sealert-recording-* database")
+  if (!/^rideout-recording-[a-z0-9-]+$/.test(database) || env.SPACETIMEDB_DATABASE !== database) {
+    throw new Error("Explicit matching RECORDING_DATABASE and SPACETIMEDB_DATABASE must name a dedicated rideout-recording-* database")
   }
   let url: URL
   try { url = new URL(env.SPACETIMEDB_URL ?? "") } catch { throw new Error("Explicit SPACETIMEDB_URL=http://127.0.0.1:<port> is required") }
@@ -72,7 +72,7 @@ export function createRecordingCaseInputs(ports: Ports = { ...db, ...service }):
 
 async function main(): Promise<void> {
   if (process.argv.includes("--help")) {
-    console.log("Usage: SPACETIMEDB_URL=http://127.0.0.1:3000 SPACETIMEDB_DATABASE=sealert-recording-<name> RECORDING_DATABASE=sealert-recording-<name> npm run demo:case-inputs\nRequires a seeded simulated/scripted recording backend. Uses internal application intake with simulated profile bindings and reported reunion; no real inbound phone or verified caller identity.")
+    console.log("Usage: SPACETIMEDB_URL=http://127.0.0.1:3000 SPACETIMEDB_DATABASE=rideout-recording-<name> RECORDING_DATABASE=rideout-recording-<name> npm run demo:case-inputs\nRequires a seeded simulated/scripted recording backend. Uses internal application intake with simulated profile bindings and reported reunion; no real inbound phone or verified caller identity.")
     return
   }
   if (process.argv.length > 2) throw new Error("Unknown argument; use --help")

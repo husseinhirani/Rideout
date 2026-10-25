@@ -16,13 +16,13 @@ has helpers 1/2 and Morgan 4; inspect the printed IDs rather than assuming for a
 existing database. From server/:
 
 ```bash
-PORT=8791 SPACETIMEDB_URL=http://127.0.0.1:3303 SPACETIMEDB_DATABASE=sealert-recording-demo COORDINATOR_HELPER_IDS=1,2 COORDINATOR_REPORTER_ID=4 INBOUND_REQUESTS=1 CALLBACK_SECRET=recording-only-secret npm run server:recording
+PORT=8791 SPACETIMEDB_URL=http://127.0.0.1:3303 SPACETIMEDB_DATABASE=rideout-recording-demo COORDINATOR_HELPER_IDS=1,2 COORDINATOR_REPORTER_ID=4 INBOUND_REQUESTS=1 CALLBACK_SECRET=recording-only-secret npm run server:recording
 ```
 
 In a second terminal:
 
 ```bash
-RECORDING_DATABASE=sealert-recording-demo RECORDING_URL=http://127.0.0.1:8791 CALLBACK_SECRET=recording-only-secret npm run demo:inbound
+RECORDING_DATABASE=rideout-recording-demo RECORDING_URL=http://127.0.0.1:8791 CALLBACK_SECRET=recording-only-secret npm run demo:inbound
 ```
 
 All intake, unsolicited updates and reunion confirmation use `/requests`; helper

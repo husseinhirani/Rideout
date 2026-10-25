@@ -19,7 +19,7 @@ import { OperatorPanel } from "./OperatorPanel";
 import { RegisterForm } from "./RegisterForm";
 import { downloadLog } from "./exportLog";
 import { householdFor } from "./households";
-import { assignHouses, footprints, GEO, useSealert, wildfireMockCalls } from "./telemetry";
+import { assignHouses, footprints, GEO, useRideOut, wildfireMockCalls } from "./telemetry";
 import type { ChatMessage, HouseStatus, OperatorSession } from "./types";
 
 const STATUS: Record<HouseStatus, string> = {
@@ -42,7 +42,7 @@ const LIVE_STATUS: Record<HouseStatus, string> = {
 };
 
 export function App() {
-  const ride = useSealert();
+  const ride = useRideOut();
   const backend = useBackend();
   const [preferOffline, setPreferOffline] = useState(false);
   const [tab, setTab] = useState<"map" | "checks">("map");
@@ -507,7 +507,7 @@ export function App() {
                 setOutside(null);
                 if (text) {
                   void backend
-                    .run(() => api.caseInput(caseRef, `Dispatcher called ${outside.session.name} outside Sealert: ${text}`))
+                    .run(() => api.caseInput(caseRef, `Dispatcher called ${outside.session.name} outside RideOut: ${text}`))
                     .catch(fail);
                 }
               }}

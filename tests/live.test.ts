@@ -3,7 +3,7 @@ import type { BackendState } from "../src/api";
 import { briefOf, callsFor, cancellable, caseStatus, coordinationOf, currentCase, followUpAt, housesFrom, inboundFrom, notesFor, sightingsFrom } from "../src/live";
 
 const base = (): BackendState => ({
-  demo_mode: { simulate: true, scripted: true, auto_coordinate: true, database: "sealert-recording-demo", helper_ids: [1, 2], reporter_id: 4, inbound: true },
+  demo_mode: { simulate: true, scripted: true, auto_coordinate: true, database: "rideout-recording-demo", helper_ids: [1, 2], reporter_id: 4, inbound: true },
   locations: [
     { id: "park-bench", label: "Park bench", lat: 37.8466, lng: -122.2528 },
     { id: "playground", label: "Playground", lat: 37.8476, lng: -122.2486 },

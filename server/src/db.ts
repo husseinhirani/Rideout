@@ -290,7 +290,7 @@ async function query(sql: string): Promise<Record<string, unknown>[]> {
 
 async function spacetimeFetch(path: string, init: RequestInit): Promise<Response> {
   const base = (process.env.SPACETIMEDB_URL ?? "http://127.0.0.1:3000").replace(/\/$/, "")
-  const database = process.env.SPACETIMEDB_DATABASE ?? "sealert"
+  const database = process.env.SPACETIMEDB_DATABASE ?? "rideout"
   try {
     return await fetch(base + "/v1/database/" + encodeURIComponent(database) + path, init)
   } catch (error) {
