@@ -136,18 +136,13 @@ export function App() {
     setFacilitatorRequest((value) => value + 1);
   };
 
-  // Start idle on a fresh page unless a real call still needs attention. New
-  // cases opened during this session take focus; old completed drills stay history.
+  // Every page load starts idle. Saved incidents remain available in history;
+  // only cases created after this page connects automatically take focus.
   const newestSeen = useRef<number | null>(null);
   const newestCase = state?.cases.reduce((max, row) => Math.max(max, row.id), 0) ?? 0;
   useEffect(() => {
     if (!state) return;
-    if (newestSeen.current === null) {
-      const ongoing = [...state.attempt_progress].reverse().find(call => ["queued", "dispatching", "active", "unknown"].includes(call.transport));
-      const openCoordination = [...(state.assistance_sessions ?? [])].reverse().find(session =>
-        state.cases.some(row => row.id === session.case_id && row.status !== "closed"));
-      setCaseId(current => current === 0 ? ongoing?.support_case_id ?? openCoordination?.case_id ?? current : current);
-    } else if (newestCase > newestSeen.current) setCaseId(newestCase);
+    if (newestSeen.current !== null && newestCase > newestSeen.current) setCaseId(newestCase);
     newestSeen.current = newestCase;
   }, [state, newestCase]);
 

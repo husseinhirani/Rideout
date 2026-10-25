@@ -204,9 +204,10 @@ should be available once the saved roster is ready.
    new calls. Starting an API against an existing active database can resume authorized work.
 
 Before a drill, the Map view shows the 3D neighborhood. Starting or selecting an
-assistance incident switches to its flat coordination map. An open incident can be
-selected automatically when the page reconnects. This is intentional; a fresh database
-has no incident history until a drill is started. The app reports backend connection
+assistance incident switches to its flat coordination map. Refreshing starts at the
+3D idle view with zero outgoing calls displayed, even if saved incidents are still open.
+Use **Previous cases** on the Map view to reopen one. Refreshing does not stop ongoing
+calls, clear history, or start a new drill. The app reports backend connection
 failures explicitly instead of silently treating offline demo content as live data.
 
 See [the assistance walkthrough](assistance-demo.md) for correction/reassessment and
