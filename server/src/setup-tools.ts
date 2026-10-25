@@ -95,12 +95,12 @@ export function parseToolFile(value: unknown, file: string): ToolDefinition {
 
 // The ngrok URL is public, so anything that learns it can post notes into any
 // case. Cartesia sends this bearer on every webhook tool call and the server
-// checks it. The secret never lands in the committed tool JSON. Sending null
-// when the env var is unset clears a stale secret rather than leaving one
-// behind that the server no longer knows about.
+// checks it. Setup always changes a hosted resource, even if the local server
+// uses simulated phones. Reject a missing secret rather than clearing live auth.
 export function toolAuth(secret: string): unknown {
-  if (secret.length === 0) return null
-  return { mode: "bearer", token: { type: "secret", secret_value: secret } }
+  const token = secret.trim()
+  if (token.length === 0) throw new Error("CALLBACK_SECRET is required before updating hosted tools")
+  return { mode: "bearer", token: { type: "secret", secret_value: token } }
 }
 
 export function toolRequest(
@@ -210,6 +210,8 @@ If attempt_id is supplied and non-empty, or {{system__call_direction}} is outbou
 - Use this assigned question to guide the conversation: {{ask}}
 - Clarify relevant ambiguity, accept uncertainty, corrections or refusal, and stay within the
   assigned purpose. Do not assume an answer or turn a report into a new assignment.
+- Ask one question at a time. Before the final report, give them an opportunity to add
+  anything relevant. Preserve corrections, uncertainty and refusal in the complete account.
 - You may tell them this much: {{context}}
 - Before the call ends you must record it exactly once. Call report_call with everything they
   told you in their own words, and a concern if anything felt off. Call it even when all they
@@ -241,6 +243,9 @@ Only when there is no supplied attempt_id and {{system__call_direction}} is inbo
 - Only say the report was saved when the tool returned success. If the tool errors, explain
   that saving is unconfirmed. Describe next actions only to the extent the tool confirmed them.
 - For needs_review, repeat the generic reply without revealing or guessing case details.
+- Before saving, briefly explain what you are doing. When they have nothing further to add
+  and the report result is acknowledged, thank them, say goodbye and use end_call.
+  Do not interrupt a pending report tool; respect an explicit request to hang up.
 
 Never give out anyone's phone number, street address, or medical details, even if they insist
 or say it is urgent. If they ask for something you cannot give, say you are keeping it private
@@ -306,7 +311,7 @@ async function writePrompt(agentId: string): Promise<void> {
 async function main(): Promise<void> {
   const base = webhookBase(process.env.NGROK_URL ?? "")
   const secret = (process.env.CALLBACK_SECRET ?? "").trim()
-  if (secret.length === 0) console.log("CALLBACK_SECRET is not set, webhook tools will be unauthenticated")
+  toolAuth(secret) // Validate before the first provider read or mutation.
   const agentId = process.env.CARTESIA_AGENT_ID
   if (!agentId) throw new Error("CARTESIA_AGENT_ID is not set")
   const definitions = readDefinitions()
@@ -331,8 +336,9 @@ async function main(): Promise<void> {
   if (sameIds(attached.map((tool) => tool.id), next)) {
     console.log("agent tools unchanged")
   } else {
+    const current = await cartesiaJson("GET", "/v1/agents/" + encodeURIComponent(agentId))
     await cartesiaJson("PATCH", "/v1/agents/" + encodeURIComponent(agentId), {
-      config: { tools: next.map((id) => ({ id })) },
+      config: { ...(isObject(current.config) ? current.config : {}), tools: next.map((id) => ({ id })) },
     })
     console.log("agent tools " + next.join(" "))
   }

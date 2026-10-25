@@ -178,5 +178,26 @@ const incomingRequest = table(
   },
 )
 
-const spacetimedb = schema({ profile, incident, incidentPerson, supportCase, attempt, note, caseProgress, attemptProgress, caseIntake, caseInput, incomingRequest })
+// Generic information cases live alongside legacy cases so old required victim
+// and area columns remain intact. IDs share the allocator in ids.ts.
+const informationIncident = table({ name: "information_incident", public: true }, {
+  id: t.u64().primaryKey(), description: t.string(), area: t.option(Area), status: t.string(), created_at: t.timestamp(),
+})
+const informationCase = table({ name: "information_case", public: true }, {
+  id: t.u64().primaryKey(), incident_id: t.u64().index("btree"), objective: t.string(), scope_json: t.string(), policy_json: t.string(), input_revision: t.u64(), evaluated_revision: t.u64(), status: t.string(), brief: t.string(),
+})
+const profileSettings = table({ name: "profile_settings", public: true }, {
+  profile_id: t.u64().primaryKey(), call_consent: t.bool(), availability: t.string(), tags_json: t.string(), location_source: t.string(), intake_allowed: t.bool(),
+})
+const informationLine = table({ name: "information_line", public: true }, {
+  id: t.u8().primaryKey(), default_scope_json: t.string(),
+})
+const operatorCommand = table({ name: "operator_command", public: true }, {
+  command_id: t.string().primaryKey(), operation: t.string(), payload_json: t.string(), result_json: t.string(), actor: t.string(), created_at: t.timestamp(),
+})
+const informationAttempt = table({ name: "information_attempt", public: true }, {
+  attempt_id: t.u64().primaryKey(), decision_command_id: t.string(), authorized_revision: t.u64(), report_provider_call_id: t.string(), report_direction: t.string(), binding_status: t.string(), terminal_observed_at_ms: t.option(t.f64()), provider_terminal_status: t.string(), provider_end_reason: t.string(), interpretation_failure_count: t.u8(), interpretation_retry_at_ms: t.option(t.f64()), interpretation_error: t.string(),
+})
+
+const spacetimedb = schema({ profile, incident, incidentPerson, supportCase, attempt, note, caseProgress, attemptProgress, caseIntake, caseInput, incomingRequest, informationIncident, informationCase, profileSettings, informationLine, operatorCommand, informationAttempt })
 export default spacetimedb

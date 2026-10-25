@@ -1,3 +1,4 @@
+import { nextIncidentId, nextCaseId } from "../ids"
 import { SenderError, t, type ReducerCtx } from "spacetimedb/server"
 import spacetimedb, { ACTIVE, CALL, CLOSED, OPEN } from "../models"
 import { assessDemoIntake } from "../../../shared/intake"
@@ -46,8 +47,8 @@ export const recordCaseIntake = spacetimedb.reducer(
     const lat = 34.19, lng = -118.13
     const child = ctx.db.profile.insert({ id: 0n, name: intake.child.name, phone: "", lat, lng, contact_profile_ids: [reporter_profile_id, ...helper_profile_ids] })
     const description = `${intake.child.name} reported missing. Description: ${intake.child.description}. Last seen: ${intake.child.last_seen_location_id}, ${intake.child.last_seen_time}. Reporter: ${intake.reporter.name} (${intake.reporter.relationship}; self-reported).`
-    const incident = ctx.db.incident.insert({ id: 0n, type: "point", description, area: { lat, lng, radius_m: 0 }, brief: "", status: ACTIVE, created_at: ctx.timestamp, ended_at: undefined })
-    const current = ctx.db.supportCase.insert({ id: 0n, incident_id: incident.id, victim_profile_id: child.id, goal: `Locate ${intake.child.name} and obtain parent confirmation of reunion`, brief: "", status: OPEN })
+    const incident = ctx.db.incident.insert({ id: nextIncidentId(ctx), type: "point", description, area: { lat, lng, radius_m: 0 }, brief: "", status: ACTIVE, created_at: ctx.timestamp, ended_at: undefined })
+    const current = ctx.db.supportCase.insert({ id: nextCaseId(ctx), incident_id: incident.id, victim_profile_id: child.id, goal: `Locate ${intake.child.name} and obtain parent confirmation of reunion`, brief: "", status: OPEN })
     ctx.db.caseIntake.insert({ support_case_id: current.id, reporter_profile_id, child_description: intake.child.description, last_seen_location_id: intake.child.last_seen_location_id, last_seen_time: intake.child.last_seen_time, reporter_name: intake.reporter.name, reporter_relationship: intake.reporter.relationship, reunion_confirmed: false, confirmed_at: undefined })
     ctx.db.caseProgress.insert({ support_case_id: current.id, helper_profile_ids, input_revision: 0n, evaluated_revision: 0n, failure_count: 0, retry_at_ms: undefined, blocked_reason: "" })
     note(ctx, current.id, `${profiles[0]!.name} (profile ${reporter_profile_id}; unverified intake): ${description}`)

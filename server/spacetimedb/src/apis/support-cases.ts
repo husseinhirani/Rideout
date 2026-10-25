@@ -1,3 +1,4 @@
+import { nextIncidentId, nextCaseId } from "../ids"
 import { coordinationInput } from "./coordination"
 import { t } from "spacetimedb/server"
 import spacetimedb, {
@@ -26,7 +27,7 @@ export const openCase = spacetimedb.reducer(
     )
     if (existing) return
     ctx.db.supportCase.insert({
-      id: 0n,
+      id: nextCaseId(ctx),
       incident_id,
       victim_profile_id,
       goal,

@@ -412,3 +412,6 @@ function asNumber(value: unknown): number {
   if (typeof value === "number" && Number.isFinite(value)) return value
   throw new Error("SpacetimeDB returned a value that is not a number")
 }
+
+// Shared SQL decoding for the additive information-case read model.
+export { query, asId, asString, asArea, asTimestamp, asOption, optionalNumber }

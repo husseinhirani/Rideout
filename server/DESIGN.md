@@ -1,5 +1,24 @@
 # design.md
 
+## Generic information path — Stage 1
+
+Current domain language is in root `GLOSSARY.md`. New investigations use additive
+information incident/case records; existing cases, calls and notes remain intact.
+The manual console creates a free-text objective, searches profiles without
+dialing, and commits an explicit organizer call at the current revision. Calls
+share persisted attempts, exclusive claims and destination locks.
+
+Bound raw reports are saved before acknowledgment. Claude interpretation runs
+separately from transport polling. A report can be saved while the call remains
+active. Both completed and failed provider states are terminal; dispatch
+uncertainty never authorizes an automatic redial. Inbound accounts are received
+without disclosure and await association; automatic matching is the next stage.
+
+The new live server does not run legacy child-specific intake or planning.
+Legacy history is readable; old fixture modules remain available for regression
+commands. See `INFORMATION-API.md`, `ACCESS.md` and `PROVIDER-CONTRACT.md`.
+
+
 ## Manual baseline console (issue #16)
 
 `GET /` serves the backend test console, separate from the product frontend.

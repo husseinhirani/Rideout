@@ -1,5 +1,20 @@
 # Context
 
+## Current product — GitHub #15
+
+RideOut collects information for an organizer about any incident. The organizer
+sets an objective and permitted contacts; calls and incoming accounts become
+attributed evidence. No child, victim, parent, predefined place or participant
+count is required. Root `GLOSSARY.md` and `docs/adr/0002-generic-information-cases.md`
+define the current vocabulary and migration boundary.
+
+Stage 1 provides a generic organizer-directed call and durable report path.
+Adaptive contact/question selection and inbound case association follow its live
+checkpoint. Timer follow-ups are deferred. The older sections below describe
+legacy fixtures and must not introduce scenario rules into new product logic.
+Tony owns the backend and manual HTML console; Vien owns the product frontend.
+
+
 Global context and working conventions. Read before making any change.
 
 ## What this is
