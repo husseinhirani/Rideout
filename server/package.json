@@ -26,7 +26,8 @@
     "seed:rockridge": "tsx src/seed-rockridge.ts",
     "demo:recording": "tsx src/recording-demo.ts",
     "demo:case-inputs": "tsx src/recording-case-inputs.ts",
-    "demo:inbound": "tsx src/recording-inbound.ts"
+    "demo:inbound": "tsx src/recording-inbound.ts",
+    "configure-drill": "tsx src/configure-drill.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.3.0",

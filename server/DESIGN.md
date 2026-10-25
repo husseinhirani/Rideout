@@ -61,7 +61,9 @@ participate in the same coordination workflow and remain labeled as simulated.
 `POST /drills/participants` accepts an authenticated operator command ID and
 `participants: [{ name, phone }]`. The reducer upserts by normalized phone, updates
 names, preserves existing consent, rejects duplicate destinations and records a
-private roster of profile IDs in the command log. Configuration places no calls.
+private roster of profile IDs in the command log. Configuration places no calls. `npm --prefix server run configure-drill` submits this
+operator command from ignored `server/mock/drill-participants.json`; it does not seed
+predetermined needs, pairings, or start a drill.
 It supports 1–10 participants; real phone numbers are not committed as fixtures.
 
 `POST /drills/wildfire` accepts an operator command ID. New drills always include 12 simulated neighbors; legacy `include_simulated` inputs cannot disable them. Existing command receipts replay their original roster and payload, preserving old successful drills without adding calls. The backend resolves

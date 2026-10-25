@@ -1,0 +1,20 @@
+{
+  "participants": [
+    {
+      "name": "Participant 1",
+      "phone": ""
+    },
+    {
+      "name": "Participant 2",
+      "phone": ""
+    },
+    {
+      "name": "Participant 3",
+      "phone": ""
+    },
+    {
+      "name": "Participant 4",
+      "phone": ""
+    }
+  ]
+}
