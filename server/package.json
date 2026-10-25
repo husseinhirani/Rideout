@@ -21,6 +21,7 @@
     "agent:show": "tsx src/agent-show.ts",
     "server:sim": "SIMULATE=1 tsx src/server.ts",
     "seed:recording": "tsx src/seed-recording.ts",
+    "seed:rockridge": "tsx src/seed-rockridge.ts",
     "server:recording": "SIMULATE=1 AUTO_COORDINATE=1 COORDINATOR_SCRIPTED=1 tsx src/server.ts",
     "demo:recording": "tsx src/recording-demo.ts",
     "demo:case-inputs": "tsx src/recording-case-inputs.ts",

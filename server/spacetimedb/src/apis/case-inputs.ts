@@ -1,6 +1,7 @@
 import { SenderError, t, type ReducerCtx } from "spacetimedb/server"
 import spacetimedb, { ACTIVE, CALL, CLOSED, OPEN } from "../models"
 import { assessDemoIntake } from "../../../shared/intake"
+import { DEMO_LOCATIONS } from "../../../shared/locations"
 import { coordinationInput } from "./coordination"
 type Ctx = ReducerCtx<typeof spacetimedb.schemaType>
 // IDs require a future trusted server binding. These public reducers do not
@@ -42,8 +43,8 @@ export const recordCaseIntake = spacetimedb.reducer(
     const profiles = [reporter_profile_id, ...helper_profile_ids].map(id => ctx.db.profile.id.find(id))
     if (profiles.some(profile => !profile || !/^\+[1-9]\d{7,14}$/.test(profile.phone))) throw new SenderError("Participants must have known dialable profiles")
     if (new Set(profiles.map(profile => profile!.phone)).size !== 3) throw new SenderError("Participants must have distinct destinations")
-    // Demo area center, not a precise sighting coordinate.
-    const lat = 34.19, lng = -118.13
+    // The named demo point on the frontend's block, not a precise sighting coordinate.
+    const { lat, lng } = DEMO_LOCATIONS.find(location => location.id === intake.child.last_seen_location_id)!
     const child = ctx.db.profile.insert({ id: 0n, name: intake.child.name, phone: "", lat, lng, contact_profile_ids: [reporter_profile_id, ...helper_profile_ids] })
     const description = `${intake.child.name} reported missing. Description: ${intake.child.description}. Last seen: ${intake.child.last_seen_location_id}, ${intake.child.last_seen_time}. Reporter: ${intake.reporter.name} (${intake.reporter.relationship}; self-reported).`
     const incident = ctx.db.incident.insert({ id: 0n, type: "point", description, area: { lat, lng, radius_m: 0 }, brief: "", status: ACTIVE, created_at: ctx.timestamp, ended_at: undefined })

@@ -1,0 +1,14 @@
+[
+  {"name": "Helen Cho", "phone": "+15555550201", "lat": 37.8467238, "lng": -122.2493303, "contacts": ["Daniel Ruiz"]},
+  {"name": "Daniel Ruiz", "phone": "+15555550202", "lat": 37.8467816, "lng": -122.2517688, "contacts": []},
+  {"name": "Luis Ortega", "phone": "+15555550203", "lat": 37.8475174, "lng": -122.2490502, "contacts": ["Evan Brooks"]},
+  {"name": "Maya Chen", "phone": "+15555550204", "lat": 37.8473644, "lng": -122.2470781, "contacts": ["Naomi Berg"]},
+  {"name": "Priya Shah", "phone": "+15555550205", "lat": 37.848057, "lng": -122.2525448, "contacts": ["June Adler"]},
+  {"name": "Andre Walsh", "phone": "+15555550206", "lat": 37.8462056, "lng": -122.2506768, "contacts": []},
+  {"name": "Naomi Berg", "phone": "+15555550207", "lat": 37.8475213, "lng": -122.2524828, "contacts": []},
+  {"name": "Chris Feldman", "phone": "+15555550208", "lat": 37.8464237, "lng": -122.2501875, "contacts": []},
+  {"name": "Rosa Nguyen", "phone": "+15555550209", "lat": 37.8462532, "lng": -122.2500055, "contacts": []},
+  {"name": "Samir Patel", "phone": "+15555550210", "lat": 37.8461205, "lng": -122.2500392, "contacts": []},
+  {"name": "June Adler", "phone": "+15555550211", "lat": 37.8459958, "lng": -122.2499615, "contacts": []},
+  {"name": "Evan Brooks", "phone": "+15555550212", "lat": 37.8475963, "lng": -122.2490889, "contacts": []}
+]

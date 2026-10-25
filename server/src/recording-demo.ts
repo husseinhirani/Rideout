@@ -1,5 +1,6 @@
 import { pathToFileURL } from "node:url"
 import { loadEnv } from "./env"
+import { BLOCK } from "../shared/locations"
 import type { AttemptRow, AttemptProgressRow, ProfileRow, SupportCaseRow, NoteRow, CaseProgressRow } from "./db"
 
 export type RecordingState = {
@@ -92,7 +93,7 @@ export async function runRecordingDemo(options: RecordingOptions): Promise<Recor
   const opened = options.caseInputs ? await options.caseInputs.open(initial) : await (async () => {
     const incident = await request<{ incident_id: number }>("/incidents", {
       type: "Fictional recording: Ava, age 7, red jacket, last seen at Park bench at 15:00; possible search locations Park bench and Playground",
-      lat: 34.19, lng: -118.13, radius_m: 0,
+      lat: BLOCK.lat, lng: BLOCK.lng, radius_m: 0,
     })
     const opened = await request<{ support_case_id: number }>("/cases", {
       incident_id: incident.incident_id, victim_profile_id: child!.id,

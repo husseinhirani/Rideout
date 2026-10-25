@@ -28,6 +28,7 @@ import {
   type ProfileRow,
   type SupportCaseRow,
 } from "./db"
+import { DEMO_LOCATIONS } from "../shared/locations"
 import { ServiceError } from "./service"
 import { recordingMode, scriptedPlan, scriptedInterpret } from "./recording-model"
 
@@ -104,6 +105,7 @@ export async function getState(): Promise<Record<string, unknown>> {
       auto_coordinate: automatic(), database: process.env.SPACETIMEDB_DATABASE ?? "rideout",
       helper_ids: automatic() ? configuredHelperIds() : [],
     },
+    locations: DEMO_LOCATIONS,
     profiles: allProfiles,
     incidents: allIncidents,
     incident_people: people,
