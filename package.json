@@ -11,12 +11,14 @@
   },
   "dependencies": {
     "3d-tiles-renderer": "^0.5.3",
+    "d3-contour": "^4.0.2",
     "maplibre-gl": "^5.6.1",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "three": "^0.170.0"
   },
   "devDependencies": {
+    "@types/d3-contour": "^3.0.6",
     "@types/react": "^19.1.12",
     "@types/react-dom": "^19.1.9",
     "@types/three": "^0.170.0",

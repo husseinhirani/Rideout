@@ -1727,3 +1727,29 @@ button.tile:hover { transform: translateY(-3px); box-shadow: 0 16px 34px rgba(17
 }
 .incident-map-tools { display: flex; gap: 12px; align-items: center; flex: none; }
 .incident-map-tools button { border: 1px solid #dce0d1; border-radius: 20px; padding: 7px 10px; background: #fff; color: #4b573c; font: inherit; font-size: 11px; cursor: pointer; }
+.incident-map-frame { position: relative; }
+.incident-map-frame > .incident-geography-map { touch-action: none; cursor: grab; user-select: none; }
+.incident-map-frame > .incident-geography-map:active { cursor: grabbing; }
+.incident-fire { stroke-dasharray: 6 5; animation: incident-embers 1.6s linear infinite; }
+@keyframes incident-embers { to { stroke-dashoffset: -22; } }
+@media (prefers-reduced-motion: reduce) { .incident-fire { animation: none; } }
+.incident-place { pointer-events: none; }
+.incident-wind, .incident-zoom { position: absolute; display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,.92); border: 1px solid #dce0d1; border-radius: 14px; box-shadow: 0 2px 10px rgba(30,34,24,.08); color: #2f3527; }
+.incident-wind { top: 10px; left: 10px; padding: 6px 8px; font-size: 11px; }
+.incident-wind > svg { width: 28px; height: 28px; color: #b43a22; flex: none; }
+.incident-wind > div:nth-of-type(1) { display: flex; flex-direction: column; gap: 1px; min-width: 76px; }
+.incident-wind > div:nth-of-type(1) span { color: #727767; }
+.incident-wind-turn, .incident-wind-speed { display: flex; gap: 2px; }
+.incident-wind button, .incident-zoom button { border: 1px solid #dce0d1; background: #fff; color: #3e4334; border-radius: 9px; min-width: 26px; height: 26px; padding: 0 6px; font: inherit; font-size: 12px; cursor: pointer; }
+.incident-wind-speed button.on { background: #2f3527; border-color: #2f3527; color: #fff; }
+.incident-zoom { top: 10px; right: 10px; flex-direction: column; gap: 4px; padding: 5px; }
+.incident-zoom button { width: 30px; height: 30px; font-size: 16px; }
+.incident-zoom button:disabled { opacity: .4; cursor: default; }
+.incident-map-key .zone { border-radius: 3px; border-width: 1px; }
+.incident-map-key .zone.fire { background: #9e2a1b; border-color: #ff6a2b; }
+.incident-map-key .zone.now { background: #f6c3bd; border-color: #e5483b; }
+.incident-map-key .zone.warning { background: #fbdcb5; border-color: #f29b38; }
+.incident-map-key .zone.ready { background: #fbf0c0; border-color: #f2cf4a; }
+@media (max-width: 560px) {
+  .incident-wind { flex-wrap: wrap; max-width: calc(100% - 70px); }
+}
