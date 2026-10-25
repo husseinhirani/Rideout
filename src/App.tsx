@@ -13,11 +13,12 @@ import { MapStats } from "./MapStats";
 import { MissingChildForm } from "./MissingChildForm";
 import { NeighborhoodMap } from "./NeighborhoodMap";
 import { OperatorPanel } from "./OperatorPanel";
+import { DispatcherCallModal } from "./DispatcherCallModal";
 import { RegisterForm } from "./RegisterForm";
 import { downloadLog } from "./exportLog";
 import { householdFor } from "./households";
 import { assignHouses, footprints, GEO, useRideOut } from "./telemetry";
-import type { ChatMessage, HouseStatus, OperatorSession } from "./types";
+import type { ChatMessage, HouseStatus } from "./types";
 
 const STATUS: Record<HouseStatus, string> = {
   waiting: "Queued",
@@ -57,7 +58,7 @@ export function App() {
   const [liveChat, setLiveChat] = useState<ChatMessage[]>([]);
   const [chatBusy, setChatBusy] = useState(false);
   const [liveSelected, setLiveSelected] = useState<number | null>(null);
-  const [outside, setOutside] = useState<{ session: OperatorSession; call: LiveCall } | null>(null);
+  const [outside, setOutside] = useState<{ caseId: number; profileId: number; name: string; existingId?: string } | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const recordings = useRef(new Map<string, Blob>());
   const waiting = ride.calls.find((call) => call.phase === "holding");
@@ -136,11 +137,15 @@ export function App() {
       await backend.run(() => api.report(attemptId, answer, concernText));
     },
     callYourself: (call: LiveCall) => {
-      const house = liveHouses.find((item) => item.name === call.person?.name);
-      setOutside({
-        call,
-        session: { callId: `attempt-${call.attempt.id}`, name: call.person?.name ?? "Unknown", householdId: house?.id ?? null, mode: "direct", startedAt: Date.now() },
-      });
+      if (call.person) setOutside({ caseId: call.attempt.support_case_id, profileId: call.person.id, name: call.person.name });
+    },
+    callProfile: (profileId: number, caseRef: number) => {
+      const person = state?.profiles.find(item => item.id === profileId);
+      if (person) setOutside({ caseId: caseRef, profileId, name: person.name });
+    },
+    viewDispatcherCall: (call: import("./api").DispatcherCallRow) => {
+      const person = state?.profiles.find(item => item.id === call.profile_id);
+      setOutside({ caseId: call.support_case_id, profileId: call.profile_id, name: person?.name ?? "Unknown", existingId: call.id });
     },
     checkIn: async (incidentId: number, profileId: number, result: "safe" | "victim") => {
       try {
@@ -421,25 +426,15 @@ export function App() {
           ) : null}
 
           {outside ? (
-            <OperatorPanel
-              key={outside.session.callId}
-              session={outside.session}
-              call={undefined}
-              house={liveHouses.find((house) => house.id === outside.session.householdId)}
-              now={now.getTime()}
-              outside
-              onSaid={() => {}}
-              onHangUp={(outcome) => {
-                if (outcome.audio) recordings.current.set(outside.session.callId, outcome.audio);
-                const caseRef = outside.call.attempt.support_case_id;
-                const text = outcome.note.trim();
-                setOutside(null);
-                if (text) {
-                  void backend
-                    .run(() => api.caseInput(caseRef, `Dispatcher called ${outside.session.name} outside RideOut: ${text}`))
-                    .catch(fail);
-                }
-              }}
+            <DispatcherCallModal
+              key={outside.existingId ?? `${outside.caseId}-${outside.profileId}`}
+              caseId={outside.caseId}
+              profileId={outside.profileId}
+              name={outside.name}
+              logs={state?.dispatcher_calls ?? []}
+              existingId={outside.existingId}
+              onClose={() => setOutside(null)}
+              onSaved={() => void backend.run(() => api.state())}
             />
           ) : null}
 

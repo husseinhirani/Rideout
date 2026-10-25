@@ -25,3 +25,4 @@ export {
 export { recordCaseIntake, recordCaseUpdate, recordReunionConfirmation } from "./apis/case-inputs"
 
 export { receiveIncomingRequest, prepareIncomingRequest, finishIncomingRequest, failIncomingRequest } from "./apis/incoming-requests"
+export { openDispatcherCall, connectDispatcherCall, progressDispatcherCall, finishDispatcherCall, appendDispatcherTranscript, setDispatcherGuidance } from "./apis/dispatcher-calls"

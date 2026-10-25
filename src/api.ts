@@ -100,6 +100,18 @@ export type IncomingRequestRow = {
   retry_at_ms: number;
 };
 
+export type DispatcherCallRow = {
+  id: string;
+  support_case_id: number;
+  profile_id: number;
+  call_sid: string;
+  status: string;
+  transcript: string;
+  guidance: string;
+  created_at: string;
+  ended_at: string | null;
+};
+
 export type DemoLocation = { id: string; label: string; lat: number; lng: number };
 
 export type DemoMode = {
@@ -125,6 +137,7 @@ export type BackendState = {
   attempt_progress: AttemptProgressRow[];
   case_intakes?: CaseIntakeRow[];
   incoming_requests?: IncomingRequestRow[];
+  dispatcher_calls?: DispatcherCallRow[];
 };
 
 export type IntakeQuestion = { field: string; question: string };
@@ -172,6 +185,8 @@ export const api = {
   caseInput: (caseId: number, text: string) => call<{ support_case_id: number; planned: number; reason: string }>(`/cases/${caseId}/input`, { text }),
   closeCase: (caseId: number) => call<{ support_case_id: number; status: string }>(`/cases/${caseId}/close`, {}),
   cancel: (attemptId: number) => call<{ attempt_id: number; cancelled: boolean; reason: string }>(`/attempts/${attemptId}/cancel`, {}),
+  dispatcherCall: (caseId: number, profileId: number) => call<{ id: string; token: string }>(`/cases/${caseId}/dispatcher-calls`, { profile_id: profileId }),
+  cancelDispatcherCall: (id: string) => call<{ ok: boolean }>(`/dispatcher-calls/${id}/cancel`, {}),
   report: (attemptId: number, answer: string, concern: string) =>
     call<{ support_case_id: number }>("/calls/report", { attempt_id: String(attemptId), answer, concern }),
   checkIn: (incidentId: number, profileId: number, result: "safe" | "victim") =>

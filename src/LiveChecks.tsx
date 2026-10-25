@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { BackendState } from "./api";
+import type { BackendState, DispatcherCallRow } from "./api";
 import { eventKey } from "./backend";
 import { FacilitatorChat } from "./Checks";
 import {
@@ -30,6 +30,8 @@ export type LiveActions = {
   cancel: (attemptId: number) => Promise<string>;
   report: (attemptId: number, answer: string, concern: string) => Promise<void>;
   callYourself: (call: LiveCall) => void;
+  callProfile: (profileId: number, caseId: number) => void;
+  viewDispatcherCall: (call: DispatcherCallRow) => void;
   checkIn: (incidentId: number, profileId: number, result: "safe" | "victim") => Promise<void>;
   inbound: (fromPhone: string, text: string, providerCallId: string) => Promise<string>;
   ask: (text: string) => void;
@@ -67,6 +69,8 @@ export function LiveChecks({
 }) {
   const row = currentCase(state, caseId);
   const calls = callsFor(state, row?.id ?? null);
+  const dispatcherCalls = (state.dispatcher_calls ?? []).filter(item => !row || item.support_case_id === row.id);
+  const [selectedProfileId, setSelectedProfileId] = useState("");
   const sweep = latestIncident(state, true);
   const inbound = inboundFrom(state);
   const review = inbound.filter((item) => item.review);
@@ -93,13 +97,12 @@ export function LiveChecks({
       return { key: call.attempt.id, from: call.person?.name ?? "Unknown", to: person?.name ?? `case #${call.attempt.support_case_id}` };
     });
   const incident = state.incidents.find((item) => item.id === row?.incident_id) ?? sweep;
-  const elapsed = incident ? seconds(Date.parse(incident.created_at) || now, now) : 0;
   const status = pending.length ? "Live" : row ? (row.status === "closed" ? "Case closed" : `Case #${row.id}`) : "Standing by";
   const coordination = row ? coordinationOf(state, row.id, now) : null;
   const latest = inbound[0];
 
   const rail: RailItem<Focus>[] = [
-    { id: "outgoing", label: "Outgoing calls", value: calls.length, icon: "phoneOut" },
+    { id: "outgoing", label: "Outgoing calls", value: calls.length + dispatcherCalls.length, icon: "phoneOut" },
     { id: "incoming", label: "Incoming calls", value: inbound.length, icon: "phoneIn" },
     { id: "checkins", label: "Check-in sweep", value: people.length, icon: "check" },
     { id: "need", label: "Need help", value: needHelp.length, icon: "alert" },
@@ -117,18 +120,6 @@ export function LiveChecks({
         <header className="dash-head">
           <div>
             <h1>Checks</h1>
-            <p>{incident?.type ? incident.type[0].toUpperCase() + incident.type.slice(1) : incident ? "Incident" : "No incident yet"} · live backend</p>
-          </div>
-          <div className="dash-pills">
-            <span className={`dash-pill${pending.length ? " live" : ""}`}>
-              <i />
-              {status}
-            </span>
-            <span className="dash-pill">
-              <Icon name="clock" />
-              {mmss(elapsed)}
-            </span>
-            <span className="dash-pill dark">{simulate ? "Simulated calls" : "Real calls"}</span>
           </div>
         </header>
 
@@ -143,7 +134,7 @@ export function LiveChecks({
               <span className="calls-figures">
                 <span>
                   <small>Calls</small>
-                  <strong>{calls.length}</strong>
+                  <strong>{calls.length + dispatcherCalls.length}</strong>
                 </span>
                 <span>
                   <small>Reports in</small>
@@ -276,13 +267,23 @@ export function LiveChecks({
           {focus.id === "outgoing" ? (
             <>
               <div className="focus-stats">
-                <span><strong>{calls.length}</strong>calls</span>
+                <span><strong>{calls.length + dispatcherCalls.length}</strong>calls</span>
                 <span><strong>{active.length}</strong>active</span>
                 <span><strong>{reported}</strong>reports in</span>
                 <span><strong>{calls.filter((call) => call.transport === "unknown").length}</strong>unresolved</span>
               </div>
               <p className="focus-note">Call status comes from the phone provider. A report is separate: answered does not mean the call ended.</p>
-              {calls.length === 0 ? (
+              {row && row.status !== "closed" ? <div className="dispatcher-call-picker">
+                <select aria-label="Person to call" value={selectedProfileId} onChange={event => setSelectedProfileId(event.target.value)}>
+                  <option value="">Choose a person to call</option>
+                  {state.profiles.filter(profile => /^\+[1-9]\d{1,14}$/.test(profile.phone)).map(profile => <option key={profile.id} value={profile.id}>{profile.name}</option>)}
+                </select>
+                <button type="button" disabled={operatorBusy || !selectedProfileId} onClick={() => actions.callProfile(Number(selectedProfileId), row.id)}>Call from laptop</button>
+              </div> : null}
+              {dispatcherCalls.length ? <ul className="dispatcher-call-log">
+                {dispatcherCalls.map(item => <li key={item.id}><button type="button" onClick={() => actions.viewDispatcherCall(item)}><b>Dispatcher → {state.profiles.find(profile => profile.id === item.profile_id)?.name ?? "Unknown"}</b><span>{item.status} · {new Date(item.created_at).toLocaleTimeString()}</span></button></li>)}
+              </ul> : null}
+              {calls.length === 0 && dispatcherCalls.length === 0 ? (
                 <p className="focus-empty">{row ? "No calls planned for this case yet." : "Calls appear once a case opens."}</p>
               ) : (
                 <ul className="call-list">

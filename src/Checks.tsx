@@ -200,7 +200,6 @@ export function Checks({
   const current = onLine.find((call) => call.phase === "live" || call.phase === "operator") ?? onLine[0] ?? null;
   const talked = calls.filter((call) => call.answeredAt).map((call) => seconds(call.answeredAt ?? 0, call.endedAt ?? now));
   const average = talked.length ? Math.round(talked.reduce((sum, value) => sum + value, 0) / talked.length) : 0;
-  const elapsed = started && incident.startedAt ? seconds(incident.startedAt, now) : 0;
   const state = !started ? "Standing by" : finished ? "Wave done" : "Live";
   const asPeople = (list: House[], tone: Person["tone"]): Person[] =>
     list.map((house) => ({ key: house.id, name: house.name, note: house.note, chip: STATUS_NAME[house.status], tone }));
@@ -223,18 +222,6 @@ export function Checks({
         <header className="dash-head">
           <div>
             <h1>Checks</h1>
-            <p>{incident.kind === "missing_child" ? "Missing child alert" : "Wildfire check-in"} · Rockridge</p>
-          </div>
-          <div className="dash-pills">
-            <span className={`dash-pill${state === "Live" ? " live" : ""}`}>
-              <i />
-              {state}
-            </span>
-            <span className="dash-pill">
-              <Icon name="clock" />
-              {mmss(elapsed)}
-            </span>
-            <span className="dash-pill dark">{houses.length} neighbors</span>
           </div>
         </header>
 

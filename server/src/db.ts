@@ -122,6 +122,26 @@ export type IncomingRequestRow = {
   retry_at_ms: number
 }
 
+export type DispatcherCallRow = {
+  id: string
+  support_case_id: number
+  profile_id: number
+  call_sid: string
+  status: string
+  transcript: string
+  guidance: string
+  created_at: string
+  ended_at: string | null
+}
+
+export async function dispatcherCalls(): Promise<DispatcherCallRow[]> {
+  return (await query("SELECT * FROM dispatcher_call")).map(row => ({
+    id: asString(row.id), support_case_id: asId(row.support_case_id), profile_id: asId(row.profile_id),
+    call_sid: asString(row.call_sid), status: asString(row.status), transcript: asString(row.transcript),
+    guidance: asString(row.guidance), created_at: asTimestamp(row.created_at), ended_at: asOptionalTimestamp(row.ended_at),
+  }))
+}
+
 export async function incomingRequests(): Promise<IncomingRequestRow[]> {
   return (await query("SELECT * FROM incoming_request")).map(row => ({
     id: asId(row.id), provider_call_id: asString(row.provider_call_id),

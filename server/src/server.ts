@@ -3,6 +3,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { resolve } from "node:path"
 import { loadEnv } from "./env"
 import { checkCallbackAuth } from "./callback-auth"
+import { cancelUnconnectedDispatcherCall, connectDispatcherCall, finishDispatcherCall, openDispatcherCall, receiveDispatcherTranscript, updateDispatcherCallStatus, verifyTwilio } from "./dispatcher-calls"
 import { receiveIncoming, startIncomingWorker } from "./incoming-runtime"
 import { recordingMode } from "./recording-model"
 import {
@@ -59,10 +60,40 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     send(res, 404, { error: "not found" })
     return
   }
+  if (path === "/dispatcher-calls/voice" || /^\/dispatcher-calls\/[0-9a-f-]+\/(complete|transcript|status)$/.test(path)) {
+    const form = Object.fromEntries(new URLSearchParams(await readBody(req)))
+    verifyTwilio(req, path, form)
+    if (path === "/dispatcher-calls/voice") {
+      sendXml(res, await connectDispatcherCall(asString(form.call_id, "call_id"), asString(form.CallSid, "CallSid")))
+      return
+    }
+    const match = /^\/dispatcher-calls\/([0-9a-f-]+)\/(complete|transcript|status)$/.exec(path)!
+    if (match[2] === "complete") {
+      sendXml(res, await finishDispatcherCall(match[1], asString(form.DialCallStatus, "DialCallStatus"), asString(form.CallSid, "CallSid")))
+    } else if (match[2] === "transcript") {
+      await receiveDispatcherTranscript(match[1], form)
+      send(res, 200, { ok: true })
+    } else {
+      await updateDispatcherCallStatus(match[1], form)
+      send(res, 200, { ok: true })
+    }
+    return
+  }
   if (["/requests", "/calls/report", "/check-ins"].includes(path)) {
     checkCallbackAuth(req.headers.authorization, (process.env.CALLBACK_SECRET ?? "").trim(), path === "/requests")
   }
   const body = await readJson(req)
+  const humanCall = /^\/cases\/(\d+)\/dispatcher-calls$/.exec(path)
+  if (humanCall) {
+    send(res, 200, await openDispatcherCall(Number(humanCall[1]), asId(body.profile_id, "profile_id")))
+    return
+  }
+  const abandon = /^\/dispatcher-calls\/([0-9a-f-]+)\/cancel$/.exec(path)
+  if (abandon) {
+    await cancelUnconnectedDispatcherCall(abandon[1])
+    send(res, 200, { ok: true })
+    return
+  }
   if (path === "/requests") {
     send(res, 200, await receiveIncoming(body))
     return
@@ -155,6 +186,12 @@ function send(res: ServerResponse, status: number, body: unknown): void {
 function sendHtml(res: ServerResponse, body: string): void {
   if (res.headersSent || res.writableEnded) return
   res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" })
+  res.end(body)
+}
+
+function sendXml(res: ServerResponse, body: string): void {
+  if (res.headersSent || res.writableEnded) return
+  res.writeHead(200, { "Content-Type": "application/xml; charset=utf-8" })
   res.end(body)
 }
 

@@ -158,6 +158,40 @@ The backend loads `.env.local` before `.env`, checking the working directory,
 repository root and server directory in that order. Exported process variables
 always take precedence. Both local files stay gitignored.
 
+## Dispatcher calls from the browser
+
+The dispatcher can call a dialable profile on an open support case from the Checks
+outgoing-call view. `POST /cases/:id/dispatcher-calls {profile_id}` creates a
+`dispatcher_call` log row and returns a short-lived Twilio Voice SDK token plus
+the call id. The browser connects its microphone using that token; the recipient
+answers on a phone. Twilio requests `POST /dispatcher-calls/voice`, which looks up
+the stored profile and returns TwiML. The destination is never taken from the
+browser's Twilio connection parameters. Twilio's signed phone-leg progress,
+completion and real-time transcription callbacks update the log. `GET /state.dispatcher_calls` includes
+status, final transcript lines and private coordinator guidance. A call canceled
+before connection can use `POST /dispatcher-calls/:id/cancel`.
+
+Twilio transcribes both call tracks. Final segments are saved once using their
+transcription/session/track/sequence key. Claude receives the case brief and recent
+segments and returns a short running summary and suggested next question. This
+guidance is shown only in the dispatcher's modal; it never becomes speech on the
+call. The existing Cartesia Managed Agent continues to handle its own agent-led
+calls. A dispatcher may save an attributed case note after hanging up; that uses
+the existing dispatcher-input route and its coordination rules. The transcript
+alone does not assert facts, close a case, or trigger outreach.
+
+For live use, configure `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`,
+`TWILIO_API_KEY_SID`, `TWILIO_API_KEY_SECRET`, `TWILIO_TWIML_APP_SID`,
+`TWILIO_FROM_NUMBER`, and `TWILIO_WEBHOOK_BASE_URL` (public HTTPS origin).
+Point the TwiML App's Voice Request URL at that origin plus
+`/dispatcher-calls/voice` using POST. The origin must reach the backend; the
+existing ngrok tunnel can provide it. The browser requires microphone permission
+and HTTPS or localhost. Twilio webhooks are signature-checked. This MVP retains
+the existing local dispatcher trust model; do not expose its call-creation route
+to untrusted users. Publish the additive SpacetimeDB module before starting the
+updated server. An end-to-end phone call still requires live Twilio credentials,
+a configured TwiML App, and a dialable profile.
+
 ## 1. Glossary
 
 Use these terms exactly in code, comments, UI copy, and docs.

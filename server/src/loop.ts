@@ -16,6 +16,7 @@ import {
   attemptProgress,
   caseProgress,
   caseIntakes,
+  dispatcherCalls,
   incomingRequests,
   callReducer,
   incidentPeople,
@@ -90,7 +91,7 @@ function configuredHelperIds(): number[] {
 // ------------------------------------------------------------------ reading
 
 export async function getState(): Promise<Record<string, unknown>> {
-  const [allProfiles, allIncidents, people, cases, allAttempts, allNotes, coordination, attempt_progress, case_intakes, incoming_requests] = await Promise.all([
+  const [allProfiles, allIncidents, people, cases, allAttempts, allNotes, coordination, attempt_progress, case_intakes, incoming_requests, dispatcher_calls] = await Promise.all([
     profiles(),
     incidents(),
     incidentPeople(),
@@ -101,6 +102,7 @@ export async function getState(): Promise<Record<string, unknown>> {
     attemptProgress(),
     caseIntakes(),
     incomingRequests(),
+    dispatcherCalls(),
   ])
   return {
     simulate: process.env.SIMULATE === "1",
@@ -123,6 +125,7 @@ export async function getState(): Promise<Record<string, unknown>> {
     case_intakes,
     // Dispatcher view only. The caller-facing reply never carries case facts.
     incoming_requests,
+    dispatcher_calls,
   }
 }
 

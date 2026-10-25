@@ -772,6 +772,34 @@ h2, h3 { margin: 0; font-weight: 600; }
   color: #fff;
   resize: vertical;
 }
+.dispatcher-call-backdrop {
+  position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center;
+  padding: 20px; background: rgba(2, 8, 18, .76);
+}
+.dispatcher-call-modal {
+  width: min(560px, 100%); max-height: min(90vh, 850px); overflow: auto; padding: 24px;
+  border: 1px solid rgba(165, 201, 255, .3); border-radius: 18px;
+  background: #101b2a; color: #f4f7ff; box-shadow: 0 24px 80px rgba(0, 0, 0, .5);
+}
+.dispatcher-call-modal header { display: flex; align-items: start; justify-content: space-between; gap: 16px; }
+.dispatcher-call-modal header small { color: #9eb4d0; }
+.dispatcher-call-modal h2 { margin: 4px 0 0; }
+.dispatcher-call-modal h3 { margin: 0 0 8px; font-size: 15px; }
+.dispatcher-call-modal header button { font-size: 28px; line-height: 1; background: transparent; border: 0; color: inherit; cursor: pointer; }
+.dispatcher-call-status { font-weight: 700; color: #a9cbff; }
+.dispatcher-call-hint { color: #aeb9ca; font-size: 13px; line-height: 1.5; }
+.dispatcher-call-modal > button, .dispatcher-call-note button, .dispatcher-call-picker button { padding: 9px 14px; border-radius: 9px; cursor: pointer; }
+.dispatcher-call-guidance, .dispatcher-call-transcript, .dispatcher-call-note { margin-top: 18px; padding: 15px; border-radius: 12px; background: rgba(255, 255, 255, .06); }
+.dispatcher-call-guidance p, .dispatcher-call-transcript p { margin: 6px 0; white-space: pre-wrap; line-height: 1.5; }
+.dispatcher-call-transcript { max-height: 230px; overflow: auto; }
+.dispatcher-call-note label { display: block; margin-bottom: 7px; font-weight: 700; }
+.dispatcher-call-note textarea { display: block; width: 100%; min-height: 95px; margin-bottom: 10px; padding: 10px; border-radius: 8px; box-sizing: border-box; }
+.dispatcher-call-picker { display: flex; gap: 8px; margin: 14px 0; flex-wrap: wrap; }
+.dispatcher-call-picker select { min-width: 200px; padding: 8px; border-radius: 8px; }
+.dispatcher-call-log { list-style: none; padding: 0; margin: 12px 0; }
+.dispatcher-call-log li { border-bottom: 1px solid rgba(255,255,255,.1); }
+.dispatcher-call-log button { display: flex; justify-content: space-between; gap: 12px; width: 100%; padding: 9px; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; }
+.dispatcher-call-log span { color: #aeb9ca; }
 .hang-up {
   width: 100%;
   margin-top: 10px;

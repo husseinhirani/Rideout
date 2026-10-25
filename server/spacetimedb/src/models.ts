@@ -181,5 +181,20 @@ const incomingRequest = table(
   },
 )
 
-const spacetimedb = schema({ profile, incident, incidentPerson, supportCase, attempt, note, caseProgress, attemptProgress, caseIntake, caseInput, incomingRequest })
+const dispatcherCall = table(
+  { name: "dispatcher_call", public: true },
+  {
+    id: t.string().primaryKey(),
+    support_case_id: t.u64().index("btree"),
+    profile_id: t.u64(),
+    call_sid: t.string(),
+    status: t.string(),
+    transcript: t.string(),
+    guidance: t.string(),
+    created_at: t.timestamp(),
+    ended_at: t.option(t.timestamp()),
+  },
+)
+
+const spacetimedb = schema({ profile, incident, incidentPerson, supportCase, attempt, note, caseProgress, attemptProgress, caseIntake, caseInput, incomingRequest, dispatcherCall })
 export default spacetimedb

@@ -28,7 +28,8 @@ export default defineConfig(({ mode }) => {
       proxy: {
         "^/state$": route(false),
         "^/(incidents|intake|profiles)$": route(false),
-        "^/cases(/\\d+/(input|close))?$": route(false),
+        "^/cases(/\\d+/(input|close|dispatcher-calls))?$": route(false),
+        "^/dispatcher-calls/[0-9a-f-]+/cancel$": route(false),
         "^/attempts/\\d+/cancel$": route(false),
         "^/(calls/report|check-ins|requests)$": route(true),
       },

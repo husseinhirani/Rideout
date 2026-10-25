@@ -63,6 +63,11 @@ One neighborhood, one simulated fire, one complete loop:
 
 The fire is simulated and we say so clearly in the demo.
 
+An additional dispatcher-call path lets the human call a profile from the browser
+through Twilio. The call log and final transcript are persisted separately from
+automated attempts. Claude gives private live text guidance from the transcript;
+the dispatcher chooses what case note to save after the call.
+
 ## Hackathon targets
 
 Primary: Meta ("Bringing People Closer Together with AI"), Anthropic (Claude), Microsoft ("Built for the Real World"). Likely also relevant: Cartesia (voice) and SpacetimeDB. Check track rules before submitting. Sponsor tech must be used meaningfully, not bolted on.

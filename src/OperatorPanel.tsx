@@ -3,9 +3,8 @@ import { householdFor } from "./households";
 import type { CallCard, House, HouseStatus, OperatorOutcome, OperatorSession } from "./types";
 
 /**
- * The lead on the line: a direct call, a take-over from the AI, or a call the AI handed over.
- * The browser records the lead's microphone and transcribes it. Tomorrow the line itself runs
- * through the Twilio Voice SDK, and Twilio records both sides of the call.
+ * Offline drill panel. The browser records and transcribes only the lead's
+ * microphone. Live dispatcher calls use DispatcherCallModal and Twilio instead.
  */
 
 type Props = {
@@ -15,7 +14,7 @@ type Props = {
   now: number;
   onSaid: (text: string) => void;
   onHangUp: (outcome: OperatorOutcome) => void;
-  // Live mode: the dispatcher phones the person themselves. RideOut is not on that line.
+  // Legacy offline presentation option.
   outside?: boolean;
 };
 
