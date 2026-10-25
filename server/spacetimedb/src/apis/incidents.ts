@@ -1,3 +1,4 @@
+import { nextIncidentId, nextCaseId } from "../ids"
 import { t } from "spacetimedb/server"
 import spacetimedb, { CHECKING_IN, OPEN, SAFE, VICTIM, ACTIVE } from "../models"
 
@@ -9,7 +10,7 @@ export const createIncident = spacetimedb.reducer(
     // radius 0 is a single-person incident, such as one missing child.
     if (radius_m < 0) throw new Error("radius_m must not be negative")
     const created = ctx.db.incident.insert({
-      id: 0n,
+      id: nextIncidentId(ctx),
       type,
       description,
       area: { lat, lng, radius_m },
@@ -50,7 +51,7 @@ export const recordCheckIn = spacetimedb.reducer(
     )
     if (existing) return
     ctx.db.supportCase.insert({
-      id: 0n,
+      id: nextCaseId(ctx),
       incident_id,
       victim_profile_id: profile_id,
       goal: "Find someone who can get this person out, and keep them informed.",
