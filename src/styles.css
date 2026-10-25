@@ -11,6 +11,9 @@ button, time { font: inherit; color: inherit; }
 
 .stage { position: relative; height: 100%; overflow: hidden; overflow: clip; background: #120e0c; }
 .scene, .view-host { position: absolute; inset: 0; }
+.map-selection-box { position: absolute; z-index: 1; border: 1px solid #ffb347; background: rgba(255, 179, 71, 0.18); pointer-events: none; }
+.map-brush-overlay { position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+.map-brush-overlay polyline { fill: rgba(255, 179, 71, 0.18); stroke: #ffb347; stroke-width: 2; vector-effect: non-scaling-stroke; }
 .view-host canvas { display: block; width: 100%; height: 100%; }
 .checks-on .scene,
 .checks-on .pin,
@@ -19,11 +22,8 @@ button, time { font: inherit; color: inherit; }
 .checks-on .top { z-index: 5; }
 .checks-on .map-controls { display: none; }
 .map-controls { display: flex; align-items: center; gap: 8px; }
-.simple-switch {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px 8px 14px;
+.map-tool-button {
+  padding: 14px 18px;
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 999px;
   background: rgba(10, 10, 12, 0.78);
@@ -33,27 +33,7 @@ button, time { font: inherit; color: inherit; }
   color: rgba(255, 255, 255, 0.72);
   cursor: pointer;
 }
-.simple-switch i {
-  position: relative;
-  width: 36px;
-  height: 20px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.18);
-}
-.simple-switch i::after {
-  content: "";
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: #fff;
-  transition: transform 0.18s ease;
-}
-.simple-switch.on { color: #fff; }
-.simple-switch.on i { background: #f3efe6; }
-.simple-switch.on i::after { transform: translateX(16px); background: #2a2622; }
+.map-tool-button.on { color: #fff; background: rgba(255, 255, 255, 0.14); }
 .scene.simple .credits { color: rgba(42, 38, 34, 0.72); text-shadow: none; }
 .simple-on:not(.checks-on):not(.nodes-on) .brand strong,
 .simple-on:not(.checks-on):not(.nodes-on) .top-end > time { color: #1d1d1b; }

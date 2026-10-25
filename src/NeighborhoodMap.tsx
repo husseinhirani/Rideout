@@ -40,6 +40,9 @@ type Props = {
   simple?: boolean;
   showFire?: boolean;
   sightings?: Sighting[];
+  selectedIds?: number[];
+  onSelectionChange?: (ids: number[]) => void;
+  drawMode?: "rectangle" | "brush" | null;
 };
 
 const STATUS: Record<House["status"], string> = {
@@ -82,7 +85,7 @@ const SIDING = [0xe9e2d3, 0xd8d3c8, 0xc9d1c4, 0xe8d9bf, 0xcdd6dd, 0xf2efe9, 0xbf
 const HOVER_GLOW = 0xffb347;
 const HOVER_LIFT = 2.2;
 
-export function NeighborhoodMap({ place, houses, onSelect, angle = "side", simple = false, showFire = true, sightings = [] }: Props) {
+export function NeighborhoodMap({ place, houses, onSelect, angle = "side", simple = false, showFire = true, sightings = [], selectedIds = [], onSelectionChange, drawMode = null }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const housesRef = useRef(houses);
   const sightingsRef = useRef(sightings);
@@ -111,6 +114,12 @@ export function NeighborhoodMap({ place, houses, onSelect, angle = "side", simpl
   const [tip, setTip] = useState<Tip | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [credit, setCredit] = useState(GOOGLE_KEY ? "Google" : OPEN_CREDIT);
+  const [selectionBox, setSelectionBox] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
+  const [brushPoints, setBrushPoints] = useState<{ x: number; y: number }[]>([]);
+  const selectedRef = useRef(selectedIds);
+  const drawRef = useRef(drawMode);
+  selectedRef.current = selectedIds;
+  drawRef.current = drawMode;
 
   useEffect(() => {
     const node = container.current;
@@ -483,6 +492,8 @@ export function NeighborhoodMap({ place, houses, onSelect, angle = "side", simpl
     let moved = 0;
     let lastX = 0;
     let lastY = 0;
+    let boxStart: { x: number; y: number } | null = null;
+    let brushPath: { x: number; y: number }[] = [];
 
     const resize = () => {
       const width = node.clientWidth;
@@ -613,7 +624,13 @@ export function NeighborhoodMap({ place, houses, onSelect, angle = "side", simpl
       moved = 0;
       lastX = event.clientX;
       lastY = event.clientY;
-      turning = simpleRef.current && (event.button === 2 || event.shiftKey);
+      turning = !drawRef.current && simpleRef.current && (event.button === 2 || event.shiftKey);
+      if (drawRef.current) {
+        const rect = node.getBoundingClientRect();
+        boxStart = { x: event.clientX - rect.left, y: event.clientY - rect.top };
+        if (drawRef.current === "rectangle") setSelectionBox({ ...boxStart, width: 0, height: 0 });
+        else { brushPath = [boxStart]; setBrushPoints(brushPath); }
+      }
       anchor = simpleRef.current && !turning ? groundAt(event.clientX, event.clientY) : null;
       if (turning) toNorth = false;
       renderer.domElement.setPointerCapture(event.pointerId);
@@ -633,6 +650,19 @@ export function NeighborhoodMap({ place, houses, onSelect, angle = "side", simpl
         moved += Math.abs(dx) + Math.abs(dy);
         lastX = event.clientX;
         lastY = event.clientY;
+        if (drawRef.current === "rectangle" && boxStart) {
+          const rect = node.getBoundingClientRect();
+          const x = event.clientX - rect.left;
+          const y = event.clientY - rect.top;
+          setSelectionBox({ x: Math.min(x, boxStart.x), y: Math.min(y, boxStart.y), width: Math.abs(x - boxStart.x), height: Math.abs(y - boxStart.y) });
+          return;
+        }
+        if (drawRef.current === "brush" && boxStart) {
+          const rect = node.getBoundingClientRect();
+          brushPath = [...brushPath, { x: event.clientX - rect.left, y: event.clientY - rect.top }];
+          setBrushPoints(brushPath);
+          return;
+        }
         if (simpleRef.current && turning) {
           mapView.heading += dx * 0.006;
           placeMap();
@@ -657,10 +687,41 @@ export function NeighborhoodMap({ place, houses, onSelect, angle = "side", simpl
     };
     const onPointerUp = (event: PointerEvent) => {
       dragging = false;
-      if (moved > 6 || turning) return;
+      if (drawRef.current && boxStart) {
+        const rect = node.getBoundingClientRect();
+        const x = event.clientX - rect.left;
+        const y = event.clientY - rect.top;
+        const path = drawRef.current === "brush" ? [...brushPath, { x, y }] : [];
+        const bounds = { left: Math.min(x, boxStart.x), right: Math.max(x, boxStart.x), top: Math.min(y, boxStart.y), bottom: Math.max(y, boxStart.y) };
+        if (drawRef.current === "rectangle" && bounds.right - bounds.left > 8 && bounds.bottom - bounds.top > 8 || drawRef.current === "brush" && path.length > 4) {
+          const next = footprints.filter((footprint) => {
+            const center = footprint.ring.reduce((sum, point) => ({ x: sum.x + point.x / footprint.ring.length, z: sum.z + point.z / footprint.ring.length }), { x: 0, z: 0 });
+            const projected = new THREE.Vector3(center.x, simpleRef.current ? 8 : 10, center.z);
+            if (simpleRef.current) projected.applyMatrix4(simpleGroup.matrixWorld);
+            projected.project(viewCamera());
+            const sx = (projected.x * 0.5 + 0.5) * rect.width;
+            const sy = (-projected.y * 0.5 + 0.5) * rect.height;
+            const inside = drawRef.current === "rectangle"
+              ? sx >= bounds.left && sx <= bounds.right && sy >= bounds.top && sy <= bounds.bottom
+              : pointInPolygon({ x: sx, y: sy }, path);
+            return projected.z < 1 && inside;
+          }).map((footprint) => footprint.id);
+          onSelectionChange?.(next);
+        }
+        boxStart = null;
+        setSelectionBox(null);
+        brushPath = [];
+        setBrushPoints([]);
+        return;
+      }
+      if (moved > 6 || event.button === 2) return;
       hoverAt(event);
       const id = pickAt(event);
-      if (id && housesRef.current.some((house) => house.id === id)) onSelect(id);
+      if (id !== null) {
+        if (event.shiftKey) onSelectionChange?.(selectedRef.current.includes(id) ? selectedRef.current.filter((item) => item !== id) : [...selectedRef.current, id]);
+        else onSelectionChange?.([id]);
+        if (housesRef.current.some((house) => house.id === id)) onSelect(id);
+      }
     };
     const onWheel = (event: WheelEvent) => {
       event.preventDefault();
@@ -694,7 +755,7 @@ export function NeighborhoodMap({ place, houses, onSelect, angle = "side", simpl
       for (const block of simpleMeshes) {
         const material = block.material as THREE.MeshLambertMaterial;
         const id = block.userData.id as number;
-        material.color.set(missed.has(id) ? UNREACHED : id === hoverId ? BLOCK_HOVER : BLOCK);
+        material.color.set(missed.has(id) ? UNREACHED : selectedRef.current.includes(id) ? HOVER_GLOW : id === hoverId ? BLOCK_HOVER : BLOCK);
       }
     };
     // Each street name sits on its longest stretch, upright, and only where that stretch fits it.
@@ -782,7 +843,11 @@ export function NeighborhoodMap({ place, houses, onSelect, angle = "side", simpl
       }
       if (!simpleRef.current) {
         for (const mesh of meshes) {
-          const goal = mesh.userData.id === hoverId ? HOVER_LIFT : 0;
+          const id = mesh.userData.id as number;
+          const selected = selectedRef.current.includes(id);
+          mesh.material = selected ? mesh.userData.hot : id === hoverId ? mesh.userData.hot : mesh.userData.base;
+          outline(mesh).visible = selected || id === hoverId;
+          const goal = id === hoverId ? HOVER_LIFT : 0;
           const gap = goal - mesh.position.y;
           mesh.position.y = Math.abs(gap) < 0.01 ? goal : mesh.position.y + gap * 0.22;
         }
@@ -886,11 +951,13 @@ export function NeighborhoodMap({ place, houses, onSelect, angle = "side", simpl
       node.removeChild(renderer.domElement);
       node.removeChild(labelLayer);
     };
-  }, [onSelect, place]);
+  }, [onSelect, onSelectionChange, place]);
 
   return (
     <div className={simple ? "scene simple" : "scene"}>
       <div ref={container} className="view-host" />
+      {selectionBox ? <div className="map-selection-box" style={{ left: selectionBox.x, top: selectionBox.y, width: selectionBox.width, height: selectionBox.height }} /> : null}
+      {brushPoints.length > 1 ? <svg className="map-brush-overlay" aria-hidden="true"><polyline points={brushPoints.map((point) => `${point.x},${point.y}`).join(" ")} /></svg> : null}
       {houses.map((house) => (
         <button
           key={house.id}
@@ -1191,6 +1258,17 @@ function insideRing(x: number, z: number, ring: { x: number; z: number }[]) {
     const a = ring[i];
     const b = ring[j];
     if (a.z > z !== b.z > z && x < ((b.x - a.x) * (z - a.z)) / (b.z - a.z) + a.x) inside = !inside;
+  }
+  return inside;
+}
+
+function pointInPolygon(point: { x: number; y: number }, polygon: { x: number; y: number }[]) {
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const a = polygon[i];
+    const b = polygon[j];
+    const crosses = a.y > point.y !== b.y > point.y && point.x < ((b.x - a.x) * (point.y - a.y)) / (b.y - a.y) + a.x;
+    if (crosses) inside = !inside;
   }
   return inside;
 }

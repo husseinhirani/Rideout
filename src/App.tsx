@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "./api";
 import { useBackend } from "./backend";
 import { BlockGraph } from "./BlockGraph";
@@ -45,6 +45,8 @@ export function App() {
   const [tab, setTab] = useState<"map" | "checks">("map");
   const [scene, setScene] = useState<"side" | "aerial" | "nodes">("side");
   const [simple, setSimple] = useState(false);
+  const [drawMode, setDrawMode] = useState<"rectangle" | "brush" | null>(null);
+  const [highlightedIds, setHighlightedIds] = useState<number[]>([]);
   const [now, setNow] = useState(() => new Date());
   const [menu, setMenu] = useState(false);
   const [form, setForm] = useState(false);
@@ -86,6 +88,13 @@ export function App() {
   const liveGraph = useMemo(() => graphCalls(liveCalls, liveHouses), [liveCalls, liveHouses]);
   const livePerson = liveHouses.find((house) => house.id === liveSelected) ?? null;
   const concern = live ? liveCalls.find((call) => call.attempt.concern && call.transport !== "ended" && call.transport !== "cancelled") : undefined;
+  const highlighted = useMemo(() => highlightedIds.map((id) => {
+    const house = (live ? liveHouses : ride.houses).find((item) => item.id === id);
+    const home = householdFor(id, house?.name);
+    return `${home.address} (${home.owner}, building ${id})`;
+  }), [highlightedIds, live, liveHouses, ride.houses]);
+  const mapContext = highlighted.length ? `\n\nDispatcher map filter: highlighted ${highlighted.length} building${highlighted.length === 1 ? "" : "s"}: ${highlighted.join("; ")}. Use these buildings as the geographic area of interest when choosing candidates.` : "";
+  const changeHighlights = useCallback((ids: number[]) => setHighlightedIds(ids), []);
 
   // A newly opened case takes over the view; choosing one by hand holds until the next opens.
   const newestCase = state?.cases.reduce((max, row) => Math.max(max, row.id), 0) ?? 0;
@@ -135,16 +144,17 @@ export function App() {
     },
     ask: async (text: string) => {
       if (!state) return;
-      say("lead", text);
+      const request = `${text}${mapContext}`;
+      say("lead", request);
       setChatBusy(true);
       try {
         if (liveCase && liveCase.status !== "closed") {
-          const result = await backend.run(() => api.caseInput(liveCase.id, text));
+          const result = await backend.run(() => api.caseInput(liveCase.id, request));
           say("facilitator", `Saved to case #${liveCase.id} as dispatcher input, not verified. ${result.reason}`);
         } else if (state.demo_mode.scripted) {
           say("facilitator", "This backend runs a scripted model, so it cannot read a free-text incident. Use Start → Missing child.");
         } else {
-          const result = await backend.run(() => api.incident({ text }));
+          const result = await backend.run(() => api.incident({ text: request }));
           say("facilitator", `Opened incident #${result.incident_id}${result.case_ids.length ? ` with case ${result.case_ids.map((id) => `#${id}`).join(", ")}` : ""}. Check-in calls go to everyone in range.`);
         }
       } catch (error) {
@@ -211,6 +221,9 @@ export function App() {
         simple={simple}
         showFire={live ? false : ride.incident.kind === "wildfire"}
         sightings={live ? liveSightings : ride.incident.sightings}
+        selectedIds={highlightedIds}
+        onSelectionChange={changeHighlights}
+        drawMode={drawMode}
       />
       {scene === "nodes" ? (
         live ? (
@@ -222,7 +235,6 @@ export function App() {
 
       <header className="top">
         <div className="brand">
-          <strong>RideOut</strong>
           {state && backend.connected ? (
             <button
               type="button"
@@ -232,11 +244,7 @@ export function App() {
             >
               {live ? `Live · ${demoLabel(state)}` : "Offline demo · switch to live"}
             </button>
-          ) : (
-            <span className="mode-pill offline" title={backend.error ?? undefined}>
-              Offline demo · not connected
-            </span>
-          )}
+          ) : null}
         </div>
         <nav aria-label="Views">
           <button type="button" className={tab === "checks" ? "on" : ""} aria-pressed={tab === "checks"} onClick={() => setTab("checks")}>
@@ -249,19 +257,13 @@ export function App() {
         <div className="top-end">
           <div className="map-controls">
             <div className="view-toggle" role="group" aria-label="Map style">
-              <button type="button" className={scene === "side" ? "on" : ""} aria-pressed={scene === "side"} onClick={() => setScene("side")}>Side</button>
-              <button type="button" className={scene === "aerial" ? "on" : ""} aria-pressed={scene === "aerial"} onClick={() => setScene("aerial")}>Aerial</button>
-              <button type="button" className={scene === "nodes" ? "on" : ""} aria-pressed={scene === "nodes"} onClick={() => setScene("nodes")}>Nodes</button>
+              <button type="button" className={!simple && scene === "side" ? "on" : ""} aria-pressed={!simple && scene === "side"} onClick={() => { setSimple(false); setScene("side"); }}>Side</button>
+              <button type="button" className={!simple && scene === "aerial" ? "on" : ""} aria-pressed={!simple && scene === "aerial"} onClick={() => { setSimple(false); setScene("aerial"); }}>Aerial</button>
+              <button type="button" className={simple ? "on" : ""} aria-pressed={simple} onClick={() => setSimple(true)}>Simple</button>
+              <button type="button" className={!simple && scene === "nodes" ? "on" : ""} aria-pressed={!simple && scene === "nodes"} onClick={() => { setSimple(false); setScene("nodes"); }}>Nodes</button>
             </div>
-            <button
-              type="button"
-              className={simple ? "simple-switch on" : "simple-switch"}
-              aria-pressed={simple}
-              onClick={() => setSimple((value) => !value)}
-            >
-              Simple
-              <i />
-            </button>
+            <button type="button" className={drawMode === "rectangle" ? "map-tool-button on" : "map-tool-button"} aria-pressed={drawMode === "rectangle"} onClick={() => { setHighlightedIds([]); setDrawMode((value) => value === "rectangle" ? null : "rectangle"); }} title="Drag a rectangle over buildings to highlight them">Rectangle</button>
+            <button type="button" className={drawMode === "brush" ? "map-tool-button on" : "map-tool-button"} aria-pressed={drawMode === "brush"} onClick={() => { setHighlightedIds([]); setDrawMode((value) => value === "brush" ? null : "brush"); }} title="Draw a loop around buildings to highlight them">Brush</button>
           </div>
           <time>{clock}</time>
           <button type="button" className="ghost" onClick={live ? exportLive : exportOffline}>
@@ -488,7 +490,7 @@ export function App() {
             now={now.getTime()}
             chat={ride.chat}
             busy={ride.tasks.some((task) => task.state === "running")}
-            onAsk={ride.ask}
+            onAsk={(text) => ride.ask(`${text}${mapContext}`)}
             onCall={{
               busy: Boolean(ride.operator),
               cancel: ride.cancelCall,
