@@ -86,6 +86,8 @@ export const inputInformationCase = (caseId: number, body: unknown, actor: strin
 export const retryInformationReport = (attemptId: number, body: unknown, actor: string) => command("retryInformationReport", body, actor, attemptId)
 export const configureInformationIntake = (body: unknown, actor: string) => command("configureInformationIntake", body, actor)
 export const reviewInformationIncoming = (requestId: number, body: unknown, actor: string) => command("reviewInformationIncoming", body, actor, requestId)
+export const closeInformationCase = (caseId: number, body: unknown, actor: string) => command("closeInformationCase", body, actor, caseId)
+export const cancelInformationAttempt = (attemptId: number, body: unknown, actor: string) => command("cancelInformationAttempt", body, actor, attemptId)
 export async function receiveInformationReport(body: unknown) {
   let input: Record<string, unknown>, attemptId: number
   try { input = object(body, "report"); attemptId = id(typeof input.attempt_id === "string" && /^\d+$/.test(input.attempt_id) ? Number(input.attempt_id) : input.attempt_id, "attempt_id") } catch (error) { throw new ServiceError(400, (error as Error).message) }

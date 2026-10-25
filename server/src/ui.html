@@ -554,6 +554,7 @@ function caseSection(current) {
     detail.append(ask)
     detail.append(el("div", "sub", "Attempt #" + call.id + " · Provider: " + (call.call_id || "not recorded")
       + " · Transport: " + (progress ? progress.transport : "not tracked by legacy call path")))
+    if (progress?.dispatch_error) detail.append(el("div", "flag", progress.dispatch_error))
     if (binding) detail.append(el("div", "sub", "Binding: " + binding.binding_status + " · Provider outcome: " + (binding.provider_terminal_status || "not terminal") + (binding.interpretation_error ? " · Interpretation: " + binding.interpretation_error : "")))
     if (progress?.report_received && !progress.report_processed && binding?.binding_status === "matched" && binding.interpretation_failure_count >= 3) {
       const retry = el("button", "", "Retry saved report interpretation")
@@ -561,6 +562,20 @@ function caseSection(current) {
       detail.append(el("div", "sub", "Interpretation stopped after three failures. Fix the reported cause, then retry this saved account; this button does not call the person again."), retry)
     }
     if (call.answer) detail.append(el("div", "quote", '"' + call.answer + '"'))
+    if (current.kind === "information" && current.status === "open" && progress?.transport === "queued"
+      && !progress.claim_token && !call.call_id && !progress.report_received) {
+      const reason = draftField("cancel:" + call.id, "input")
+      reason.placeholder = "Reason for cancelling this queued call"
+      const cancel = el("button", "", "Cancel queued call")
+      cancel.onclick = () => send(cancel, async () => {
+        if (!reason.value.trim()) throw new Error("Give a reason for cancelling this call.")
+        await command("/attempts/" + call.id + "/cancel", {
+          expected_input_revision: current.input_revision, reason: reason.value.trim(),
+        })
+        drafts.delete("cancel:" + call.id)
+      })
+      detail.append(reason, cancel)
+    }
     if (state.simulate && call.outcome === null) detail.append(simulateBox(call.id))
     line.append(detail)
     body.append(line)
@@ -623,22 +638,22 @@ function decisionBlock(current) {
   const decision = (state.information_decisions || []).filter(row => row.support_case_id === current.id)
     .sort((a, b) => b.based_on_revision - a.based_on_revision)[0]
   box.append(el("h2", "", "Coordinator"))
-  box.append(el("div", "sub", (planning?.enabled ? "Automatic questions enabled" : "Manual calls")
-    + (current.policy?.paused ? " · Paused" : "") + " · Input revision " + current.input_revision))
+  box.append(el("div", "sub", (current.status === "closed" ? "Closed · no new outreach" : planning?.enabled ? "Automatic questions enabled" : "Manual calls")
+    + (current.status !== "closed" && current.policy?.paused ? " · Paused" : "") + " · Input revision " + current.input_revision))
   if (planning?.blocked_reason) box.append(el("div", "flag", planning.blocked_reason))
-  if (planning?.error && planning.failure_revision === current.input_revision) {
+  if (current.status !== "closed" && planning?.error && planning.failure_revision === current.input_revision) {
     const retry = planning.retry_at_ms == null ? "No automatic retry scheduled; send a direction or update configuration after addressing the error."
       : "Next retry eligible at " + new Date(planning.retry_at_ms).toLocaleTimeString()
     box.append(el("div", "flag", "Planning failed: " + planning.error))
     box.append(el("div", "sub", retry))
   }
   if (!decision) {
-    box.append(el("div", "muted", planning?.enabled ? "No accepted decision yet. Waiting for the coordinator." : "No adaptive decision yet."))
+    box.append(el("div", "muted", current.status === "closed" ? "No accepted decision was recorded." : planning?.enabled ? "No accepted decision yet. Waiting for the coordinator." : "No adaptive decision yet."))
     return box
   }
   const plan = decision.plan
   box.append(el("div", "sub", "Decision " + decision.id + " · Based on revision " + decision.based_on_revision
-    + (decision.based_on_revision === current.input_revision ? " · current" : " · stale: newer input awaits evaluation")
+    + (current.status === "closed" ? " · historical" : decision.based_on_revision === current.input_revision ? " · current" : " · stale: newer input awaits evaluation")
     + " · " + clock(decision.created_at) + " · " + decision.model))
   box.append(el("div", "", plan.summary))
   if (plan.evidence_ids.length) box.append(el("div", "sub", "Evidence: " + plan.evidence_ids.join(", ")))
@@ -661,8 +676,20 @@ function decisionBlock(current) {
 
 function informationBox(current) {
   const box = el("div")
+  if (current.status === "closed") {
+    box.append(el("div", "sub", "This investigation is closed. No new calls will start. Existing calls and late reports remain visible above."))
+    return box
+  }
   const planning = (state.information_planning || []).find(row => row.support_case_id === current.id)
   const prefix = "case:" + current.id + ":"
+  const paused = current.policy?.paused === true
+  const pause = el("button", "", paused ? "Resume this investigation" : "Pause this investigation")
+  pause.onclick = () => send(pause, () => command("/cases/" + current.id + "/configuration", {
+    expected_input_revision: current.input_revision, policy: { paused: !paused },
+  }))
+  box.append(pause, el("div", paused ? "flag" : "sub", paused
+    ? "Paused. Review the findings and scope before resuming. Existing calls continue."
+    : "Pause stops new calls; it does not hang up conversations already in progress."))
   if (!planning?.enabled) box.append(manualCallBox(current, prefix))
   else box.append(el("div", "sub", "Claude chooses calls within the permitted scope. Disable automatic questions before placing a manual call."))
 
@@ -705,14 +732,34 @@ function informationBox(current) {
   box.append(el("label", "", "Approved disclosure facts (JSON)"), disclosure)
   box.append(el("div", "sub", 'Example: [{"id":"briefing","text":"Approved information","profile_ids":null}]. Use profile IDs to limit recipients; null permits all contacts within scope.'))
   box.append(save)
-  if (current.policy?.paused) {
-    const resume = el("button", "", "Resume this investigation")
-    resume.dataset.locked = String(current.status !== "open")
-    resume.onclick = () => send(resume, () => command("/cases/" + current.id + "/configuration", {
-      expected_input_revision: current.input_revision, policy: { paused: false },
+  box.append(el("div", "sub", "Changes require reconsideration before queued work can start. Saving configuration does not resume a paused case."))
+
+  const contacts = el("div")
+  contacts.append(el("h2", "", "Contact permissions"), el("div", "sub", "These preferences apply across investigations. Record consent only when the person has agreed; it does not add them to this case's scope."))
+  for (const profile of state.profiles || []) {
+    const allowed = (state.profile_settings || []).find(item => item.profile_id === profile.id)?.call_consent === true
+    const change = el("button", "", allowed ? "Stop calls" : "Record consent to receive calls")
+    change.onclick = () => send(change, () => command("/cases/" + current.id + "/configuration", {
+      expected_input_revision: current.input_revision, preferences: [{ profile_id: profile.id, call_consent: !allowed }],
     }))
-    box.append(el("div", "flag", "Paused. Review the findings and configuration before resuming."), resume)
+    const row = el("div", "row")
+    row.append(el("span", "name", profile.name), el("span", "sub", allowed ? "Calls allowed" : "Calls not allowed"), change)
+    contacts.append(row)
   }
+  box.append(contacts)
+
+  box.append(el("h2", "", "Close investigation"))
+  const reason = draftField(prefix + "close", "textarea")
+  reason.rows = 2; reason.placeholder = "Reason for closing this investigation"
+  const close = el("button", "", "Close investigation")
+  close.onclick = () => send(close, async () => {
+    if (!reason.value.trim()) throw new Error("Give a reason for closing this investigation.")
+    await command("/cases/" + current.id + "/close", {
+      expected_input_revision: current.input_revision, reason: reason.value.trim(),
+    })
+    clearDrafts(prefix)
+  })
+  box.append(reason, close, el("div", "sub", "Closure cancels unsent queued work and stops new outreach. Active or uncertain calls remain tracked; this does not hang them up."))
   return box
 }
 
@@ -730,7 +777,7 @@ function manualCallBox(current, prefix) {
   const question = draftField(prefix + "question", "textarea"); question.placeholder = "What should Tom ask?"
   const context = draftField(prefix + "context", "textarea"); context.placeholder = "Context this person may be told (optional)"
   const call = el("button", "go", state.simulate ? "Start simulated call" : "Call selected person")
-  call.dataset.locked = String(current.status !== "open")
+  call.dataset.locked = String(current.status !== "open" || current.policy?.paused === true)
   call.onclick = () => {
     if (!question.value.trim()) { showError("Write the question first."); return }
     const queued = (state.attempt_progress || []).filter(p => p.support_case_id === current.id && p.transport === "queued")

@@ -5,7 +5,7 @@ import { authorizeRequest, readAccessConfig } from "./operator-auth"
 import { createLocalConsole } from "./local-console"
 import { getState } from "./loop"
 import { attempts, callReducer, incomingRequests, type ProfileRow, type AttemptProgressRow } from "./db"
-import { configureInformationCase, createInformationCase, directory, readInformationState, readInformationPlanning, receiveInformationReport, requestInformationCall, inputInformationCase, retryInformationReport, readInformationIncomingState, configureInformationIntake, reviewInformationIncoming } from "./information"
+import { configureInformationCase, createInformationCase, directory, readInformationState, readInformationPlanning, receiveInformationReport, requestInformationCall, inputInformationCase, retryInformationReport, readInformationIncomingState, configureInformationIntake, reviewInformationIncoming, closeInformationCase, cancelInformationAttempt } from "./information"
 import { receiveInformationRequest } from "./information-incoming"
 import { startInformationWorker } from "./information-worker"
 import { asId, ServiceError } from "./service"
@@ -46,7 +46,8 @@ async function state() {
     cases: [...legacy.cases as unknown[], ...information.cases.map(c => ({...c, kind: "information", goal: c.objective, victim_profile_id: null}))],
     profile_settings: information.settings, information_attempts: information.metadata,
     adaptive_planning_available: process.env.AUTO_COORDINATE === "1",
-    information_planning: coordination.planning.map(p => ({ ...p, blocked_reason: !p.enabled ? null
+    information_planning: coordination.planning.map(p => ({ ...p, blocked_reason: information.cases.find(c => c.id === p.support_case_id)?.status === "closed" ? "Closed; no further outreach. Active calls and late reports remain tracked."
+      : !p.enabled ? null
       : process.env.AUTO_COORDINATE !== "1" ? "Automatic coordination is disabled on this server."
       : information.cases.find(c => c.id === p.support_case_id)?.policy.paused ? "Paused; organizer action is required."
       : (legacy.attempt_progress as AttemptProgressRow[]).some(a => a.support_case_id === p.support_case_id && a.report_received && !a.report_processed)
@@ -102,11 +103,15 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
   }
   const retry = /^\/attempts\/(\d+)\/retry-interpretation$/.exec(path)
   if (retry) { send(res, 200, await retryInformationReport(asId(retry[1], "attempt_id"), body, actor)); return }
-  const route = /^\/cases\/(\d+)\/(configuration|calls|input)$/.exec(path)
+  const cancel = /^\/attempts\/(\d+)\/cancel$/.exec(path)
+  if (cancel) { send(res, 200, await cancelInformationAttempt(asId(cancel[1], "attempt_id"), body, actor)); return }
+  const route = /^\/cases\/(\d+)\/(configuration|calls|input|close)$/.exec(path)
   if (route) {
-    const result = route[2] === "configuration" ? await configureInformationCase(Number(route[1]), body, actor)
-      : route[2] === "input" ? await inputInformationCase(Number(route[1]), body, actor)
-      : await requestInformationCall(Number(route[1]), body, actor)
+    const caseId = asId(route[1], "case_id")
+    const result = route[2] === "configuration" ? await configureInformationCase(caseId, body, actor)
+      : route[2] === "input" ? await inputInformationCase(caseId, body, actor)
+      : route[2] === "close" ? await closeInformationCase(caseId, body, actor)
+      : await requestInformationCall(caseId, body, actor)
     send(res, 200, result); return
   }
   send(res, 404, { error: "not found" })

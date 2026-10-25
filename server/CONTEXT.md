@@ -17,6 +17,9 @@ organizer attach/reject actions on `tony/incoming-association`; VM verification
 is pending. Intake uses organizer-configured permissions and contact scope.
 See `INFORMATION-API.md`. The older sections below describe
 legacy fixtures and must not introduce scenario rules into new product logic.
+Step 6 on `tony/organizer-controls` adds explicit closure, queued cancellation and
+console controls, reusing existing pause/consent and restart recovery. It is
+implemented separately while Vien tests Step 5; runtime verification is pending.
 Tony owns the backend and manual HTML console; Vien owns the product frontend.
 The legacy `server:recording` command is retired; `server:adaptive:sim` runs real
 Claude with simulated phones. The older recording descriptions below are history.

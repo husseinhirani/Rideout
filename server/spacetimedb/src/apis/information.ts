@@ -14,6 +14,12 @@ function getAttempt(ctx: Ctx, attemptId: bigint) {
   if (!attempt || !progress || !metadata?.decision_command_id) return fail("Information attempt not found")
   return { attempt, progress, metadata }
 }
+function cancelQueued(ctx: Ctx, attemptId: bigint, reason: string) {
+  const { attempt, progress } = getAttempt(ctx, attemptId)
+  if (progress.transport !== "queued" || progress.claim_token || attempt.call_id || progress.report_received) fail("Only definitely unsent queued work can be cancelled")
+  ctx.db.attemptProgress.attempt_id.update({ ...progress, transport: "cancelled", dispatch_error: reason })
+  ctx.db.attempt.id.update({ ...attempt, outcome: "superseded" })
+}
 function preference(ctx: Ctx, profileId: bigint): ProfileSettingsRow | undefined {
   const p = ctx.db.profileSettings.profile_id.find(profileId)
   return p ? { ...p, profile_id: Number(profileId), tags: JSON.parse(p.tags_json), availability: p.availability as ProfileSettingsRow["availability"] } : undefined
@@ -220,6 +226,32 @@ export const configureInformationCase = spacetimedb.reducer({ case_id: t.u64(), 
   configurePlanning(ctx, case_id, input, updated.input_revision)
   save(ctx, command_id, "configure_information", payload, { support_case_id: Number(case_id), input_revision: Number(updated.input_revision), status: updated.status }, actor)
 })
+export const closeInformationCase = spacetimedb.reducer({ case_id: t.u64(), command_id: t.string(), payload_json: t.string(), actor: t.string() }, (ctx, { case_id, command_id, payload_json, actor }) => {
+  const input = parse(payload_json), payload = { ...input, case_id: Number(case_id) }
+  if (replay(ctx, command_id, "close_information", payload)) return
+  const c = getCase(ctx, case_id)
+  if (c.status !== "open" || c.input_revision !== BigInt(revision(input.expected_input_revision))) fail("Stale revision or closed case; refresh")
+  const reason = text(input.reason, "reason", 2000), operator = text(actor, "operator", 200)
+  for (const progress of ctx.db.attemptProgress.support_case_id.filter(case_id)) {
+    const attempt = ctx.db.attempt.id.find(progress.attempt_id)
+    if (attempt && progress.transport === "queued" && !progress.claim_token && !attempt.call_id && !progress.report_received) cancelQueued(ctx, attempt.id, "Case closed: " + reason)
+  }
+  const note = ctx.db.note.insert({ id: 0n, support_case_id: case_id, attempt_id: 0n, source: "organizer", text: `${operator} closed the case: ${reason}`, lat: undefined, lng: undefined, radius_m: undefined, at: ctx.timestamp })
+  const input_revision = c.input_revision + 1n
+  ctx.db.informationCase.id.update({ ...c, status: "closed", input_revision })
+  save(ctx, command_id, "close_information", payload, { support_case_id: Number(case_id), input_revision: Number(input_revision), note_id: Number(note.id), status: "closed" }, operator)
+})
+export const cancelInformationAttempt = spacetimedb.reducer({ attempt_id: t.u64(), command_id: t.string(), payload_json: t.string(), actor: t.string() }, (ctx, { attempt_id, command_id, payload_json, actor }) => {
+  const input = parse(payload_json), payload = { ...input, attempt_id: Number(attempt_id) }
+  if (replay(ctx, command_id, "cancel_information_attempt", payload)) return
+  const { attempt } = getAttempt(ctx, attempt_id), c = getCase(ctx, attempt.support_case_id)
+  if (c.status !== "open" || c.input_revision !== BigInt(revision(input.expected_input_revision))) fail("Stale revision or closed case; refresh")
+  const reason = text(input.reason, "reason", 2000), operator = text(actor, "operator", 200)
+  cancelQueued(ctx, attempt_id, reason)
+  const note = ctx.db.note.insert({ id: 0n, support_case_id: c.id, attempt_id: 0n, source: "organizer", text: `${operator} cancelled queued attempt ${attempt_id}: ${reason}`, lat: undefined, lng: undefined, radius_m: undefined, at: ctx.timestamp })
+  dirty(ctx, c.id)
+  save(ctx, command_id, "cancel_information_attempt", payload, { support_case_id: Number(c.id), attempt_id: Number(attempt_id), input_revision: Number(c.input_revision + 1n), note_id: Number(note.id), status: "cancelled" }, operator)
+})
 export const requestInformationCall = spacetimedb.reducer({ case_id: t.u64(), command_id: t.string(), payload_json: t.string(), actor: t.string() }, (ctx, { case_id, command_id, payload_json, actor }) => {
   const input = parse(payload_json), payload = { ...input, case_id: Number(case_id) }; if (replay(ctx, command_id, "information_call", payload)) return
   if (ctx.db.informationPlanning.support_case_id.find(case_id)?.enabled) fail("Disable automatic coordination before choosing a manual call")
@@ -234,7 +266,7 @@ export const requestInformationCall = spacetimedb.reducer({ case_id: t.u64(), co
     const d = object(raw, "queued decision"), attemptId = id(d.attempt_id, "attempt_id")
     if (seen.has(attemptId) || !queued.some(p => p.attempt_id === BigInt(attemptId)) || !["retain", "cancel"].includes(String(d.disposition))) fail("Invalid queued decision")
     seen.add(attemptId); const p = ctx.db.attemptProgress.attempt_id.find(BigInt(attemptId))!, m = ctx.db.informationAttempt.attempt_id.find(BigInt(attemptId))!, a = ctx.db.attempt.id.find(p.attempt_id)!
-    if (d.disposition === "cancel") { ctx.db.attemptProgress.attempt_id.update({ ...p, transport: "cancelled", dispatch_error: "Cancelled by operator decision" }); ctx.db.attempt.id.update({ ...a, outcome: "superseded" }) }
+    if (d.disposition === "cancel") cancelQueued(ctx, p.attempt_id, "Cancelled by operator decision")
     else { eligible(ctx, case_id, a.profile_id); ctx.db.informationAttempt.attempt_id.update({ ...m, authorized_revision: c.input_revision }) }
   }
   const profile_id = BigInt(id(input.profile_id, "profile_id")); eligible(ctx, case_id, profile_id); budget(ctx, case_id, profile_id)
@@ -283,12 +315,7 @@ export const commitInformationPlan = spacetimedb.reducer({ case_id: t.u64(), exp
   const retained = plan.queued.filter(q => q.disposition === "retain")
   if (plan.organizer_review && (plan.calls.length || retained.length)) fail("Organizer review cannot authorize more calls")
   if (!plan.calls.length && !retained.length && !plan.wait_reason && !plan.organizer_review) fail("An empty plan needs a waiting or organizer review reason")
-  for (const q of plan.queued.filter(q => q.disposition === "cancel")) {
-    const row = getAttempt(ctx, BigInt(q.attempt_id))
-    if (row.progress.claim_token || row.attempt.call_id || row.progress.report_received) fail("Only definitely unsent queued work can be cancelled")
-    ctx.db.attemptProgress.attempt_id.update({ ...row.progress, transport: "cancelled", dispatch_error: q.reason })
-    ctx.db.attempt.id.update({ ...row.attempt, outcome: "superseded" })
-  }
+  for (const q of plan.queued.filter(q => q.disposition === "cancel")) cancelQueued(ctx, BigInt(q.attempt_id), q.reason)
   for (const q of retained) {
     const row = getAttempt(ctx, BigInt(q.attempt_id))
     eligible(ctx, case_id, row.attempt.profile_id); budget(ctx, case_id, row.attempt.profile_id, row.attempt.id)
@@ -367,7 +394,11 @@ export const finishInformationReport = spacetimedb.reducer({ attempt_id: t.u64()
   for (const note of notes) insert(note, "call_unverified")
   const combined = [...new Set([progress.raw_concern, concern].filter(s => s.trim()))].join("; "); if (combined) insert(combined, "concern")
   ctx.db.attempt.id.update({ ...attempt, outcome: reached ? "answered" : "not_reached", concern: combined }); ctx.db.attemptProgress.attempt_id.update({ ...progress, report_processed: true }); ctx.db.informationAttempt.attempt_id.update({ ...metadata, interpretation_error: "", interpretation_retry_at_ms: undefined })
-  if (do_not_call) preferences(ctx, [{ profile_id: Number(attempt.profile_id), call_consent: false }], attempt.support_case_id)
+  if (do_not_call) {
+    const phone = normalizePhone(ctx.db.profile.id.find(attempt.profile_id)!.phone)
+    preferences(ctx, [...ctx.db.profile.iter()].filter(p => normalizePhone(p.phone) === phone)
+      .map(p => ({ profile_id: Number(p.id), call_consent: false })), attempt.support_case_id)
+  }
   dirty(ctx, attempt.support_case_id)
 })
 export const failInformationReport = spacetimedb.reducer({ attempt_id: t.u64(), message: t.string() }, (ctx, { attempt_id, message }) => {

@@ -144,15 +144,20 @@ export function startInformationWorker(): () => void {
           await db.callReducer("releaseInformationClaim", [attempt.id, token, "Eligibility changed before dialing"])
           return
         }
+        if (stopped) {
+          await db.callReducer("releaseInformationClaim", [attempt.id, token, "Worker stopped before dialing"])
+          return
+        }
         nextStartAt = Date.now() + 1000
+        let callId = ""
         try {
-          const callId = await placeCall(normalizePhone(person.phone), {
+          callId = await placeCall(normalizePhone(person.phone), {
             attempt_id: String(attempt.id), person_name: person.name, ask: attempt.ask, context: work.context,
           })
           await db.callReducer("recordInformationDispatch", [attempt.id, token, callId, ""])
         } catch (error) {
-          await db.callReducer("recordInformationDispatch", [attempt.id, token, "",
-            error instanceof Error ? error.message.slice(0, 1000) : "Dispatch outcome is uncertain"])
+          await db.callReducer("recordInformationDispatch", [attempt.id, token, callId,
+            callId ? "" : error instanceof Error ? error.message.slice(0, 1000) : "Dispatch outcome is uncertain"])
         }
         return
       }

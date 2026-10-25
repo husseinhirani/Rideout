@@ -1,5 +1,28 @@
 # design.md
 
+## Organizer controls — Step 6
+
+Pause/resume and contact consent reuse the configuration reducer. Explicit close
+and queued cancellation require a command ID, current case revision and reason.
+They save an organizer note and replayable result. Closing cancels only queued
+work with no claim, provider ID or report; dispatching, active and unknown calls
+remain tracked. Late reports remain history and cannot reopen a case.
+
+An explicit request not to call again revokes consent for profiles sharing that
+phone destination. Renewal requires an explicit organizer action. The console
+exposes these controls without clearing stored evidence or pretending to hang up
+active calls.
+
+Restart recovery already scans durable work and marks expired dispatch claims
+unknown instead of redialing. Reconciliation and report interpretation continue
+while paused or closed. If call creation returns an ID but saving it fails, the
+worker retries saving that same ID, never the call. A crash before persistence
+can still leave an unresolved dispatch; no automatic redial is permitted. A
+pause/close racing after the final eligibility check cannot atomically prevent an
+external request already being started.
+
+No tables or future-review timers are added. VM verification remains pending.
+
 ## Incoming information — Step 5
 
 `/requests` saves the raw account before classification. A unique phone match is

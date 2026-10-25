@@ -77,6 +77,26 @@ content under the same command ID returns 409.
 the changed `objective`, `scope`, `policy` or `preferences`. It advances the input
 revision. Existing queued work remains visible but cannot dispatch until reviewed.
 
+Step 6 uses that route for `policy:{paused:true|false}` and explicit
+`preferences:[{profile_id,call_consent:true|false}]`. Resuming requires fresh
+evaluation for automatic cases. Manual cases require an organizer call decision.
+These actions do not stop active calls.
+
+`POST /cases/:id/close` takes `command_id`, `expected_input_revision` and `reason`.
+It returns `support_case_id`, `input_revision`, `note_id` and `status:"closed"`.
+Closure cancels definitely-unsent queued work. Active/uncertain calls and late
+reports remain recorded; neither a phone report nor summary acceptance closes a
+case. The close reason is an organizer note.
+
+`POST /attempts/:id/cancel` takes the same fields, with the case's current revision.
+It returns the case/revision/note IDs, `attempt_id` and `status:"cancelled"`.
+Only queued attempts without a claim, provider call ID or report are cancellable.
+The cancellation reason becomes organizer evidence for reevaluation. Both routes
+return the original result on exact command replay and reject stale/changed input.
+
+Step 6 adds reducers but no tables. Publish the module before restarting the API;
+do not reset the database. Compilation and program verification remain on Vien's VM.
+
 `GET /state` preserves the familiar arrays and adds `profile_settings`,
 `information_attempts`, `incoming_requests`, server time and read-model version 2.
 Generic cases have `kind:"information"`, `goal`, `objective`, `scope`, `policy`
