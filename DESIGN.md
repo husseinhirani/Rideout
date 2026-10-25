@@ -3,8 +3,10 @@
 ## Connected product
 
 The live dashboard uses generic investigations and the current operator API.
-Its cards display calls, incoming reports, evidence, unresolved questions and
-organizer controls. The teammate's map and dashboard components are reused.
+The UpdatedUI layout gives the coordinator the right column. Calls, evidence
+and organizer controls remain on the left; sidebar previews lead to incoming
+reports, the directory, phone intake and full decision details. All counts and
+actions use the current backend. The teammate's map components are reused.
 Scenario-specific stories are available only through explicit offline selection.
 Live disconnect retains real state; stored directory coordinates never become
 fictional household facts. See `README.md` for local startup and the first UI check.

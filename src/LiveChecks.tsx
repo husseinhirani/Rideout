@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { api, type BackendState, type InformationCase, type InformationDecisionRow } from "./api";
 import type { RunAction } from "./backend";
-import { AgentColumn, Bars, DashRail, FacilitatorTile, Faces, FocusView, Icon, Timeline, useFocus, type RailItem } from "./Dashboard";
+import { Bars, DashRail, FacilitatorTile, FocusView, Icon, Timeline, useFocus, type RailItem } from "./Dashboard";
 import { callsFor, coordinationOf, inboundFrom, type LiveCall } from "./live";
 import { CaseSettings, CommandForm, IntakeSettings, ManualCall, OrganizerInput, ReviewReport } from "./OrganizerForms";
 
@@ -23,13 +23,13 @@ export function LiveChecks({ visible, state, row, now, disabled, run }: {
   const reported = calls.filter(c => c.progress?.report_received).length;
   const status = row ? coordinationOf(state, row.id, now).text : "Open an investigation to begin.";
   const rail: RailItem<Focus>[] = [
-    { id: "outgoing", label: "Calls", value: calls.length, icon: "phoneOut" },
-    { id: "incoming", label: "Incoming reports", value: reviews.length, icon: "phoneIn" },
-    { id: "evidence", label: "Evidence", value: notes.length, icon: "check" },
-    { id: "contacts", label: "Directory", value: state.profiles.length, icon: "hand" },
-    { id: "settings", label: "Organizer controls", value: null, icon: "grid" },
-    { id: "intake", label: "Phone intake", value: null, icon: "phoneIn" },
-    { id: "facilitator", label: "Coordinator", value: null, icon: "spark", agent: true },
+    { id: "outgoing", label: "Calls", value: calls.length, icon: "phoneOut", detail: `${reported} reports saved · ${active.length} on the line` },
+    { id: "incoming", label: "Incoming reports", value: inbound.length, icon: "phoneIn", detail: `${reviews.length} awaiting review` },
+    { id: "evidence", label: "Evidence", value: notes.length, icon: "check", detail: "Source-attributed accounts and organizer input" },
+    { id: "contacts", label: "Directory", value: state.profiles.length, icon: "hand", detail: state.profiles.map(p => p.name).slice(0, 3).join(", ") || "No profiles yet" },
+    { id: "settings", label: "Organizer controls", value: null, icon: "grid", detail: "Scope, consent, pause and closure" },
+    { id: "intake", label: "Phone intake", value: null, icon: "phoneIn", detail: "Permissions for incoming investigations" },
+    { id: "facilitator", label: "Coordinator", value: null, icon: "spark", agent: true, detail: status },
   ];
   const focused = rail.find(r => r.id === focus?.id);
   const stale = row && decision && decision.based_on_revision !== row.input_revision;
@@ -52,16 +52,9 @@ export function LiveChecks({ visible, state, row, now, disabled, run }: {
             <button type="button" className="tile status" onClick={e => open("settings", e)}><span className="tile-title">Organizer controls<Icon name="expand" /></span><p>{row?.status === "closed" ? "Closed · history preserved" : row?.policy.paused ? "Paused · awaiting your decision" : planning?.enabled ? "Automatic questions enabled" : "Manual questions"}</p><span className="tile-foot">Scope, consent, pause and closure</span></button>
           </div>
         </div>
-        <AgentColumn top={<>
-          <div className="dash-pair">
-            <button type="button" className="tile stat incoming" onClick={e => open("incoming", e)}><span className="tile-label">Incoming reports<em className="chip">{reviews.length} to review</em></span><strong className="big">{inbound.length}</strong><span className="tile-foot">Tom records people who call in</span></button>
-            <button type="button" className="tile stat sky" onClick={e => open("outgoing", e)}><span className="tile-label">On the line</span><strong className="big">{active.length}</strong><span className="tile-foot">{active.map(c => c.person?.name ?? "Unknown").join(", ") || "No active calls"}</span></button>
-          </div>
-          <div className="dash-pair">
-            <button type="button" className="tile stat reach" onClick={e => open("facilitator", e)}><span className="tile-label">Open questions</span><strong className="big">{decision?.plan.open_questions.length ?? "—"}</strong><span className="tile-foot">{stale ? "Summary awaits newer evidence" : "From the accepted decision"}</span></button>
-            <button type="button" className="tile people directory-tile" onClick={e => open("contacts", e)}><span className="tile-label">Available directory</span><strong className="big">{state.profiles.length}</strong><Faces names={state.profiles.map(p => p.name)} /><span className="tile-foot">Stored profiles · not confirmed whereabouts</span></button>
-          </div>
-        </>} agent={<FacilitatorTile name="Claude" kicker={row?.status === "closed" ? "Closed" : row?.policy.paused ? "Paused" : stale ? "Updating" : "Coordinator"} lead={decision?.plan.summary ?? row?.objective ?? "Describe an incident and what you need to learn."} live={!!row && row.status === "open" && !!planning?.enabled && !row.policy.paused} busy={false} disabled={disabled || !row || row.status === "closed"} chat={[]} suggestions={[]} placeholder="Give a direction or correction…" onOpen={e => { setDirection(""); open("facilitator", e); }} onAsk={(text, e) => { setDirection(text); open("facilitator", e); }} />} />
+        <div className="dash-col agent-col">
+          <FacilitatorTile name="Claude" kicker={row?.status === "closed" ? "Closed" : row?.policy.paused ? "Paused" : stale ? "Updating" : "Coordinator"} lead={decision?.plan.summary ?? row?.objective ?? "Describe an incident and what you need to learn."} live={!!row && row.status === "open" && !!planning?.enabled && !row.policy.paused} busy={false} disabled={disabled || !row || row.status === "closed"} chat={[]} suggestions={[]} placeholder="Give a direction or correction…" onOpen={e => { setDirection(""); open("facilitator", e); }} onAsk={(text, e) => { setDirection(text); open("facilitator", e); }} />
+        </div>
       </div>
       <p className="dashboard-status" role="status">{status}</p>
     </div>

@@ -40,7 +40,7 @@ export function useFocus<T extends string>(visible: boolean) {
   return { focus, open, close: () => setFocus(null) };
 }
 
-export type RailItem<T extends string> = { id: T; label: string; value: number | null; icon: IconName; agent?: boolean };
+export type RailItem<T extends string> = { id: T; label: string; value: number | null; icon: IconName; agent?: boolean; detail?: string };
 
 export function DashRail<T extends string>({ items, active, onOpen }: { items: RailItem<T>[]; active: T | null; onOpen: (id: T, from: Opener) => void }) {
   return (
@@ -53,12 +53,18 @@ export function DashRail<T extends string>({ items, active, onOpen }: { items: R
           key={item.id}
           type="button"
           className={`${active === item.id ? "on" : ""}${item.agent ? " agent" : ""}`}
-          aria-label={item.label}
+          aria-label={item.detail ? `${item.label}: ${item.value ?? ""} · ${item.detail}` : item.label}
           onClick={(event) => onOpen(item.id, event)}
         >
           <Icon name={item.icon} />
           {item.value ? <b>{item.value}</b> : null}
-          <span className="dash-tip">{item.label}</span>
+          {/* A peek card that slides out on hover; clicking still opens the full focus view. */}
+          <span className="dash-peek" aria-hidden="true">
+            <small>{item.label}</small>
+            {item.value !== null ? <strong>{item.value}</strong> : null}
+            {item.detail ? <em>{item.detail}</em> : null}
+            <i>Click to open</i>
+          </span>
         </button>
       ))}
     </nav>
@@ -168,20 +174,6 @@ export function StatusSticks({ houses, waitingLabel = "Queued" }: { houses: Hous
   );
 }
 
-export function Faces({ names }: { names: string[] }) {
-  if (names.length === 0) return <span className="faces none">None yet</span>;
-  return (
-    <span className="faces">
-      {names.slice(0, 4).map((name) => (
-        <i key={name} title={name}>
-          {initials(name)}
-        </i>
-      ))}
-      {names.length > 4 ? <i className="more">+{names.length - 4}</i> : null}
-    </span>
-  );
-}
-
 export type Person = { key: string | number; name: string; note: string; chip: string; tone: "need" | "help" };
 
 export function PeopleList({ people, empty }: { people: Person[]; empty: string }) {
@@ -199,73 +191,6 @@ export function PeopleList({ people, empty }: { people: Person[]; empty: string 
         </li>
       ))}
     </ul>
-  );
-}
-
-const AGENT_MIN = 230;
-const PAIR_MIN = 80;
-const GAP = 16;
-
-/**
- * The right column: number cards on top, the facilitator below. Dragging the grip between them
- * grows the facilitator upward and the cards above give up the room; double-click flips between
- * the resting size and as tall as it goes.
- */
-export function AgentColumn({ top, agent }: { top: ReactNode; agent: ReactNode }) {
-  const column = useRef<HTMLDivElement>(null);
-  const dock = useRef<HTMLDivElement>(null);
-  const [height, setHeight] = useState<number | null>(null);
-  const [dragging, setDragging] = useState(false);
-  const drag = useRef<{ y: number; height: number } | null>(null);
-
-  const tallest = () => {
-    const room = column.current?.clientHeight ?? 0;
-    const pairs = column.current?.querySelectorAll(".dash-pair").length ?? 2;
-    return Math.max(AGENT_MIN, room - pairs * (PAIR_MIN + GAP));
-  };
-  const clamp = (value: number) => Math.min(Math.max(value, AGENT_MIN), tallest());
-  const resting = () => (height === null || height < (AGENT_MIN + tallest()) / 2);
-
-  return (
-    <div
-      ref={column}
-      className={`dash-col agent-col${dragging ? " dragging" : ""}`}
-      style={height === null ? undefined : ({ "--agent-h": `${height}px` } as CSSProperties)}
-    >
-      <div className="dash-stack">{top}</div>
-      <div ref={dock} className="agent-dock">
-        <button
-          type="button"
-          className="agent-grip"
-          role="separator"
-          aria-orientation="horizontal"
-          aria-label="Drag to resize the facilitator"
-          title="Drag up to expand · double-click to toggle"
-          onPointerDown={(event) => {
-            event.currentTarget.setPointerCapture(event.pointerId);
-            drag.current = { y: event.clientY, height: dock.current?.offsetHeight ?? AGENT_MIN };
-            setDragging(true);
-          }}
-          onPointerMove={(event) => {
-            if (!drag.current) return;
-            setHeight(clamp(drag.current.height + drag.current.y - event.clientY));
-          }}
-          onPointerUp={() => {
-            drag.current = null;
-            setDragging(false);
-          }}
-          onDoubleClick={() => setHeight(resting() ? tallest() : null)}
-          onKeyDown={(event) => {
-            const now = dock.current?.offsetHeight ?? AGENT_MIN;
-            if (event.key === "ArrowUp") setHeight(clamp(now + 40));
-            if (event.key === "ArrowDown") setHeight(clamp(now - 40));
-          }}
-        >
-          <i />
-        </button>
-        {agent}
-      </div>
-    </div>
   );
 }
 
@@ -312,9 +237,8 @@ export function FacilitatorTile({
         <Icon name="expand" />
       </button>
       <p className="agent-lead">{lead}</p>
-      {/* Only shows once the card is dragged tall enough to read a conversation. */}
       <div className="agent-feed" ref={feed} aria-live="polite">
-        {chat.length === 0 ? <p className="agent-feed-empty">Nothing asked yet. Ask below, or tap a suggestion.</p> : null}
+        {chat.length === 0 ? <p className="agent-feed-empty">Open the coordinator for details, or add a direction below.</p> : null}
         {chat.map((message) => (
           <p key={message.id} className={`agent-msg ${message.from}`}>
             <small>{message.from === "lead" ? "You" : name.split(" ")[0]}</small>
@@ -406,28 +330,33 @@ export type IconName =
   | "mute"
   | "check";
 
-const ICONS: Record<IconName, string> = {
-  grid: "M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z",
-  phoneOut: "M5 4h3l2 5-2.5 1.5a11 11 0 0 0 6 6L15 14l5 2v3a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2zM15 3h6v6M21 3l-7 7",
-  phoneIn: "M5 4h3l2 5-2.5 1.5a11 11 0 0 0 6 6L15 14l5 2v3a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2zM20 4l-6 6M14 4v6h6",
-  alert: "M12 3l9.5 17h-19zM12 10v4M12 17.5v.5",
-  hand: "M7 11V6a1.5 1.5 0 0 1 3 0v4M10 10V4.5a1.5 1.5 0 0 1 3 0V10M13 10V5.5a1.5 1.5 0 0 1 3 0V12M16 9.5a1.5 1.5 0 0 1 3 0V14a7 7 0 0 1-7 7h-1a6 6 0 0 1-5-2.7L3.5 14a1.6 1.6 0 0 1 2.6-1.8L7 13.5",
-  link: "M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1",
-  spark: "M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8zM19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z",
-  clock: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7v5l3 2",
-  expand: "M14 4h6v6M20 4l-7 7M10 20H4v-6M4 20l7-7",
-  close: "M6 6l12 12M18 6L6 18",
-  chevron: "M6 9l6 6 6-6",
-  arrow: "M5 12h14M13 6l6 6-6 6",
-  sound: "M4 9v6h4l5 4V5L8 9zM16 9a4 4 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11",
-  mute: "M4 9v6h4l5 4V5L8 9zM17 9l5 6M22 9l-5 6",
-  check: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM8 12l3 3 5-6",
+// Each icon is split into parts so a hover can move them separately: the phone and its arrow,
+// the warning sign and its mark, the two halves of a link, the big and small sparkle.
+const HANDSET = "M5 4h3l2 5-2.5 1.5a11 11 0 0 0 6 6L15 14l5 2v3a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z";
+const ICONS: Record<IconName, string[]> = {
+  grid: ["M4 4h6v6H4z", "M14 4h6v6h-6z", "M14 14h6v6h-6z", "M4 14h6v6H4z"],
+  phoneOut: [HANDSET, "M15 3h6v6M21 3l-7 7"],
+  phoneIn: [HANDSET, "M20 4l-6 6M14 4v6h6"],
+  alert: ["M12 3l9.5 17h-19z", "M12 10v4M12 17.5v.5"],
+  hand: ["M7 11V6a1.5 1.5 0 0 1 3 0v4M10 10V4.5a1.5 1.5 0 0 1 3 0V10M13 10V5.5a1.5 1.5 0 0 1 3 0V12M16 9.5a1.5 1.5 0 0 1 3 0V14a7 7 0 0 1-7 7h-1a6 6 0 0 1-5-2.7L3.5 14a1.6 1.6 0 0 1 2.6-1.8L7 13.5"],
+  link: ["M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1", "M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"],
+  spark: ["M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z", "M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"],
+  clock: ["M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z", "M12 7v5l3 2"],
+  expand: ["M14 4h6v6M20 4l-7 7M10 20H4v-6M4 20l7-7"],
+  close: ["M6 6l12 12M18 6L6 18"],
+  chevron: ["M6 9l6 6 6-6"],
+  arrow: ["M5 12h14M13 6l6 6-6 6"],
+  sound: ["M4 9v6h4l5 4V5L8 9z", "M16 9a4 4 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11"],
+  mute: ["M4 9v6h4l5 4V5L8 9z", "M17 9l5 6M22 9l-5 6"],
+  check: ["M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z", "M8 12l3 3 5-6"],
 };
 
 export function Icon({ name }: { name: IconName }) {
   return (
-    <svg className="icon" viewBox="0 0 24 24" aria-hidden="true">
-      <path d={ICONS[name]} />
+    <svg className={`icon i-${name}`} viewBox="0 0 24 24" aria-hidden="true">
+      {ICONS[name].map((d, index) => (
+        <path key={index} className={`p${index}`} d={d} pathLength={1} />
+      ))}
     </svg>
   );
 }
