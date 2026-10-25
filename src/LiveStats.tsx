@@ -39,12 +39,12 @@ export function LiveStats({ state, caseId }: { state: BackendState; caseId: numb
     });
   }
   if (!groups.length) {
-    groups.push({ name: "Backend", tiles: [{ label: "Registered", value: state.profiles.length }, { label: "Cases", value: state.cases.length }] });
+    groups.push({ name: "Ready to start", tiles: [{ label: "Calls", value: calls.length }, { label: "Reports", value: reports }] });
   }
   return (
     <section className="left stats" aria-label="Live numbers">
       <article className="glass stats-card">
-        <p className="kicker">Live backend</p>
+        <p className="kicker">Outgoing calls</p>
         {groups.map((group) => (
           <div key={group.name} className="stat-group">
             <h2>{group.name}</h2>

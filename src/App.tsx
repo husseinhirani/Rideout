@@ -19,6 +19,7 @@ import { OperatorPanel } from "./OperatorPanel";
 import { RegisterForm } from "./RegisterForm";
 import { downloadLog } from "./exportLog";
 import { householdFor } from "./households";
+import { residentsByBuilding } from "./map-residents";
 import { assignHouses, footprints, GEO, useRideOut, wildfireMockCalls } from "./telemetry";
 import type { ChatMessage, HouseStatus, OperatorSession } from "./types";
 
@@ -130,7 +131,8 @@ export function App() {
     setGroupMenuPosition(ids.length && position ? position : null);
   }, []);
   const openGroupMenu = useCallback((position: { x: number; y: number }) => setGroupMenuPosition(position), []);
-  const selectedResidents = (live ? liveHouses : ride.houses).filter((house) => highlightedIds.includes(house.id));
+  const buildingResidents = useMemo(() => residentsByBuilding(live ? liveHouses : ride.houses, live), [live, liveHouses, ride.houses]);
+  const selectedResidents = [...new Map(highlightedIds.flatMap(id => buildingResidents.get(id) ?? []).map(house => [house.id, house])).values()];
   const openCoordinatorForGroup = () => {
     setTab("checks");
     setFacilitatorRequest((value) => value + 1);

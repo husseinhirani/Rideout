@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { DRACOLoader } from "three/addons/loaders/DRACOLoader.js";
 import { TilesRenderer } from "3d-tiles-renderer/three";
@@ -8,6 +8,7 @@ import buildingData from "./data/buildings.json";
 import landuseData from "./data/landuse.json";
 import streetData from "./data/streets.json";
 import { householdFor } from "./households";
+import { residentsByBuilding } from "./map-residents";
 import type { House, Place, Sighting } from "./types";
 
 type Tip = {
@@ -21,6 +22,7 @@ type Tip = {
   vehicles: string[];
   needs?: string;
   note: string;
+  directory: boolean;
 };
 type Ring = number[][];
 type Street = { name: string; kind: string; line: number[][] };
@@ -101,6 +103,9 @@ export function NeighborhoodMap({ place, houses, onSelect, angle = "side", simpl
   const northRef = useRef<(() => void) | null>(null);
   const compassRef = useRef<HTMLButtonElement>(null);
   housesRef.current = houses;
+  const buildingResidents = useMemo(() => residentsByBuilding(houses, liveData), [houses, liveData]);
+  const buildingResidentsRef = useRef(buildingResidents);
+  buildingResidentsRef.current = buildingResidents;
   angleRef.current = angle;
   simpleRef.current = simple;
 
@@ -587,21 +592,24 @@ export function NeighborhoodMap({ place, houses, onSelect, angle = "side", simpl
         setTip(null);
         return;
       }
-      const house = housesRef.current.find((item) => item.id === id);
-      const home = liveRef.current ? { owner: house?.name ?? "Not recorded", number: id, address: "Stored map feature", people: "—", vehicles: ["Not recorded"], needs: undefined } : householdFor(id, house?.name);
+      const residents = buildingResidentsRef.current.get(id) ?? [];
+      const house = residents[0];
+      const home = liveRef.current ? { owner: residents.map(person => person.name).join(", ") || "Mapped building", number: id,
+        address: "Directory location", people: residents.length, vehicles: [], needs: undefined } : householdFor(id, house?.name);
       const x = Math.min(Math.max(12, event.clientX - rect.left + 16), rect.width - 312);
       const y = Math.min(Math.max(12, event.clientY - rect.top + 16), rect.height - 250);
       setTip({
         x,
         y,
-        kicker: house ? STATUS[house.status] : "Not registered",
+        kicker: liveRef.current ? residents.length ? "Linked directory location" : "No linked residents" : house ? STATUS[house.status] : "Not registered",
         owner: home.owner,
         number: home.number,
         street: home.address.replace(/^\d+\s*/, ""),
         people: home.people,
         vehicles: home.vehicles,
         needs: home.needs,
-        note: house ? house.note : liveRef.current ? "No resident or safety report is associated with this building." : "Not on the ride check-in list.",
+        note: liveRef.current ? residents.length ? "Stored coordinates fall within this building. Current whereabouts and safety are unconfirmed." : "No saved resident coordinates fall within this building. This does not establish whether it is occupied." : house ? house.note : "Not on the ride check-in list.",
+        directory: liveRef.current,
       });
     };
     const onPointerLeave = () => {
@@ -729,7 +737,8 @@ export function NeighborhoodMap({ place, houses, onSelect, angle = "side", simpl
           : [id];
         onSelectionChange?.(next, { x: event.clientX, y: event.clientY });
         if (next.length) onOpenGroupMenu?.({ x: event.clientX, y: event.clientY });
-        if (housesRef.current.some((house) => house.id === id)) onSelect(id);
+        const residents = buildingResidentsRef.current.get(id) ?? [];
+        if (residents.length === 1) onSelect(residents[0].id);
       }
     };
     const onWheel = (event: WheelEvent) => {
@@ -760,7 +769,7 @@ export function NeighborhoodMap({ place, houses, onSelect, angle = "side", simpl
 
     let shownSimple: boolean | null = null;
     const paintSimple = () => {
-      const missed = new Set(housesRef.current.filter((house) => UNREACHED_STATUS.has(house.status)).map((house) => house.id));
+      const missed = new Set([...buildingResidentsRef.current].filter(([, residents]) => residents.some(house => UNREACHED_STATUS.has(house.status))).map(([id]) => id));
       for (const block of simpleMeshes) {
         const material = block.material as THREE.MeshLambertMaterial;
         const id = block.userData.id as number;
@@ -990,17 +999,17 @@ export function NeighborhoodMap({ place, houses, onSelect, angle = "side", simpl
           <p>{tip.kicker}</p>
           <strong>{tip.owner}</strong>
           <span className="hover-address">
-            House #{tip.number} · {tip.street}
+            {tip.directory ? "Building" : "House"} #{tip.number} · {tip.street}
           </span>
           <dl>
             <div>
-              <dt>People</dt>
+              <dt>{tip.directory ? "Linked residents" : "People"}</dt>
               <dd>{tip.people}</dd>
             </div>
-            <div>
+            {!tip.directory && <div>
               <dt>{tip.vehicles.length === 1 ? "Vehicle" : "Vehicles"}</dt>
               <dd>{tip.vehicles.length ? tip.vehicles.join(", ") : "None"}</dd>
-            </div>
+            </div>}
             {tip.needs ? (
               <div>
                 <dt>Needs</dt>
