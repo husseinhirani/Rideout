@@ -1,4 +1,9 @@
-# Persisted recording demo
+# Historical persisted recording demo
+
+Archived instructions for the earlier incident-specific runtime. The current
+generic server does not support these HTTP replay commands or `server:recording`.
+Use the current entry points in [README.md](README.md). Fixtures and records are
+retained; this page does not authorize resetting an existing database.
 
 This is a fictional, scripted rehearsal through the actual HTTP server, coordinator
 worker and SpacetimeDB. It makes no phone or Claude calls. It is separate from

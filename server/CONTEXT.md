@@ -9,10 +9,14 @@ count is required. Root `GLOSSARY.md` and `docs/adr/0002-generic-information-cas
 define the current vocabulary and migration boundary.
 
 Stage 1 provides a generic organizer-directed call and durable report path.
-Adaptive contact/question selection and inbound case association follow its live
-checkpoint. Timer follow-ups are deferred. The older sections below describe
+Step 4 adds opt-in adaptive contact/question selection on a separate development
+branch while Vien verifies Stage 1. Runtime verification and integration remain
+sequential on Vien's VM. Inbound case association and timer follow-ups are not
+part of Step 4. See `ADAPTIVE-TEST-HANDOFF.md`. The older sections below describe
 legacy fixtures and must not introduce scenario rules into new product logic.
 Tony owns the backend and manual HTML console; Vien owns the product frontend.
+The legacy `server:recording` command is retired; `server:adaptive:sim` runs real
+Claude with simulated phones. The older recording descriptions below are history.
 
 
 Global context and working conventions. Read before making any change.

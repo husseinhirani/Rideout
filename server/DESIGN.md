@@ -1,5 +1,44 @@
 # design.md
 
+## Adaptive information path — Step 4
+
+On the separate Step 4 branch, an organizer explicitly enables coordination for
+a case and approves disclosure facts, optionally restricted to recipients.
+`AUTO_COORDINATE=1` enables the worker; it never enrolls historical cases.
+Manual call commands are rejected while that case is automatically coordinated.
+
+The worker brackets snapshot reads with the case revision. Real Claude returns
+a bounded plan with evidence references, a complete retain/cancel partition of
+queued work, at most two new information calls, and waiting/review reasons.
+The commit reducer checks current scope, consent, evidence, disclosure, budgets
+and queue state before saving the whole decision and attempts atomically.
+Array-size limits are enforced in application/reducer validation; the provider
+schema omits `maxItems`, which the live API rejected during the Step 4 checkpoint.
+Claims do not dirty the case, so one claim does not invalidate a sibling call.
+New answers and organizer input do dirty it. There is no timed follow-up here.
+
+The additive `information_planning` table stores opt-in, disclosure facts and
+bounded revision-specific failure retries. `information_decision` stores accepted
+plans, model/request metadata and created attempt IDs. Context is rendered from
+approved facts, not free model-written context. Questions remain model-generated
+under information-only/disclosure instructions; semantic privacy cannot be
+guaranteed by the schema alone. Reports remain attributed claims.
+
+Planning, interpretation and transport reconciliation have separate in-flight
+guards. Failed planning cannot stop recording reports or observing hang-up.
+An organizer-review decision pauses new calls. Explicit configuration can resume
+it. The console displays reasons, evidence IDs and whether the summary is stale.
+Inbound association and final closure remain later checkpoints.
+
+After three interpretation failures, an operator can explicitly retry the same
+saved, matched account via `POST /attempts/:id/retry-interpretation` with a stable
+`command_id`. The reducer records the command and resets interpretation retries
+only. It cannot redial, replace the receipt, reopen the case or bypass binding.
+The console exposes this action only for exhausted, unprocessed matched reports.
+
+See `ADAPTIVE-TEST-HANDOFF.md` for the API and VM checks. This implementation has
+been inspected as code only; compilation and runtime checks await Vien's VM.
+
 ## Generic information path — Stage 1
 
 Current domain language is in root `GLOSSARY.md`. New investigations use additive
@@ -132,6 +171,10 @@ worker instances over retained rows. They do not prove SpacetimeDB deployment,
 real process/database restart recovery, Claude behavior, or phone delivery.
 
 ## Persisted recording replay
+
+Historical runtime description: the current generic server rejects scripted
+planning. `server:recording` now exits with a retirement message. Real-Claude
+simulation uses `server:adaptive:sim`; the old fixtures remain available.
 
 `COORDINATOR_SCRIPTED=1` selects explicit demonstration planner/interpreter fixtures,
 never an automatic fallback. Startup rejects this flag without both `SIMULATE=1`

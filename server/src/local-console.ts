@@ -85,7 +85,7 @@ function isOperatorProxyRoute(method: string, path: string): boolean {
   if (method !== "POST") return false
   return ["/incidents", "/cases", "/profiles", "/profiles/preferences", "/intake", "/intake-configuration"].includes(path)
     || /^\/cases\/\d+\/(calls|configuration|input|close)$/.test(path)
-    || /^\/attempts\/\d+\/(cancel|reconcile)$/.test(path)
+    || /^\/attempts\/\d+\/(cancel|reconcile|retry-interpretation)$/.test(path)
     || /^\/incoming-requests\/\d+\/review$/.test(path)
     || ["/simulation/report", "/simulation/request"].includes(path)
 }

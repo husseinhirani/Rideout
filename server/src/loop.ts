@@ -85,7 +85,7 @@ function configuredHelperIds(): number[] {
 
 // ------------------------------------------------------------------ reading
 
-export async function getState(): Promise<Record<string, unknown>> {
+export async function getState(includeLegacyConfiguration = true): Promise<Record<string, unknown>> {
   const [allProfiles, allIncidents, people, cases, allAttempts, allNotes, coordination, attempt_progress, case_intakes] = await Promise.all([
     profiles(),
     incidents(),
@@ -102,7 +102,7 @@ export async function getState(): Promise<Record<string, unknown>> {
     demo_mode: {
       simulate: process.env.SIMULATE === "1", scripted: recordingMode(),
       auto_coordinate: automatic(), database: process.env.SPACETIMEDB_DATABASE ?? "rideout",
-      helper_ids: automatic() ? configuredHelperIds() : [],
+      helper_ids: includeLegacyConfiguration && automatic() ? configuredHelperIds() : [],
     },
     profiles: allProfiles,
     incidents: allIncidents,

@@ -1,7 +1,14 @@
-# Stage 1: generic investigation and one information call
+# Generic investigation and information calls
 
-The next human checkpoint is GitHub #25, tracked in #27. No adaptive planner,
-timer follow-up or inbound case matching is enabled in this slice. Incoming
+Step 4 adds opt-in automatic questions, organizer input and accepted decisions.
+See [ADAPTIVE-TEST-HANDOFF.md](ADAPTIVE-TEST-HANDOFF.md) for the additive API
+contract and VM verification sequence. Existing manual requests below retain
+their behavior when `coordination_enabled` is omitted/false. These Step 4 changes
+are implemented separately and await compilation/program/live checks on Vien's VM.
+
+The current Step 3 human checkpoint is GitHub #25, tracked in #27. With the
+manual configuration below no adaptive planner runs. There is no timer follow-up
+or inbound case matching in either current slice. Incoming
 accounts are saved for review. Legacy cases remain readable history.
 
 Run with a published module, private database URL/name, configured provider and

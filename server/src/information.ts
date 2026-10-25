@@ -1,6 +1,20 @@
 import { query, asId, asString, asArea, asTimestamp, asOption, optionalNumber, callReducer, profiles, attempts } from "./db"
 import { ServiceError } from "./service"
 import { canonicalJson, commandId, contactScope, matchesScope, contactEligibility, object, id, type InformationIncidentRow, type InformationCaseRow, type ProfileSettingsRow, type InformationAttemptRow, type InformationCommandResult, type DirectoryQuery } from "../shared/information"
+import type { InformationPlanningRow, InformationDecisionRow } from "../shared/information-plan"
+
+export async function readInformationPlanning(): Promise<{ planning: InformationPlanningRow[]; decisions: InformationDecisionRow[] }> {
+  const [planning, decisions] = await Promise.all([query("SELECT * FROM information_planning"), query("SELECT * FROM information_decision")])
+  return {
+    planning: planning.map(r => ({ support_case_id: asId(r.support_case_id), enabled: r.enabled === true,
+      disclosure_facts: JSON.parse(asString(r.disclosure_json)), failure_revision: asId(r.failure_revision),
+      failure_count: asId(r.failure_count), retry_at_ms: optionalNumber(r.retry_at_ms), error: asString(r.error) })),
+    decisions: decisions.map(r => ({ id: asString(r.id), support_case_id: asId(r.support_case_id),
+      based_on_revision: asId(r.based_on_revision), created_at: asTimestamp(r.created_at),
+      model: asString(r.model), request_id: asString(r.request_id), plan: JSON.parse(asString(r.plan_json)),
+      attempt_ids: (r.attempt_ids as unknown[]).map(asId) })),
+  }
+}
 
 export async function readInformationState(): Promise<{ incidents: InformationIncidentRow[]; cases: InformationCaseRow[]; settings: ProfileSettingsRow[]; metadata: InformationAttemptRow[]; line: { default_scope: ReturnType<typeof contactScope> } | null }> {
   const [incidents, cases, settings, metadata, line] = await Promise.all([query("SELECT * FROM information_incident"), query("SELECT * FROM information_case"), query("SELECT * FROM profile_settings"), query("SELECT * FROM information_attempt"), query("SELECT * FROM information_line")])
@@ -48,6 +62,8 @@ async function command(reducer: string, body: unknown, actor: string, caseId?: n
 export const createInformationCase = (body: unknown, actor: string) => command("createInformationCase", body, actor)
 export const configureInformationCase = (caseId: number, body: unknown, actor: string) => command("configureInformationCase", body, actor, caseId)
 export const requestInformationCall = (caseId: number, body: unknown, actor: string) => command("requestInformationCall", body, actor, caseId)
+export const inputInformationCase = (caseId: number, body: unknown, actor: string) => command("inputInformationCase", body, actor, caseId)
+export const retryInformationReport = (attemptId: number, body: unknown, actor: string) => command("retryInformationReport", body, actor, attemptId)
 export async function receiveInformationReport(body: unknown) {
   let input: Record<string, unknown>, attemptId: number
   try { input = object(body, "report"); attemptId = id(typeof input.attempt_id === "string" && /^\d+$/.test(input.attempt_id) ? Number(input.attempt_id) : input.attempt_id, "attempt_id") } catch (error) { throw new ServiceError(400, (error as Error).message) }
